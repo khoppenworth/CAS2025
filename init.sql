@@ -23,7 +23,7 @@ CREATE TABLE site_config (
   landing_text TEXT NULL,
   address VARCHAR(255) NULL,
   contact VARCHAR(255) NULL,
-  landing_metric_submissions INT NULL,
+  landing_metric_submissions VARCHAR(50) NULL,
   landing_metric_completion VARCHAR(50) NULL,
   landing_metric_adoption VARCHAR(50) NULL,
   logo_path VARCHAR(255) NULL,
