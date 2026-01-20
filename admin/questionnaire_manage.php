@@ -969,15 +969,31 @@ if (isset($_POST['import'])) {
     $recentImportId = null;
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
-        $data = null;
-        if (stripos($_FILES['file']['name'], '.json') !== false) {
-            $data = json_decode($raw, true);
-        } else {
+        $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            libxml_use_internal_errors(true);
             $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
             if ($xml !== false) {
+                $rootName = $xml->getName();
                 $json = json_encode($xml);
                 $data = json_decode($json, true);
+                if (is_array($data) && $rootName && !isset($data['resourceType'])) {
+                    $data['resourceType'] = $rootName;
+                }
+            } else {
+                $xmlErrors = libxml_get_errors();
+                if ($xmlErrors) {
+                    $messages = array_map(static function ($err) {
+                        return trim($err->message) . ' on line ' . $err->line;
+                    }, $xmlErrors);
+                    error_log('Questionnaire import XML parse errors: ' . implode(' | ', $messages));
+                } else {
+                    error_log('Questionnaire import XML parse failed with no libxml errors.');
+                }
+                libxml_clear_errors();
             }
+            libxml_use_internal_errors(false);
         }
         if ($data) {
             $qs = [];

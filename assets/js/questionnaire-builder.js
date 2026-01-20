@@ -25,6 +25,7 @@ const Builder = (() => {
     saveButton: '#qb-save',
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
+    openButton: '#qb-open-selected',
     message: '#qb-message',
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
@@ -83,6 +84,8 @@ const Builder = (() => {
     saving: false,
     csrf: '',
   };
+
+  let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
 
   const baseMeta = document.querySelector('meta[name="app-base-url"]');
   let appBase = window.APP_BASE_URL || (baseMeta ? baseMeta.content : '/');
@@ -186,7 +189,8 @@ const Builder = (() => {
     const addBtn = document.querySelector(selectors.addButton);
     const saveBtn = document.querySelector(selectors.saveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
-    const exportBtn = document.querySelector(selectors.exportButton);
+    const exportBtns = document.querySelectorAll(selectors.exportButton);
+    const openBtn = document.querySelector(selectors.openButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -198,7 +202,13 @@ const Builder = (() => {
 
     saveBtn?.addEventListener('click', () => saveAll(false));
     publishBtn?.addEventListener('click', () => saveAll(true));
-    exportBtn?.addEventListener('click', handleExport);
+    exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
+    openBtn?.addEventListener('click', () => {
+      const key = selector?.value;
+      if (!key) return;
+      setActive(key);
+      document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
 
     selector?.addEventListener('change', (event) => {
@@ -237,6 +247,9 @@ const Builder = (() => {
       .then((payload) => {
         if (payload?.status !== 'ok') throw new Error(payload?.message || 'Failed to load');
         state.csrf = payload.csrf || state.csrf;
+        if (state.dirty) {
+          return;
+        }
         state.questionnaires = Array.isArray(payload.questionnaires)
           ? payload.questionnaires.map((q) => normalizeQuestionnaire(q))
           : [];
@@ -254,6 +267,17 @@ const Builder = (() => {
     if (state.questionnaires.length === 0) {
       state.activeKey = null;
       return;
+    }
+    if (initialActiveId) {
+      const match = state.questionnaires.find(
+        (q) => q.clientId === initialActiveId || `${q.id}` === `${initialActiveId}`
+      );
+      if (match) {
+        state.activeKey = match.clientId;
+        state.navActiveKey = 'root';
+        initialActiveId = null;
+        return;
+      }
     }
     if (state.activeKey) {
       const exists = state.questionnaires.some((q) => q.clientId === state.activeKey || `${q.id}` === `${state.activeKey}`);
@@ -307,20 +331,6 @@ const Builder = (() => {
     state.activeKey = next.clientId;
     state.navActiveKey = 'root';
     rememberSet(STORAGE_KEYS.active, next.clientId);
-    markDirty();
-    render();
-  }
-
-  function removeQuestionnaire(clientId) {
-    const idx = state.questionnaires.findIndex((q) => q.clientId === clientId);
-    if (idx === -1) return;
-    const q = state.questionnaires[idx];
-    if (q.hasResponses) {
-      renderMessage('Questionnaire with responses cannot be removed.');
-      return;
-    }
-    state.questionnaires.splice(idx, 1);
-    ensureActive();
     markDirty();
     render();
   }
@@ -399,9 +409,6 @@ const Builder = (() => {
                 .map((status) => `<option value="${status}" ${status === questionnaire.status ? 'selected' : ''}>${formatStatusLabel(status)}</option>`)
                 .join('')}
             </select>
-          </div>
-          <div class="qb-actions">
-            <button type="button" class="md-button md-outline" data-role="q-remove" ${questionnaire.hasResponses ? 'disabled' : ''}>Delete</button>
           </div>
         </div>
         <div class="qb-body">
@@ -666,6 +673,8 @@ const Builder = (() => {
         break;
       case 'q-status':
         questionnaire.status = event.target.value;
+        renderTabs();
+        renderSelector();
         break;
       case 'section-title':
       case 'section-description':
@@ -696,9 +705,6 @@ const Builder = (() => {
     if (!questionnaire) return;
 
     switch (role) {
-      case 'q-remove':
-        removeQuestionnaire(questionnaire.clientId);
-        return;
       case 'add-section':
         addSection(questionnaire);
         break;
@@ -1219,4 +1225,3 @@ if (document.readyState === 'loading') {
 } else {
   Builder.init();
 }
-
