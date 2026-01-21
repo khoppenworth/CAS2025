@@ -868,7 +868,7 @@ function ensure_biannual_performance_periods(PDO $pdo): void
     }
 
     $currentYear = (int)date('Y');
-    $years = range($currentYear - 1, $currentYear + 2);
+    $years = range($currentYear - 2, $currentYear + 3);
 
     $startedTransaction = false;
 
