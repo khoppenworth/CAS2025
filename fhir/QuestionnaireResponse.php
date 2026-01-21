@@ -48,16 +48,36 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $rid = (int)$pdo->lastInsertId();
 
     // Calculate weighted score
-    $items_meta = $pdo->prepare("SELECT id, linkId, type, weight_percent FROM questionnaire_item WHERE questionnaire_id=?");
+    $items_meta = $pdo->prepare("SELECT id, linkId, type, allow_multiple, weight_percent FROM questionnaire_item WHERE questionnaire_id=?");
     $items_meta->execute([$qid]);
     $meta = [];
     $metaRows = $items_meta->fetchAll(PDO::FETCH_ASSOC);
     $nonScorableTypes = ['display', 'group', 'section'];
+    $singleChoiceWeightMap = questionnaire_even_single_choice_weights($metaRows);
     $likertWeightMap = questionnaire_even_likert_weights($metaRows);
+    $correctByItemId = [];
+    if ($metaRows) {
+      $itemIds = array_values(array_filter(array_map(static function ($row) {
+        return isset($row['id']) ? (int)$row['id'] : 0;
+      }, $metaRows)));
+      $itemIds = array_values(array_unique(array_filter($itemIds)));
+      if ($itemIds) {
+        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+        $optStmt = $pdo->prepare("SELECT questionnaire_item_id, value FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) AND is_correct=1 ORDER BY questionnaire_item_id, order_index, id");
+        $optStmt->execute($itemIds);
+        foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+          $itemId = (int)$row['questionnaire_item_id'];
+          if (!isset($correctByItemId[$itemId])) {
+            $correctByItemId[$itemId] = (string)($row['value'] ?? '');
+          }
+        }
+      }
+    }
     foreach ($metaRows as $row) {
       $type = (string)($row['type'] ?? '');
       $isScorable = !in_array($type, $nonScorableTypes, true);
-      $row['computed_weight'] = questionnaire_resolve_effective_weight($row, $likertWeightMap, $isScorable);
+      $row['computed_weight'] = questionnaire_resolve_effective_weight($row, $singleChoiceWeightMap, $likertWeightMap, $isScorable);
+      $row['correct_value'] = $correctByItemId[(int)($row['id'] ?? 0)] ?? null;
       $key = isset($row['linkId']) ? (string)$row['linkId'] : '';
       $meta[$key] = $row;
     }
@@ -76,9 +96,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       if ($metaRow) {
         $effectiveWeight = isset($metaRow['computed_weight'])
           ? (float)$metaRow['computed_weight']
-          : questionnaire_resolve_effective_weight($metaRow, $likertWeightMap, $isScorable);
+          : questionnaire_resolve_effective_weight($metaRow, $singleChoiceWeightMap, $likertWeightMap, $isScorable);
       } elseif ($isScorable) {
-        $effectiveWeight = questionnaire_resolve_effective_weight([], $likertWeightMap, $isScorable);
+        $effectiveWeight = questionnaire_resolve_effective_weight([], $singleChoiceWeightMap, $likertWeightMap, $isScorable);
       }
       $achievedPoints = 0.0;
 
@@ -128,26 +148,39 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $achievedPoints = $effectiveWeight * ($scoreValue / 5.0);
         }
       } elseif ($type === 'choice') {
-        $hasSelection = false;
-        foreach ($ansArr as $a) {
-          if (isset($a['valueString']) && trim((string)$a['valueString']) !== '') {
-            $hasSelection = true;
-            break;
-          }
-          if (isset($a['valueCoding'])) {
-            $coding = $a['valueCoding'];
-            if (is_array($coding)) {
-              $code = isset($coding['code']) ? trim((string)$coding['code']) : '';
-              $display = isset($coding['display']) ? trim((string)$coding['display']) : '';
-              if ($code !== '' || $display !== '') {
-                $hasSelection = true;
+        $allowMultiple = !empty($metaRow['allow_multiple']);
+        if (!$allowMultiple) {
+          $correctValue = isset($metaRow['correct_value']) ? (string)$metaRow['correct_value'] : '';
+          if ($correctValue !== '') {
+            foreach ($ansArr as $a) {
+              if (isset($a['valueString']) && (string)$a['valueString'] === $correctValue) {
+                $achievedPoints = $effectiveWeight;
                 break;
               }
             }
           }
-        }
-        if ($hasSelection) {
-          $achievedPoints = $effectiveWeight;
+        } else {
+          $hasSelection = false;
+          foreach ($ansArr as $a) {
+            if (isset($a['valueString']) && trim((string)$a['valueString']) !== '') {
+              $hasSelection = true;
+              break;
+            }
+            if (isset($a['valueCoding'])) {
+              $coding = $a['valueCoding'];
+              if (is_array($coding)) {
+                $code = isset($coding['code']) ? trim((string)$coding['code']) : '';
+                $display = isset($coding['display']) ? trim((string)$coding['display']) : '';
+                if ($code !== '' || $display !== '') {
+                  $hasSelection = true;
+                  break;
+                }
+              }
+            }
+          }
+          if ($hasSelection) {
+            $achievedPoints = $effectiveWeight;
+          }
         }
       } else {
         foreach ($ansArr as $a) {

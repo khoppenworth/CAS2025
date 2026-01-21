@@ -67,6 +67,18 @@ function analytics_score_item(array $item, array $answerSet, float $weight): flo
         return 0.0;
     }
     if ($type === 'choice') {
+        if (empty($item['allow_multiple'])) {
+            $correct = isset($item['correct_value']) ? (string)$item['correct_value'] : '';
+            if ($correct === '') {
+                return 0.0;
+            }
+            foreach ($answerSet as $entry) {
+                if (isset($entry['valueString']) && (string)$entry['valueString'] === $correct) {
+                    return $weight;
+                }
+            }
+            return 0.0;
+        }
         foreach ($answerSet as $entry) {
             if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
                 return $weight;
@@ -101,27 +113,52 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
     $stmt = $pdo->prepare($sql);
     $stmt->execute($ids);
     $rawItems = [];
+    $itemIds = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $qid = (int)($row['questionnaire_id'] ?? 0);
         if ($qid <= 0) {
             continue;
         }
+        $itemId = (int)($row['id'] ?? 0);
         $rawItems[$qid][] = [
-            'id' => (int)($row['id'] ?? 0),
+            'id' => $itemId,
             'linkId' => (string)($row['linkId'] ?? ''),
             'type' => (string)($row['type'] ?? ''),
             'allow_multiple' => !empty($row['allow_multiple']),
             'weight_percent' => (float)($row['weight_percent'] ?? 0.0),
         ];
+        if ($itemId > 0) {
+            $itemIds[] = $itemId;
+        }
+    }
+
+    $correctByItem = [];
+    if ($itemIds) {
+        $itemIds = array_values(array_unique($itemIds));
+        $optionPlaceholder = implode(',', array_fill(0, count($itemIds), '?'));
+        $optStmt = $pdo->prepare(
+            "SELECT questionnaire_item_id, value FROM questionnaire_item_option " .
+            "WHERE questionnaire_item_id IN ($optionPlaceholder) AND is_correct=1 " .
+            "ORDER BY questionnaire_item_id, order_index, id"
+        );
+        $optStmt->execute($itemIds);
+        foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $itemId = (int)$row['questionnaire_item_id'];
+            if (!isset($correctByItem[$itemId])) {
+                $correctByItem[$itemId] = (string)($row['value'] ?? '');
+            }
+        }
     }
 
     $nonScorableTypes = ['display', 'group', 'section'];
     $itemsByQuestionnaire = [];
     foreach ($rawItems as $qid => $items) {
+        $singleChoiceWeights = questionnaire_even_single_choice_weights($items);
         $likertWeights = questionnaire_even_likert_weights($items);
         foreach ($items as $item) {
             $weight = questionnaire_resolve_effective_weight(
                 $item,
+                $singleChoiceWeights,
                 $likertWeights,
                 !in_array($item['type'], $nonScorableTypes, true)
             );
@@ -133,6 +170,7 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
                 'type' => (string)($item['type'] ?? ''),
                 'allow_multiple' => !empty($item['allow_multiple']),
                 'weight' => $weight,
+                'correct_value' => $correctByItem[(int)($item['id'] ?? 0)] ?? null,
             ];
         }
     }

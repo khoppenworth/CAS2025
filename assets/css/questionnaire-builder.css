@@ -756,6 +756,26 @@
   padding: 0.3rem 0.45rem;
 }
 
+.qb-option-correct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--app-muted);
+  margin-right: 0.35rem;
+}
+
+.qb-option-correct input[type="radio"] {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.qb-hint {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--app-muted);
+}
+
 .qb-option-readonly {
   background: var(--app-primary-softer);
   cursor: default;

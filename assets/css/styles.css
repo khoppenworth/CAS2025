@@ -2857,6 +2857,13 @@ body.theme-dark .md-button.md-primary {
   margin-top: 0.5rem;
 }
 
+.choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .likert-scale__option {
   display: flex;
   flex-direction: column;
@@ -2868,7 +2875,21 @@ body.theme-dark .md-button.md-primary {
   min-width: 110px;
 }
 
+.choice-options__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: var(--app-secondary-soft);
+}
+
 .likert-scale__option input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.choice-options__option input[type="radio"] {
   width: 1.25rem;
   height: 1.25rem;
 }
@@ -2879,10 +2900,19 @@ body.theme-dark .md-button.md-primary {
   color: var(--app-muted);
 }
 
+.choice-options__option span {
+  font-size: 0.9rem;
+  color: var(--app-muted);
+}
+
 @media (max-width: 640px) {
   .likert-scale {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  .choice-options {
     gap: 0.65rem;
   }
 
@@ -2893,6 +2923,11 @@ body.theme-dark .md-button.md-primary {
     gap: 0.75rem;
     width: 100%;
     min-width: 0;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .choice-options__option {
+    justify-content: flex-start;
     padding: 0.75rem 0.85rem;
   }
 
