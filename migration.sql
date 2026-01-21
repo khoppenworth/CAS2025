@@ -766,7 +766,6 @@ INSERT IGNORE INTO site_config (
   '12 min',
   '94%',
   NULL,
-  NULL,
   'Ethiopian Pharmaceutical Supply Service',
   'EPSS / EPS',
   'epss.gov.et',
