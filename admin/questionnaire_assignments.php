@@ -9,6 +9,20 @@ $cfg = get_site_config($pdo);
 
 $workFunctionChoices = work_function_choices($pdo);
 
+$publishedQuestionnaires = [];
+try {
+    $questionnaireStmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
+    $publishedQuestionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+} catch (PDOException $e) {
+    error_log('questionnaire_assignments questionnaire fetch failed: ' . $e->getMessage());
+    $publishedQuestionnaires = [];
+}
+
+$flashMsg = $_SESSION['questionnaire_assignment_flash'] ?? '';
+if ($flashMsg !== '') {
+    unset($_SESSION['questionnaire_assignment_flash']);
+}
+
 try {
     $staffStmt = $pdo->query("SELECT id, username, full_name, work_function FROM users WHERE role='staff' AND account_status='active' ORDER BY full_name ASC, username ASC");
     $staffMembers = $staffStmt ? $staffStmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -24,6 +38,53 @@ foreach ($staffMembers as $member) {
 
 $selectedStaffId = (int)($_GET['staff_id'] ?? ($staffMembers[0]['id'] ?? 0));
 $selectedStaffRecord = $staffById[$selectedStaffId] ?? null;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
+    $selectedStaffId = (int)($_POST['staff_id'] ?? 0);
+    $selectedStaffRecord = $staffById[$selectedStaffId] ?? null;
+    $assignerId = (int)(current_user()['id'] ?? 0);
+
+    $allowedIds = array_map(static fn($row) => (int)($row['id'] ?? 0), $publishedQuestionnaires);
+    $allowedSet = array_fill_keys($allowedIds, true);
+
+    $rawIds = $_POST['questionnaire_ids'] ?? [];
+    $normalizedIds = [];
+    if (is_array($rawIds)) {
+        foreach ($rawIds as $id) {
+            $id = (int)$id;
+            if ($id > 0 && isset($allowedSet[$id])) {
+                $normalizedIds[$id] = $id;
+            }
+        }
+    }
+    $normalizedIds = array_values($normalizedIds);
+
+    if ($selectedStaffRecord) {
+        $pdo->beginTransaction();
+        try {
+            $deleteStmt = $pdo->prepare('DELETE FROM questionnaire_assignment WHERE staff_id=?');
+            $deleteStmt->execute([$selectedStaffId]);
+
+            if ($normalizedIds !== []) {
+                $insertStmt = $pdo->prepare('INSERT INTO questionnaire_assignment (staff_id, questionnaire_id, assigned_by) VALUES (?, ?, ?)');
+                foreach ($normalizedIds as $qid) {
+                    $insertStmt->execute([$selectedStaffId, $qid, $assignerId ?: null]);
+                }
+            }
+
+            $pdo->commit();
+            $_SESSION['questionnaire_assignment_flash'] = t($t, 'assignment_saved', 'Questionnaire assignments updated.');
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            error_log('questionnaire_assignments save failed: ' . $e->getMessage());
+            $_SESSION['questionnaire_assignment_flash'] = t($t, 'assignment_save_failed', 'Assignments could not be saved. Please try again.');
+        }
+    }
+
+    header('Location: ' . url_for('admin/questionnaire_assignments.php?staff_id=' . $selectedStaffId));
+    exit;
+}
 
 $assignmentsByWorkFunction = [];
 try {
@@ -48,10 +109,29 @@ try {
 
 $selectedAssignments = [];
 $selectedWorkFunction = '';
+$directAssignments = [];
+$directAssignmentIds = [];
 if ($selectedStaffRecord) {
     $selectedWorkFunction = trim((string)($selectedStaffRecord['work_function'] ?? ''));
     if ($selectedWorkFunction !== '') {
         $selectedAssignments = $assignmentsByWorkFunction[$selectedWorkFunction] ?? [];
+    }
+
+    try {
+        $directStmt = $pdo->prepare(
+            'SELECT qa.questionnaire_id, q.title, q.description ' .
+            'FROM questionnaire_assignment qa ' .
+            'JOIN questionnaire q ON q.id = qa.questionnaire_id ' .
+            'WHERE qa.staff_id=? AND q.status="published" ' .
+            'ORDER BY q.title ASC'
+        );
+        $directStmt->execute([(int)$selectedStaffId]);
+        $directAssignments = $directStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $directAssignmentIds = array_map(static fn($row) => (int)($row['questionnaire_id'] ?? 0), $directAssignments);
+    } catch (PDOException $e) {
+        error_log('questionnaire_assignments direct fetch failed: ' . $e->getMessage());
+        $directAssignments = [];
+        $directAssignmentIds = [];
     }
 }
 ?>
@@ -123,6 +203,42 @@ if ($selectedStaffRecord) {
       color: var(--app-muted, #6b7280);
       font-style: italic;
     }
+    .md-assignment-form {
+      margin: 1.25rem 0 0.25rem;
+      padding: 1rem;
+      border: 1px solid var(--app-border, #d0d5dd);
+      border-radius: 8px;
+      background: var(--app-surface, #ffffff);
+    }
+    .md-assignment-form h4 {
+      margin: 0 0 0.5rem;
+    }
+    .md-assignment-form p {
+      margin: 0.35rem 0 0.75rem;
+      color: var(--app-muted, #6b7280);
+    }
+    .md-assignment-form .md-field {
+      display: block;
+      margin: 0.75rem 0;
+    }
+    .md-assignment-form select[multiple] {
+      width: 100%;
+      min-height: 12rem;
+      padding: 0.75rem;
+    }
+    .md-assignment-form-actions {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .md-assignment-flash {
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #065f46;
+    }
   </style>
 </head>
 <body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
@@ -130,8 +246,11 @@ if ($selectedStaffRecord) {
 <section class="md-section">
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'assign_questionnaires','Assign Questionnaires')?></h2>
+    <?php if ($flashMsg !== ''): ?>
+      <div class="md-assignment-flash" role="status"><?=htmlspecialchars($flashMsg, ENT_QUOTES, 'UTF-8')?></div>
+    <?php endif; ?>
     <div class="md-assignment-intro">
-      <p><?=t($t,'assignment_work_function_only','Questionnaires are now managed at the work function level. To change which questionnaires are available to staff, update the defaults on the Work Function Defaults page.')?></p>
+      <p><?=t($t,'assignment_work_function_only','Questionnaires are assigned automatically based on work function. Use direct assignments to tailor the list for individual staff without changing the defaults.')?></p>
     </div>
     <?php if (!$staffMembers): ?>
       <p><?=t($t,'no_active_staff','No active staff records available.')?></p>
@@ -182,6 +301,49 @@ if ($selectedStaffRecord) {
               <p><?=t($t,'assignment_no_defaults_for_function','No questionnaires are assigned to this work function yet.')?></p>
             <?php endif; ?>
           <?php endif; ?>
+        </div>
+        <div class="md-assignment-form" id="direct-assignments">
+          <h4><?=t($t,'direct_assignments','Direct assignments')?></h4>
+          <p><?=t($t,'direct_assignments_hint','Add or remove questionnaires for this staff member without changing the work function defaults.')?></p>
+          <form method="post" action="<?=htmlspecialchars(url_for('admin/questionnaire_assignments.php'), ENT_QUOTES, 'UTF-8')?>">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="staff_id" value="<?=$selectedStaffId?>">
+            <label class="md-field"><span><?=t($t,'select_questionnaires','Select questionnaires')?></span>
+              <select name="questionnaire_ids[]" multiple aria-describedby="direct-assignment-help">
+                <?php foreach ($publishedQuestionnaires as $questionnaire): ?>
+                  <?php
+                    $qid = (int)($questionnaire['id'] ?? 0);
+                    $title = trim((string)($questionnaire['title'] ?? ''));
+                    $desc = trim((string)($questionnaire['description'] ?? ''));
+                    $displayTitle = $title !== '' ? $title : t($t,'questionnaire','Questionnaire');
+                  ?>
+                  <option value="<?=$qid?>" <?=$qid && in_array($qid, $directAssignmentIds, true) ? 'selected' : ''?>>
+                    <?=htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8')?><?php if ($desc !== ''): ?> — <?=htmlspecialchars($desc, ENT_QUOTES, 'UTF-8')?><?php endif; ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <p class="md-muted" id="direct-assignment-help"><?=t($t,'direct_assignment_help','Hold Ctrl (Windows) or Command (Mac) to select multiple questionnaires.')?></p>
+            <?php if ($directAssignments): ?>
+              <p><strong><?=t($t,'currently_assigned','Currently assigned questionnaires:')?></strong></p>
+              <ul>
+                <?php foreach ($directAssignments as $assignment): ?>
+                  <?php
+                    $title = trim((string)($assignment['title'] ?? ''));
+                    $desc = trim((string)($assignment['description'] ?? ''));
+                    $displayTitle = $title !== '' ? $title : t($t,'questionnaire','Questionnaire');
+                  ?>
+                  <li><?=htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8')?><?php if ($desc !== ''): ?> — <?=htmlspecialchars($desc, ENT_QUOTES, 'UTF-8')?><?php endif; ?></li>
+                <?php endforeach; ?>
+              </ul>
+            <?php else: ?>
+              <p class="md-work-function-empty"><?=t($t,'assignment_defaults_hint','These questionnaires are automatically available because of the staff member\'s work function. They cannot be removed here.')?></p>
+            <?php endif; ?>
+            <div class="md-assignment-form-actions">
+              <button type="submit" name="save_assignments" class="md-button md-primary md-elev-2"><?=t($t,'save','Save')?></button>
+              <span class="md-muted"><?=t($t,'direct_assignment_note','Direct assignments supplement the work function defaults and can be changed at any time.')?></span>
+            </div>
+          </form>
         </div>
       <?php endif; ?>
     <?php endif; ?>

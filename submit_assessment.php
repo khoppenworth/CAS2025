@@ -15,6 +15,8 @@ $user = current_user();
 try {
     if ($user['role'] === 'staff') {
         $workFunction = trim((string)($user['work_function'] ?? ''));
+        $assigned = [];
+
         if ($workFunction !== '') {
             $stmt = $pdo->prepare(
                 "SELECT q.id AS id, q.title AS title FROM questionnaire_work_function qwf " .
@@ -22,10 +24,22 @@ try {
                 "WHERE qwf.work_function = :wf AND q.status='published' ORDER BY q.title"
             );
             $stmt->execute([':wf' => $workFunction]);
-            $q = $stmt->fetchAll();
-        } else {
-            $q = [];
+            foreach ($stmt->fetchAll() as $row) {
+                $assigned[(int)$row['id']] = $row;
+            }
         }
+
+        $directStmt = $pdo->prepare(
+            'SELECT q.id, q.title FROM questionnaire_assignment qa ' .
+            'JOIN questionnaire q ON q.id = qa.questionnaire_id ' .
+            'WHERE qa.staff_id=? AND q.status="published" ORDER BY q.title'
+        );
+        $directStmt->execute([(int)$user['id']]);
+        foreach ($directStmt->fetchAll() as $row) {
+            $assigned[(int)$row['id']] = $row;
+        }
+
+        $q = array_values($assigned);
     } else {
         $q = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title")->fetchAll();
     }
