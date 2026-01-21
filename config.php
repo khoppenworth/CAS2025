@@ -70,7 +70,11 @@ if (!defined('APP_BOOTSTRAPPED')) {
 
     try {
         $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
-        initialize_database_schema($pdo);
+        try {
+            initialize_database_schema($pdo);
+        } catch (Throwable $e) {
+            error_log('Database schema initialization failed: ' . $e->getMessage());
+        }
     } catch (PDOException $e) {
         $friendly = 'Unable to connect to the application database. Please try again later or contact support.';
         error_log('DB connection failed: ' . $e->getMessage());
@@ -99,6 +103,17 @@ if (!function_exists('str_starts_with')) {
         }
 
         return strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
+if (!function_exists('str_contains')) {
+    function str_contains(string $haystack, string $needle): bool
+    {
+        if ($needle === '') {
+            return true;
+        }
+
+        return strpos($haystack, $needle) !== false;
     }
 }
 
@@ -655,32 +670,40 @@ function ensure_users_schema(PDO $pdo): void
         }
     }
 
-    if ($roleColumn && isset($roleColumn['Type']) && stripos((string)$roleColumn['Type'], 'enum(') !== false) {
-        $pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+    try {
+        if ($roleColumn && isset($roleColumn['Type']) && stripos((string)$roleColumn['Type'], 'enum(') !== false) {
+            $pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema role update failed: ' . $e->getMessage());
     }
 
     $workFunctionColumn = $columnDetails['work_function'] ?? null;
-    if ($workFunctionColumn === null) {
-        $pdo->exec("ALTER TABLE users ADD COLUMN work_function VARCHAR(100) NULL AFTER cadre");
-    } else {
-        $type = strtolower((string)($workFunctionColumn['Type'] ?? ''));
-        $nullable = strtolower((string)($workFunctionColumn['Null'] ?? '')) === 'yes';
-        $needsAlter = false;
-        if (str_contains($type, 'enum(')) {
-            $needsAlter = true;
-        } elseif (!str_contains($type, 'char')) {
-            $needsAlter = true;
-        } elseif (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
-            if ((int)$matches[1] < 100) {
+    try {
+        if ($workFunctionColumn === null) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN work_function VARCHAR(100) NULL AFTER cadre");
+        } else {
+            $type = strtolower((string)($workFunctionColumn['Type'] ?? ''));
+            $nullable = strtolower((string)($workFunctionColumn['Null'] ?? '')) === 'yes';
+            $needsAlter = false;
+            if (str_contains($type, 'enum(')) {
+                $needsAlter = true;
+            } elseif (!str_contains($type, 'char')) {
+                $needsAlter = true;
+            } elseif (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
+                if ((int)$matches[1] < 100) {
+                    $needsAlter = true;
+                }
+            }
+            if (!$nullable) {
                 $needsAlter = true;
             }
+            if ($needsAlter) {
+                $pdo->exec('ALTER TABLE users MODIFY COLUMN work_function VARCHAR(100) NULL');
+            }
         }
-        if (!$nullable) {
-            $needsAlter = true;
-        }
-        if ($needsAlter) {
-            $pdo->exec('ALTER TABLE users MODIFY COLUMN work_function VARCHAR(100) NULL');
-        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema work_function update failed: ' . $e->getMessage());
     }
 
     $changes = [
@@ -694,7 +717,11 @@ function ensure_users_schema(PDO $pdo): void
 
     foreach ($changes as $field => $sql) {
         if (!isset($existing[$field])) {
-            $pdo->exec($sql);
+            try {
+                $pdo->exec($sql);
+            } catch (PDOException $e) {
+                error_log(sprintf('ensure_users_schema add column %s failed: %s', $field, $e->getMessage()));
+            }
         }
     }
 }
