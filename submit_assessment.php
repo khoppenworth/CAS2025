@@ -14,7 +14,7 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 $user = current_user();
 try {
     if ($user['role'] === 'staff') {
-        $workFunction = trim((string)($user['work_function'] ?? ''));
+        $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')));
         $assigned = [];
 
         if ($workFunction !== '') {
@@ -27,16 +27,6 @@ try {
             foreach ($stmt->fetchAll() as $row) {
                 $assigned[(int)$row['id']] = $row;
             }
-        }
-
-        $directStmt = $pdo->prepare(
-            'SELECT q.id, q.title FROM questionnaire_assignment qa ' .
-            'JOIN questionnaire q ON q.id = qa.questionnaire_id ' .
-            'WHERE qa.staff_id=? AND q.status="published" ORDER BY q.title'
-        );
-        $directStmt->execute([(int)$user['id']]);
-        foreach ($directStmt->fetchAll() as $row) {
-            $assigned[(int)$row['id']] = $row;
         }
 
         $q = array_values($assigned);
