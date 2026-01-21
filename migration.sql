@@ -147,15 +147,31 @@ UPDATE questionnaire_item
 SET is_active = 1
 WHERE is_active IS NULL;
 
-ALTER TABLE questionnaire_item MODIFY COLUMN type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'likert';
+ALTER TABLE questionnaire_item MODIFY COLUMN type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'choice';
 
 CREATE TABLE IF NOT EXISTS questionnaire_item_option (
   id INT AUTO_INCREMENT PRIMARY KEY,
   questionnaire_item_id INT NOT NULL,
   value VARCHAR(500) NOT NULL,
+  is_correct TINYINT(1) NOT NULL DEFAULT 0,
   order_index INT NOT NULL DEFAULT 0,
   FOREIGN KEY (questionnaire_item_id) REFERENCES questionnaire_item(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SET @qio_correct_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item_option'
+    AND COLUMN_NAME = 'is_correct'
+);
+SET @qio_correct_sql = IF(
+  @qio_correct_exists = 0,
+  'ALTER TABLE questionnaire_item_option ADD COLUMN is_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER value',
+  'DO 1'
+);
+PREPARE stmt FROM @qio_correct_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS site_config (
   id INT PRIMARY KEY,
   site_name VARCHAR(200) NULL,

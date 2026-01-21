@@ -91,11 +91,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $items = $itemsStmt->fetchAll();
 
             $nonScorableTypes = ['display', 'group', 'section'];
+            $singleChoiceWeightMap = questionnaire_even_single_choice_weights($items);
             $likertWeightMap = questionnaire_even_likert_weights($items);
             foreach ($items as &$itemRow) {
                 $type = (string)($itemRow['type'] ?? '');
                 $isScorable = !in_array($type, $nonScorableTypes, true);
-                $itemRow['computed_weight'] = questionnaire_resolve_effective_weight($itemRow, $likertWeightMap, $isScorable);
+                $itemRow['computed_weight'] = questionnaire_resolve_effective_weight($itemRow, $singleChoiceWeightMap, $likertWeightMap, $isScorable);
             }
             unset($itemRow);
 
@@ -103,11 +104,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($items) {
                 $itemIds = array_column($items, 'id');
                 $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
-                $optStmt = $pdo->prepare("SELECT questionnaire_item_id, value FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) ORDER BY questionnaire_item_id, order_index, id");
+                $optStmt = $pdo->prepare("SELECT questionnaire_item_id, value, is_correct FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) ORDER BY questionnaire_item_id, order_index, id");
                 $optStmt->execute($itemIds);
                 foreach ($optStmt->fetchAll() as $opt) {
                     $itemId = (int)$opt['questionnaire_item_id'];
-                    $optionMap[$itemId][] = $opt['value'];
+                    $value = (string)($opt['value'] ?? '');
+                    if ($value === '') {
+                        continue;
+                    }
+                    $optionMap[$itemId]['values'][] = $value;
+                    if (!empty($opt['is_correct']) && empty($optionMap[$itemId]['correct'])) {
+                        $optionMap[$itemId]['correct'] = $value;
+                    }
                 }
             }
 
@@ -121,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isScorable = !in_array($type, $nonScorableTypes, true);
                 $effectiveWeight = isset($it['computed_weight'])
                     ? (float)$it['computed_weight']
-                    : questionnaire_resolve_effective_weight($it, $likertWeightMap, $isScorable);
+                    : questionnaire_resolve_effective_weight($it, $singleChoiceWeightMap, $likertWeightMap, $isScorable);
                 $achievedPoints = 0.0;
                 $a = json_encode([]);
                 $isRequired = !empty($it['is_required']);
@@ -145,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $raw = reset($raw);
                     }
                     $selected = is_string($raw) ? trim($raw) : '';
-                    $validOptions = array_map('trim', $optionMap[(int)$it['id']] ?? []);
+                    $validOptions = array_map('trim', $optionMap[(int)$it['id']]['values'] ?? []);
                     if ($selected !== '' && $validOptions && !in_array($selected, $validOptions, true)) {
                         $selected = '';
                     }
@@ -189,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         return '';
                     }, $selected), static fn($val) => $val !== ''));
-                    $validOptions = array_map('trim', $optionMap[(int)$it['id']] ?? []);
+                    $validOptions = array_map('trim', $optionMap[(int)$it['id']]['values'] ?? []);
                     if ($validOptions) {
                         $values = array_values(array_filter($values, static function ($val) use ($validOptions) {
                             return in_array($val, $validOptions, true);
@@ -198,8 +206,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($values) {
                         $hasResponse = true;
                     }
-                    if ($values) {
+                    if ($values && $allowMultiple) {
                         $achievedPoints = $effectiveWeight;
+                    }
+                    if (!$allowMultiple && $values) {
+                        $correctValue = $optionMap[(int)$it['id']]['correct'] ?? null;
+                        $selectedValue = (string)($values[0] ?? '');
+                        if ($correctValue !== null && $selectedValue !== '' && $selectedValue === $correctValue) {
+                            $achievedPoints = $effectiveWeight;
+                        }
                     }
                     $a = json_encode(array_map(static fn($val) => ['valueString' => $val], $values));
                 } else {
@@ -297,7 +312,7 @@ if ($qid) {
     if ($items) {
         $itemIds = array_column($items, 'id');
         $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
-        $optStmt = $pdo->prepare("SELECT questionnaire_item_id, value, order_index FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) ORDER BY questionnaire_item_id, order_index, id");
+        $optStmt = $pdo->prepare("SELECT questionnaire_item_id, value, order_index, is_correct FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) ORDER BY questionnaire_item_id, order_index, id");
         $optStmt->execute($itemIds);
         foreach ($optStmt->fetchAll() as $row) {
             $itemOptions[(int)$row['questionnaire_item_id']][] = $row;
@@ -451,15 +466,20 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         </select>
           <small class="md-hint"><?=htmlspecialchars(t($t,'multiple_choice_hint','Select all that apply'), ENT_QUOTES, 'UTF-8')?></small>
       <?php else: ?>
-        <select name="item_<?=htmlspecialchars($it['linkId'] ?? '', ENT_QUOTES, 'UTF-8')?>"<?=$requiredAttr?>>
-            <option value=""><?=htmlspecialchars(t($t,'select_single_option','Select an option'), ENT_QUOTES, 'UTF-8')?></option>
-          <?php foreach ($options as $opt): ?>
-            <?php $optValue = (string)($opt['value'] ?? '');
-            $isSelected = (string)$optValue !== '' && ((string)$optValue === (string)$firstValue);
-            ?>
-            <option value="<?=htmlspecialchars($optValue, ENT_QUOTES, 'UTF-8')?>" <?=$isSelected ? 'selected' : ''?>><?=htmlspecialchars($opt['value'] ?? '', ENT_QUOTES, 'UTF-8')?></option>
+        <div class="choice-options" role="radiogroup" aria-label="<?=htmlspecialchars($it['text'] ?? '', ENT_QUOTES, 'UTF-8')?>"<?=$ariaRequired?>>
+          <?php foreach ($options as $idx => $opt):
+            $optValue = (string)($opt['value'] ?? '');
+            $label = $opt['value'] ?? ('Option ' . ($idx + 1));
+            $inputId = ($it['linkId'] ?? 'choice') . '_' . ($idx + 1);
+            $selected = is_string($firstValue) ? $firstValue : ((string)$firstValue);
+            $isSelected = $optValue !== '' && $selected !== '' && (string)$optValue === $selected;
+          ?>
+          <label class="choice-options__option" for="<?=htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8')?>">
+            <input type="radio" id="<?=htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8')?>" name="item_<?=htmlspecialchars($it['linkId'] ?? '', ENT_QUOTES, 'UTF-8')?>" value="<?=htmlspecialchars($optValue, ENT_QUOTES, 'UTF-8')?>" <?=$isSelected ? 'checked' : ''?><?=($required && $idx === 0) ? ' required' : ''?>>
+            <span><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></span>
+          </label>
           <?php endforeach; ?>
-        </select>
+        </div>
       <?php endif; ?>
       <?php else: ?>
         <?php

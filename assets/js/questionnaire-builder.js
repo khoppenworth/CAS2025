@@ -4,11 +4,11 @@
  * Consolidated requirements from prior iterations:
  * - Administrators manage multiple questionnaires with draft/published/inactive status.
  * - Each questionnaire can include optional description, sections, root-level items, and
- *   reusable option lists for choice and Likert questions.
- * - Items support types: likert, choice, text, textarea, boolean. Choice items may allow
+ *   reusable option lists for single-choice and Likert questions.
+ * - Items support types: choice, likert, text, textarea, boolean. Choice items may allow
  *   multiple selections; non-choice items ignore the flag.
- * - Likert items default to a five-point scale and automatically split scoring evenly.
- *   When likert items exist, non-likert weights are excluded from effective scoring.
+ * - Single-choice items automatically split scoring evenly.
+ *   When single-choice items exist, other question types are excluded from effective scoring.
  * - Manual weights can be normalized to 100%, split evenly across scorable items, or
  *   cleared entirely. A scoring summary displays manual and effective totals plus counts
  *   of scorable/weighted items with contextual warnings.
@@ -34,7 +34,14 @@ const Builder = (() => {
     pageTitle: '#qb-page-title',
   };
 
-  const QUESTION_TYPES = ['likert', 'choice', 'text', 'textarea', 'boolean'];
+  const QUESTION_TYPES = ['choice', 'likert', 'text', 'textarea', 'boolean'];
+  const QUESTION_TYPE_LABELS = {
+    choice: 'single-choice',
+    likert: 'likert',
+    text: 'text',
+    textarea: 'textarea',
+    boolean: 'boolean',
+  };
   const STATUS_OPTIONS = ['draft', 'published', 'inactive'];
   const NON_SCORABLE_TYPES = ['display', 'group', 'section'];
   const LIKERT_DEFAULT_LABELS = [
@@ -61,12 +68,14 @@ const Builder = (() => {
     normalizeWeights: 'Normalize to 100%',
     evenWeights: 'Split evenly',
     clearWeights: 'Clear weights',
+    singleChoiceAutoNote: 'Single-choice questions automatically share 100% of the score in analytics.',
+    nonSingleChoiceIgnoredNote: 'While a questionnaire contains single-choice questions, other question types are excluded from scoring.',
     likertAutoNote: 'Likert questions automatically share 100% of the score in analytics.',
     nonLikertIgnoredNote: 'While a questionnaire contains Likert questions, other question types are excluded from scoring.',
     missingWeightsWarning: 'Dashboards will show “Not scored” unless at least one question has weight.',
     manualTotalOffWarning: 'Manual weights currently add up to %s%.',
     manualTotalOk: 'Manual weights currently add up to %s%.',
-    noScorableNote: 'Add Likert or weighted questions to enable scoring.',
+    noScorableNote: 'Add single-choice or weighted questions to enable scoring.',
     normalizeSuccess: 'Weights normalized to total 100%.',
     normalizeNoop: 'Add weights to questions before normalizing.',
     evenSuccess: 'Split weights evenly across scorable questions.',
@@ -141,8 +150,8 @@ const Builder = (() => {
       : [];
     const type = QUESTION_TYPES.includes(String(item.type || '').toLowerCase())
       ? String(item.type).toLowerCase()
-      : 'likert';
-    return {
+      : 'choice';
+    const normalized = {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
       linkId: item.linkId || '',
@@ -157,6 +166,8 @@ const Builder = (() => {
       is_active: item.is_active !== false,
       hasResponses: Boolean(item.has_responses),
     };
+    ensureSingleChoiceCorrect(normalized);
+    return normalized;
   }
 
   function normalizeOption(option) {
@@ -164,7 +175,28 @@ const Builder = (() => {
       id: option.id ?? null,
       clientId: option.clientId || uuid('o'),
       value: option.value || '',
+      is_correct: Boolean(option.is_correct),
     };
+  }
+
+  function ensureSingleChoiceCorrect(item) {
+    if (item.type !== 'choice' || item.allow_multiple) return;
+    if (!item.options.length) return;
+    const hasCorrect = item.options.some((opt) => opt.is_correct);
+    if (!hasCorrect) {
+      item.options[0].is_correct = true;
+    } else {
+      let found = false;
+      item.options.forEach((opt) => {
+        if (opt.is_correct && !found) {
+          found = true;
+          return;
+        }
+        if (opt.is_correct && found) {
+          opt.is_correct = false;
+        }
+      });
+    }
   }
 
   function init() {
@@ -485,7 +517,7 @@ const Builder = (() => {
             <label>Type</label>
             <select class="qb-select" data-role="item-type">
               ${QUESTION_TYPES
-                .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${type}</option>`)
+                .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
                 .join('')}
             </select>
           </div>
@@ -511,6 +543,7 @@ const Builder = (() => {
   }
 
   function buildOptionsEditor(sectionClientId, item) {
+    const isSingleChoice = item.type === 'choice' && !item.allow_multiple;
     const options = item.options.length
       ? item.options
       : item.type === 'likert'
@@ -520,6 +553,12 @@ const Builder = (() => {
       .map(
         (opt) => `
         <div class="qb-option" data-option="${opt.clientId}" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
+          ${isSingleChoice
+            ? `<label class="qb-option-correct">
+                <input type="radio" name="correct_${item.clientId}" data-role="option-correct" ${opt.is_correct ? 'checked' : ''}>
+                <span>Correct</span>
+              </label>`
+            : ''}
           <input type="text" data-role="option-value" value="${escapeAttr(opt.value)}">
           <button type="button" class="md-button md-ghost" data-role="remove-option">×</button>
         </div>`
@@ -527,6 +566,7 @@ const Builder = (() => {
       .join('');
     return `
       <div class="qb-options" data-role="options">
+        ${isSingleChoice ? '<p class="qb-hint">Mark the correct answer for each single-choice question.</p>' : ''}
         <div class="qb-options-list">${rows}</div>
         <button type="button" class="md-button md-outline" data-role="add-option" data-item="${item.clientId}" data-section="${sectionClientId || ''}">Add option</button>
       </div>
@@ -687,6 +727,7 @@ const Builder = (() => {
       case 'item-active':
       case 'item-weight':
       case 'option-value':
+      case 'option-correct':
         applyFieldChange(questionnaire, event.target, role);
         break;
       default:
@@ -744,8 +785,8 @@ const Builder = (() => {
       case 'even-weights':
         evenWeights(questionnaire);
         break;
-      case 'likert-weights':
-        autoWeightLikert(questionnaire);
+      case 'single-choice-weights':
+        autoWeightSingleChoice(questionnaire);
         break;
       case 'clear-weights':
         clearWeights(questionnaire);
@@ -783,19 +824,23 @@ const Builder = (() => {
         item.text = input.value;
         break;
       case 'item-type':
-        item.type = QUESTION_TYPES.includes(input.value) ? input.value : 'likert';
+        item.type = QUESTION_TYPES.includes(input.value) ? input.value : 'choice';
         if (item.type !== 'choice') item.allow_multiple = false;
         if (['choice', 'likert'].includes(item.type) && item.options.length === 0) {
           item.options = item.type === 'likert'
             ? LIKERT_DEFAULT_LABELS.map((label) => normalizeOption({ value: label }))
             : [normalizeOption({ value: '' })];
         }
+        ensureSingleChoiceCorrect(item);
         break;
       case 'item-required':
         item.is_required = input.checked;
         break;
       case 'item-multi':
-        if (item.type === 'choice') item.allow_multiple = input.checked;
+        if (item.type === 'choice') {
+          item.allow_multiple = input.checked;
+          ensureSingleChoiceCorrect(item);
+        }
         break;
       case 'item-active':
         if (!item.hasResponses) item.is_active = input.checked;
@@ -807,6 +852,16 @@ const Builder = (() => {
         const optId = input.closest('[data-option]')?.getAttribute('data-option');
         const option = item.options.find((o) => o.clientId === optId);
         if (option) option.value = input.value;
+        break;
+      }
+      case 'option-correct': {
+        const optId = input.closest('[data-option]')?.getAttribute('data-option');
+        if (!optId || item.type !== 'choice' || item.allow_multiple) {
+          break;
+        }
+        item.options.forEach((opt) => {
+          opt.is_correct = opt.clientId === optId;
+        });
         break;
       }
       default:
@@ -842,8 +897,11 @@ const Builder = (() => {
       normalizeItem({
         linkId: '',
         text: '',
-        type: 'likert',
-        options: LIKERT_DEFAULT_LABELS.map((label) => ({ value: label })),
+        type: 'choice',
+        options: [
+          { value: '', is_correct: true },
+          { value: '' },
+        ],
         weight_percent: 0,
       })
     );
@@ -872,6 +930,7 @@ const Builder = (() => {
     const item = findItem(questionnaire, sectionClientId, itemClientId);
     if (!item) return;
     item.options.push(normalizeOption({ value: '' }));
+    ensureSingleChoiceCorrect(item);
   }
 
   function removeOption(questionnaire, sectionClientId, itemClientId, optionClientId) {
@@ -879,17 +938,26 @@ const Builder = (() => {
     if (!item) return;
     const idx = item.options.findIndex((opt) => opt.clientId === optionClientId);
     if (idx >= 0) item.options.splice(idx, 1);
+    ensureSingleChoiceCorrect(item);
   }
 
   function computeScoring(questionnaire) {
     const items = collectItems(questionnaire);
     const scorable = items.filter((item) => isScorable(item.type));
+    const singleChoiceItems = scorable.filter((item) => item.type === 'choice' && !item.allow_multiple);
     const likertItems = scorable.filter((item) => item.type === 'likert');
     const manualTotal = scorable.reduce((sum, item) => sum + (Number(item.weight_percent) || 0), 0);
     let effectiveTotal = manualTotal;
     let weightedCount = scorable.filter((item) => Number(item.weight_percent) > 0).length;
 
-    if (likertItems.length > 0) {
+    if (singleChoiceItems.length > 0) {
+      const autoWeight = 100 / singleChoiceItems.length;
+      effectiveTotal = singleChoiceItems.reduce((sum, item) => {
+        const explicit = Number(item.weight_percent) || 0;
+        return sum + (explicit > 0 ? explicit : autoWeight);
+      }, 0);
+      weightedCount = singleChoiceItems.length;
+    } else if (likertItems.length > 0) {
       const autoWeight = 100 / likertItems.length;
       effectiveTotal = likertItems.reduce((sum, item) => {
         const explicit = Number(item.weight_percent) || 0;
@@ -903,6 +971,7 @@ const Builder = (() => {
       effectiveTotal,
       scorableCount: scorable.length,
       weightedCount,
+      hasSingleChoice: singleChoiceItems.length > 0,
       hasLikert: likertItems.length > 0,
       canNormalize: manualTotal > 0 && manualTotal !== 100,
       canDistribute: scorable.length > 0,
@@ -915,12 +984,16 @@ const Builder = (() => {
     const warnings = [];
     if (summary.scorableCount === 0) warnings.push(STRINGS.noScorableNote);
     if (summary.weightedCount === 0) warnings.push(STRINGS.missingWeightsWarning);
-    if (summary.hasLikert) warnings.push(STRINGS.likertAutoNote, STRINGS.nonLikertIgnoredNote);
+    if (summary.hasSingleChoice) {
+      warnings.push(STRINGS.singleChoiceAutoNote, STRINGS.nonSingleChoiceIgnoredNote);
+    } else if (summary.hasLikert) {
+      warnings.push(STRINGS.likertAutoNote, STRINGS.nonLikertIgnoredNote);
+    }
 
     const actions = [
       { role: 'normalize-weights', label: STRINGS.normalizeWeights, enabled: summary.canNormalize },
       { role: 'even-weights', label: STRINGS.evenWeights, enabled: summary.canDistribute },
-      { role: 'likert-weights', label: 'Auto-weight Likert', enabled: summary.scorableCount > 0 },
+      { role: 'single-choice-weights', label: 'Auto-weight single-choice', enabled: summary.scorableCount > 0 },
       { role: 'clear-weights', label: STRINGS.clearWeights, enabled: summary.canClear },
     ]
       .map(
@@ -970,11 +1043,13 @@ const Builder = (() => {
     renderMessage(STRINGS.evenSuccess);
   }
 
-  function autoWeightLikert(questionnaire) {
-    const likertItems = collectItems(questionnaire).filter((item) => item.type === 'likert');
-    if (likertItems.length === 0) return renderMessage(STRINGS.evenNoop);
-    const weight = (100 / likertItems.length).toFixed(2);
-    likertItems.forEach((item) => {
+  function autoWeightSingleChoice(questionnaire) {
+    const items = collectItems(questionnaire);
+    const singleChoiceItems = items.filter((item) => item.type === 'choice' && !item.allow_multiple);
+    const targetItems = singleChoiceItems.length > 0 ? singleChoiceItems : items.filter((item) => item.type === 'likert');
+    if (targetItems.length === 0) return renderMessage(STRINGS.evenNoop);
+    const weight = (100 / targetItems.length).toFixed(2);
+    targetItems.forEach((item) => {
       item.weight_percent = Number(weight);
     });
     renderMessage(STRINGS.normalizeSuccess);
@@ -1178,7 +1253,13 @@ const Builder = (() => {
       is_required: item.is_required,
       is_active: item.is_active,
       options: ['choice', 'likert'].includes(item.type)
-        ? item.options.map((opt, idx) => ({ id: opt.id || undefined, clientId: opt.clientId, value: opt.value, order_index: idx + 1 }))
+        ? item.options.map((opt, idx) => ({
+          id: opt.id || undefined,
+          clientId: opt.clientId,
+          value: opt.value,
+          is_correct: Boolean(opt.is_correct),
+          order_index: idx + 1,
+        }))
         : [],
     };
   }

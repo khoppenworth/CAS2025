@@ -127,7 +127,7 @@ CREATE TABLE questionnaire_item (
   section_id INT NULL,
   linkId VARCHAR(64) NOT NULL,
   text VARCHAR(500) NOT NULL,
-  type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'likert',
+  type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'choice',
   order_index INT NOT NULL DEFAULT 0,
   weight_percent INT NOT NULL DEFAULT 0,
   allow_multiple TINYINT(1) NOT NULL DEFAULT 0,
@@ -141,6 +141,7 @@ CREATE TABLE questionnaire_item_option (
   id INT AUTO_INCREMENT PRIMARY KEY,
   questionnaire_item_id INT NOT NULL,
   value VARCHAR(500) NOT NULL,
+  is_correct TINYINT(1) NOT NULL DEFAULT 0,
   order_index INT NOT NULL DEFAULT 0,
   FOREIGN KEY (questionnaire_item_id) REFERENCES questionnaire_item(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

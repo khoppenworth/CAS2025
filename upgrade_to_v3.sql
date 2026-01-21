@@ -151,6 +151,9 @@ ALTER TABLE questionnaire_item
 ALTER TABLE questionnaire_item
   ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER is_required;
 
+ALTER TABLE questionnaire_item_option
+  ADD COLUMN IF NOT EXISTS is_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER value;
+
 UPDATE questionnaire
 SET status = 'draft'
 WHERE status IS NULL OR status NOT IN ('draft','published','inactive');

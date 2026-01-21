@@ -24,6 +24,16 @@ $qbStrings = [
     'normalizeWeights' => t($t, 'qb_scoring_normalize', 'Normalize to 100%'),
     'evenWeights' => t($t, 'qb_scoring_even', 'Split evenly'),
     'clearWeights' => t($t, 'qb_scoring_clear', 'Clear weights'),
+    'singleChoiceAutoNote' => t(
+        $t,
+        'qb_scoring_single_choice_note',
+        'Single-choice questions automatically share 100% of the score in analytics.'
+    ),
+    'nonSingleChoiceIgnoredNote' => t(
+        $t,
+        'qb_scoring_non_single_choice_note',
+        'While a questionnaire contains single-choice questions, other question types are excluded from scoring.'
+    ),
     'likertAutoNote' => t(
         $t,
         'qb_scoring_likert_note',
@@ -48,7 +58,7 @@ $qbStrings = [
     'noScorableNote' => t(
         $t,
         'qb_scoring_no_scorable',
-        'Add Likert or weighted questions to enable scoring.'
+        'Add single-choice or weighted questions to enable scoring.'
     ),
     'normalizeSuccess' => t($t, 'qb_scoring_normalize_success', 'Weights normalized to total 100%.'),
     'normalizeNoop' => t($t, 'qb_scoring_normalize_noop', 'Add weights to questions before normalizing.'),
@@ -355,6 +365,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'id' => (int)$option['id'],
             'questionnaire_item_id' => $itemId,
             'value' => $option['value'],
+            'is_correct' => !empty($option['is_correct']),
             'order_index' => (int)$option['order_index'],
         ];
     }
@@ -493,7 +504,7 @@ if ($action === 'upgrade') {
         $itemStmt = $pdo->prepare('SELECT * FROM questionnaire_item WHERE questionnaire_id=? ORDER BY order_index, id');
         $optionStmt = $pdo->prepare('SELECT * FROM questionnaire_item_option WHERE questionnaire_item_id=? ORDER BY order_index, id');
         $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET weight_percent=? WHERE id=?');
-        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, order_index) VALUES (?, ?, ?)');
+        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
 
         $itemStmt->execute([$targetId]);
         $items = $itemStmt->fetchAll();
@@ -531,7 +542,7 @@ if ($action === 'upgrade') {
                 if (!$existingOptions) {
                     $order = 1;
                     foreach (LIKERT_DEFAULT_OPTIONS as $label) {
-                        $insertOptionStmt->execute([(int)$row['id'], $label, $order]);
+                        $insertOptionStmt->execute([(int)$row['id'], $label, 0, $order]);
                         $order += 1;
                         $optionInserts += 1;
                     }
@@ -656,17 +667,27 @@ if ($action === 'save' || $action === 'publish') {
 
         $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, is_active=? WHERE id=?');
-        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, order_index) VALUES (?, ?, ?)');
-        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, order_index=? WHERE id=?');
+        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
+        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, is_correct=?, order_index=? WHERE id=?');
         $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
         $deleteWorkFunctionStmt = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE questionnaire_id=?');
 
-        $saveOptions = function (int $itemId, $optionsInput) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
+        $saveOptions = function (int $itemId, $optionsInput, bool $isSingleChoice) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
             $existing = $optionsMap[$itemId] ?? [];
             if (!is_array($optionsInput)) {
                 $optionsInput = [];
             }
             $seen = [];
+            $correctAssigned = false;
+            $hasExplicitCorrect = false;
+            if ($isSingleChoice) {
+                foreach ($optionsInput as $optionData) {
+                    if (is_array($optionData) && !empty($optionData['is_correct'])) {
+                        $hasExplicitCorrect = true;
+                        break;
+                    }
+                }
+            }
             $order = 1;
             foreach ($optionsInput as $optionData) {
                 if (!is_array($optionData)) {
@@ -676,12 +697,24 @@ if ($action === 'save' || $action === 'publish') {
                 if ($value === '') {
                     continue;
                 }
+                $isCorrect = !empty($optionData['is_correct']);
+                if ($isSingleChoice) {
+                    if (!$hasExplicitCorrect && !$correctAssigned) {
+                        $isCorrect = true;
+                    }
+                    if ($isCorrect && $correctAssigned) {
+                        $isCorrect = false;
+                    }
+                    if ($isCorrect) {
+                        $correctAssigned = true;
+                    }
+                }
                 $optionClientId = $optionData['clientId'] ?? null;
                 $optionId = isset($optionData['id']) ? (int)$optionData['id'] : null;
                 if ($optionId && isset($existing[$optionId])) {
-                    $updateOptionStmt->execute([$value, $order, $optionId]);
+                    $updateOptionStmt->execute([$value, $isCorrect ? 1 : 0, $order, $optionId]);
                 } else {
-                    $insertOptionStmt->execute([$itemId, $value, $order]);
+                    $insertOptionStmt->execute([$itemId, $value, $isCorrect ? 1 : 0, $order]);
                     $optionId = (int)$pdo->lastInsertId();
                     if ($optionClientId) {
                         $idMap['options'][$optionClientId] = $optionId;
@@ -789,7 +822,7 @@ if ($action === 'save' || $action === 'publish') {
                     $text = trim((string)($itemData['text'] ?? ''));
                     $type = $itemData['type'] ?? 'text';
                     if (!in_array($type, ['likert', 'text', 'textarea', 'boolean', 'choice'], true)) {
-                        $type = 'likert';
+                        $type = 'choice';
                     }
                     $weight = isset($itemData['weight_percent']) ? (int)$itemData['weight_percent'] : 0;
                     $allowMultiple = !empty($itemData['allow_multiple']);
@@ -821,7 +854,8 @@ if ($action === 'save' || $action === 'publish') {
                     if (!in_array($type, ['choice', 'likert'], true)) {
                         $optionsInput = [];
                     }
-                    $saveOptions($itemId, $optionsInput);
+                    $isSingleChoice = ($type === 'choice') && empty($allowMultiple);
+                    $saveOptions($itemId, $optionsInput, $isSingleChoice);
                     $itemSeen[] = $itemId;
                     $itemOrder++;
                 }
@@ -843,7 +877,7 @@ if ($action === 'save' || $action === 'publish') {
                 $text = trim((string)($itemData['text'] ?? ''));
                 $type = $itemData['type'] ?? 'text';
                 if (!in_array($type, ['likert', 'text', 'textarea', 'boolean', 'choice'], true)) {
-                    $type = 'likert';
+                    $type = 'choice';
                 }
                 $weight = isset($itemData['weight_percent']) ? (int)$itemData['weight_percent'] : 0;
                 $allowMultiple = !empty($itemData['allow_multiple']);
@@ -875,7 +909,8 @@ if ($action === 'save' || $action === 'publish') {
                 if (!in_array($type, ['choice', 'likert'], true)) {
                     $optionsInput = [];
                 }
-                $saveOptions($itemId, $optionsInput);
+                $isSingleChoice = ($type === 'choice') && empty($allowMultiple);
+                $saveOptions($itemId, $optionsInput, $isSingleChoice);
                 $itemSeen[] = $itemId;
                 $rootOrder++;
             }
@@ -1088,7 +1123,7 @@ if (isset($_POST['import'])) {
 
                         $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index) VALUES (?, ?, ?, ?)');
                         $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required) VALUES (?,?,?,?,?,?,?,?,?)');
-                        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, order_index) VALUES (?,?,?)');
+                        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?,?,?,?)');
 
                         $sectionOrder = 1;
                         $itemOrder = 1;
@@ -1214,12 +1249,12 @@ if (isset($_POST['import'])) {
                                         if ($normalizedValue === '') {
                                             continue;
                                         }
-                                        $insertOptionStmt->execute([$itemId, $normalizedValue, $optionOrder]);
+                                        $insertOptionStmt->execute([$itemId, $normalizedValue, 0, $optionOrder]);
                                         $optionOrder++;
                                     }
                                     if ($dbType === 'likert' && $optionOrder === 1) {
                                         foreach (LIKERT_DEFAULT_OPTIONS as $label) {
-                                            $insertOptionStmt->execute([$itemId, qb_import_truncate($label, QB_IMPORT_MAX_OPTION_VALUE), $optionOrder]);
+                                            $insertOptionStmt->execute([$itemId, qb_import_truncate($label, QB_IMPORT_MAX_OPTION_VALUE), 0, $optionOrder]);
                                             $optionOrder++;
                                         }
                                     }
