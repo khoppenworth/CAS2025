@@ -171,6 +171,59 @@ function qb_questionnaire_to_fhir_resource(array $questionnaire): array
     return $resource;
 }
 
+function qb_is_list_array(array $value): bool
+{
+    if ($value === []) {
+        return true;
+    }
+    return array_keys($value) === range(0, count($value) - 1);
+}
+
+function qb_xml_append_value(DOMDocument $doc, DOMElement $parent, string $key, $value): void
+{
+    if ($value === null) {
+        return;
+    }
+    if (is_array($value)) {
+        if (qb_is_list_array($value)) {
+            foreach ($value as $item) {
+                qb_xml_append_value($doc, $parent, $key, $item);
+            }
+            return;
+        }
+
+        $node = $doc->createElement($key);
+        foreach ($value as $childKey => $childValue) {
+            qb_xml_append_value($doc, $node, (string)$childKey, $childValue);
+        }
+        $parent->appendChild($node);
+        return;
+    }
+
+    $node = $doc->createElement($key);
+    $textValue = is_bool($value) ? ($value ? 'true' : 'false') : (string)$value;
+    $node->appendChild($doc->createTextNode($textValue));
+    $parent->appendChild($node);
+}
+
+function qb_questionnaire_to_fhir_xml(array $resource): string
+{
+    $resourceType = isset($resource['resourceType']) ? (string)$resource['resourceType'] : 'Questionnaire';
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    $doc->formatOutput = true;
+    $root = $doc->createElement($resourceType);
+    $doc->appendChild($root);
+
+    foreach ($resource as $key => $value) {
+        if ($key === 'resourceType') {
+            continue;
+        }
+        qb_xml_append_value($doc, $root, (string)$key, $value);
+    }
+
+    return $doc->saveXML() ?: '';
+}
+
 function qb_questionnaire_items_to_fhir_items(array $items): array
 {
     $fhirItems = [];
@@ -416,10 +469,11 @@ if ($action === 'export') {
     }
 
     $resource = qb_questionnaire_to_fhir_resource($match);
-    $filename = 'questionnaire-' . $qid . '.json';
-    header('Content-Type: application/fhir+json');
+    $xml = qb_questionnaire_to_fhir_xml($resource);
+    $filename = 'questionnaire-' . $qid . '.xml';
+    header('Content-Type: application/fhir+xml');
     header('Content-Disposition: attachment; filename=' . $filename);
-    echo json_encode($resource, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    echo $xml;
     exit;
 }
 
