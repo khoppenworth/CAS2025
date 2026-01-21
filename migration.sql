@@ -761,6 +761,7 @@ INSERT IGNORE INTO site_config (
   'My Performance',
   NULL,
   NULL,
+  NULL,
   4280,
   '12 min',
   '94%',
