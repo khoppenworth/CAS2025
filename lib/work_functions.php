@@ -33,32 +33,37 @@ function built_in_work_function_definitions(): array
 function ensure_work_function_catalog(PDO $pdo): void
 {
     $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
-    if ($driver === 'sqlite') {
-        $pdo->exec(
-            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
-            . 'slug TEXT NOT NULL PRIMARY KEY, '
-            . 'label TEXT NOT NULL, '
-            . 'sort_order INTEGER NOT NULL DEFAULT 0, '
-            . 'archived_at TEXT NULL, '
-            . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
-            . ')'
-        );
-        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
-    } else {
-        $pdo->exec(
-            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
-            . 'slug VARCHAR(100) NOT NULL PRIMARY KEY, '
-            . 'label VARCHAR(255) NOT NULL, '
-            . 'sort_order INT NOT NULL DEFAULT 0, '
-            . 'archived_at DATETIME NULL, '
-            . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
-            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-        );
-        try {
-            $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
-        } catch (Throwable $e) {
-            // Ignore duplicate index errors.
+    try {
+        if ($driver === 'sqlite') {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+                . 'slug TEXT NOT NULL PRIMARY KEY, '
+                . 'label TEXT NOT NULL, '
+                . 'sort_order INTEGER NOT NULL DEFAULT 0, '
+                . 'archived_at TEXT NULL, '
+                . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
+                . ')'
+            );
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+        } else {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+                . 'slug VARCHAR(100) NOT NULL PRIMARY KEY, '
+                . 'label VARCHAR(255) NOT NULL, '
+                . 'sort_order INT NOT NULL DEFAULT 0, '
+                . 'archived_at DATETIME NULL, '
+                . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            );
+            try {
+                $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+            } catch (Throwable $e) {
+                // Ignore duplicate index errors.
+            }
         }
+    } catch (PDOException $e) {
+        error_log('ensure_work_function_catalog schema failed: ' . $e->getMessage());
+        return;
     }
 
     $count = 0;
@@ -69,19 +74,24 @@ function ensure_work_function_catalog(PDO $pdo): void
         }
     } catch (PDOException $e) {
         error_log('ensure_work_function_catalog count failed: ' . $e->getMessage());
+        return;
     }
 
     if ($count === 0) {
         $defaults = built_in_work_function_definitions();
         $sortOrder = 1;
-        $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
-        foreach ($defaults as $slug => $label) {
-            try {
-                $insert->execute([$slug, $label, $sortOrder]);
-                $sortOrder++;
-            } catch (PDOException $e) {
-                error_log('ensure_work_function_catalog insert failed: ' . $e->getMessage());
+        try {
+            $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
+            foreach ($defaults as $slug => $label) {
+                try {
+                    $insert->execute([$slug, $label, $sortOrder]);
+                    $sortOrder++;
+                } catch (PDOException $e) {
+                    error_log('ensure_work_function_catalog insert failed: ' . $e->getMessage());
+                }
             }
+        } catch (PDOException $e) {
+            error_log('ensure_work_function_catalog prepare failed: ' . $e->getMessage());
         }
     }
 }
