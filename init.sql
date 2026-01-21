@@ -382,7 +382,11 @@ INSERT INTO performance_period (label, period_start, period_end) VALUES
 ('2024 H1', '2024-01-01', '2024-06-30'),
 ('2024 H2', '2024-07-01', '2024-12-31'),
 ('2025 H1', '2025-01-01', '2025-06-30'),
-('2025 H2', '2025-07-01', '2025-12-31');
+('2025 H2', '2025-07-01', '2025-12-31'),
+('2026 H1', '2026-01-01', '2026-06-30'),
+('2026 H2', '2026-07-01', '2026-12-31'),
+('2027 H1', '2027-01-01', '2027-06-30'),
+('2027 H2', '2027-07-01', '2027-12-31');
 
 INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, min_score, max_score) VALUES
 ('FIN-101', 'Financial Management Fundamentals', 'https://moodle.example.com/course/fin101', 'finance', 0, 79),
