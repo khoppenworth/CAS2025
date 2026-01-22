@@ -747,9 +747,6 @@ if ($action === 'save' || $action === 'publish') {
             if (!in_array($status, ['draft', 'published', 'inactive'], true)) {
                 $status = 'draft';
             }
-            if ($action === 'publish' && $status !== 'inactive') {
-                $status = 'published';
-            }
 
             if ($qid && isset($questionnaireMap[$qid])) {
                 $updateQuestionnaireStmt->execute([$title, $description, $status, $qid]);

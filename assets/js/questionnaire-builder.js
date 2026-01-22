@@ -1225,7 +1225,7 @@ const Builder = (() => {
 
     const payload = {
       csrf: state.csrf,
-      questionnaires: state.questionnaires.map((q) => serializeQuestionnaire(q, publish)),
+      questionnaires: state.questionnaires.map((q) => serializeQuestionnaire(q)),
     };
 
     fetch(withBase(`/admin/questionnaire_manage.php?action=${publish ? 'publish' : 'save'}`), {
@@ -1252,13 +1252,13 @@ const Builder = (() => {
       });
   }
 
-  function serializeQuestionnaire(questionnaire, publish) {
+  function serializeQuestionnaire(questionnaire) {
     const base = {
       id: questionnaire.id || undefined,
       clientId: questionnaire.clientId,
       title: questionnaire.title,
       description: questionnaire.description,
-      status: publish && questionnaire.status !== 'inactive' ? 'published' : questionnaire.status,
+      status: questionnaire.status,
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
