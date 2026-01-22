@@ -4,6 +4,28 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/email_templates.php';
 require_once __DIR__ . '/lib/work_functions.php';
 
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        if ($needle === '') {
+            return true;
+        }
+
+        return strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
+if (!function_exists('str_contains')) {
+    function str_contains(string $haystack, string $needle): bool
+    {
+        if ($needle === '') {
+            return true;
+        }
+
+        return strpos($haystack, $needle) !== false;
+    }
+}
+
 if (!defined('APP_BOOTSTRAPPED')) {
     define('APP_BOOTSTRAPPED', true);
 
@@ -94,28 +116,6 @@ if (!defined('APP_BOOTSTRAPPED')) {
 }
 
 require_once __DIR__ . '/lib/email_templates.php';
-
-if (!function_exists('str_starts_with')) {
-    function str_starts_with(string $haystack, string $needle): bool
-    {
-        if ($needle === '') {
-            return true;
-        }
-
-        return strncmp($haystack, $needle, strlen($needle)) === 0;
-    }
-}
-
-if (!function_exists('str_contains')) {
-    function str_contains(string $haystack, string $needle): bool
-    {
-        if ($needle === '') {
-            return true;
-        }
-
-        return strpos($haystack, $needle) !== false;
-    }
-}
 
 function site_default_brand_color(array $cfg): string
 {
