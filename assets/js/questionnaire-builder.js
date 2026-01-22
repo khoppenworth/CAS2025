@@ -153,9 +153,7 @@ const Builder = (() => {
       : 'choice';
     const allowMultiple = type === 'choice' && Boolean(item.allow_multiple);
     const requiresCorrect =
-      type === 'choice' && !allowMultiple
-        ? Boolean(item.requires_correct ?? options.some((opt) => opt.is_correct))
-        : false;
+      type === 'choice' && !allowMultiple ? Boolean(item.requires_correct) : false;
     const normalized = {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
@@ -851,8 +849,8 @@ const Builder = (() => {
         if (item.type !== 'choice') {
           item.allow_multiple = false;
           item.requires_correct = false;
-        } else if (!item.allow_multiple) {
-          item.requires_correct = true;
+        } else if (item.allow_multiple) {
+          item.requires_correct = false;
         }
         if (['choice', 'likert'].includes(item.type) && item.options.length === 0) {
           item.options = item.type === 'likert'
@@ -869,8 +867,6 @@ const Builder = (() => {
           item.allow_multiple = input.checked;
           if (item.allow_multiple) {
             item.requires_correct = false;
-          } else if (item.requires_correct !== true) {
-            item.requires_correct = true;
           }
           ensureSingleChoiceCorrect(item);
         }
@@ -938,11 +934,11 @@ const Builder = (() => {
         text: '',
         type: 'choice',
         options: [
-          { value: '', is_correct: true },
+          { value: '' },
           { value: '' },
         ],
         weight_percent: 0,
-        requires_correct: true,
+        requires_correct: false,
       })
     );
   }
