@@ -1,10 +1,15 @@
 :root {
-  --landing-primary: #20407f;
-  --landing-primary-dark: #14294e;
-  --landing-accent: #ff8a3d;
-  --landing-surface: #ffffff;
+  --landing-primary: var(--app-primary, #20407f);
+  --landing-primary-dark: var(--app-primary-dark, #14294e);
+  --landing-accent: var(--app-secondary, #ff8a3d);
+  --landing-surface: var(--app-surface, #ffffff);
   --landing-muted: #4b5a6b;
-  --landing-background: linear-gradient(120deg, #102447 0%, #0c1a31 45%, #112644 100%);
+  --landing-background: linear-gradient(
+    120deg,
+    var(--landing-primary-dark) 0%,
+    color-mix(in srgb, var(--landing-primary-dark) 70%, #0c1a31 30%) 45%,
+    var(--landing-primary) 100%
+  );
   --landing-radius-lg: 28px;
   --landing-radius-md: 18px;
   --landing-shadow-lg: 0 24px 58px rgba(9, 24, 54, 0.3);

@@ -63,40 +63,40 @@
 
 .qb-start-grid {
   display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  margin-bottom: 0.75rem;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 0.6rem;
   align-items: stretch;
 }
 
 .qb-start-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   height: 100%;
   justify-content: space-between;
-  padding: 0.9rem 1rem;
+  padding: 0.75rem 0.9rem;
 }
 
 .qb-start-card .md-card-title {
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.25rem;
 }
 
 .qb-start-card .md-hint {
-  margin-top: 0.2rem;
+  margin-top: 0.15rem;
 }
 
 .qb-start-card-header {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
 }
 
 .qb-start-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.3rem;
 }
 
 .qb-import-start {
