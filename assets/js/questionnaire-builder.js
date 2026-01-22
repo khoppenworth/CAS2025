@@ -1258,7 +1258,7 @@ const Builder = (() => {
       clientId: questionnaire.clientId,
       title: questionnaire.title,
       description: questionnaire.description,
-      status: publish ? 'published' : questionnaire.status,
+      status: publish && questionnaire.status !== 'inactive' ? 'published' : questionnaire.status,
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
