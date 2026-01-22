@@ -151,6 +151,11 @@ const Builder = (() => {
     const type = QUESTION_TYPES.includes(String(item.type || '').toLowerCase())
       ? String(item.type).toLowerCase()
       : 'choice';
+    const allowMultiple = type === 'choice' && Boolean(item.allow_multiple);
+    const requiresCorrect =
+      type === 'choice' && !allowMultiple
+        ? Boolean(item.requires_correct ?? options.some((opt) => opt.is_correct))
+        : false;
     const normalized = {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
@@ -161,10 +166,11 @@ const Builder = (() => {
       weight_percent: Number.isFinite(Number(item.weight_percent))
         ? Number(item.weight_percent)
         : 0,
-      allow_multiple: type === 'choice' && Boolean(item.allow_multiple),
+      allow_multiple: allowMultiple,
       is_required: Boolean(item.is_required),
       is_active: item.is_active !== false,
       hasResponses: Boolean(item.has_responses),
+      requires_correct: requiresCorrect,
     };
     ensureSingleChoiceCorrect(normalized);
     return normalized;
@@ -181,6 +187,12 @@ const Builder = (() => {
 
   function ensureSingleChoiceCorrect(item) {
     if (item.type !== 'choice' || item.allow_multiple) return;
+    if (!item.requires_correct) {
+      item.options.forEach((opt) => {
+        opt.is_correct = false;
+      });
+      return;
+    }
     if (!item.options.length) return;
     const hasCorrect = item.options.some((opt) => opt.is_correct);
     if (!hasCorrect) {
@@ -495,6 +507,7 @@ const Builder = (() => {
 
   function buildItemRow(questionnaire, sectionClientId, item) {
     const scorable = isScorable(item.type);
+    const showRequiresCorrect = item.type === 'choice' && !item.allow_multiple;
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item)
       : '';
@@ -527,6 +540,11 @@ const Builder = (() => {
           <div class="qb-field qb-toggle">
             <label><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
           </div>
+          ${showRequiresCorrect
+            ? `<div class="qb-field qb-toggle">
+                <label><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>
+              </div>`
+            : ''}
           <div class="qb-field qb-toggle">
             <label><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
           </div>
@@ -544,6 +562,7 @@ const Builder = (() => {
 
   function buildOptionsEditor(sectionClientId, item) {
     const isSingleChoice = item.type === 'choice' && !item.allow_multiple;
+    const showCorrect = isSingleChoice && item.requires_correct;
     const options = item.options.length
       ? item.options
       : item.type === 'likert'
@@ -553,7 +572,7 @@ const Builder = (() => {
       .map(
         (opt) => `
         <div class="qb-option" data-option="${opt.clientId}" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
-          ${isSingleChoice
+          ${showCorrect
             ? `<label class="qb-option-correct">
                 <input type="radio" name="correct_${item.clientId}" data-role="option-correct" ${opt.is_correct ? 'checked' : ''}>
                 <span>Correct</span>
@@ -566,7 +585,7 @@ const Builder = (() => {
       .join('');
     return `
       <div class="qb-options" data-role="options">
-        ${isSingleChoice ? '<p class="qb-hint">Mark the correct answer for each single-choice question.</p>' : ''}
+        ${showCorrect ? '<p class="qb-hint">Mark the correct answer for each single-choice question.</p>' : ''}
         <div class="qb-options-list">${rows}</div>
         <button type="button" class="md-button md-outline" data-role="add-option" data-item="${item.clientId}" data-section="${sectionClientId || ''}">Add option</button>
       </div>
@@ -724,6 +743,7 @@ const Builder = (() => {
       case 'item-type':
       case 'item-required':
       case 'item-multi':
+      case 'item-requires-correct':
       case 'item-active':
       case 'item-weight':
       case 'option-value':
@@ -734,6 +754,9 @@ const Builder = (() => {
         return;
     }
     markDirty();
+    if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
+      render();
+    }
   }
 
   function handleListClick(event) {
@@ -825,7 +848,12 @@ const Builder = (() => {
         break;
       case 'item-type':
         item.type = QUESTION_TYPES.includes(input.value) ? input.value : 'choice';
-        if (item.type !== 'choice') item.allow_multiple = false;
+        if (item.type !== 'choice') {
+          item.allow_multiple = false;
+          item.requires_correct = false;
+        } else if (!item.allow_multiple) {
+          item.requires_correct = true;
+        }
         if (['choice', 'likert'].includes(item.type) && item.options.length === 0) {
           item.options = item.type === 'likert'
             ? LIKERT_DEFAULT_LABELS.map((label) => normalizeOption({ value: label }))
@@ -839,6 +867,17 @@ const Builder = (() => {
       case 'item-multi':
         if (item.type === 'choice') {
           item.allow_multiple = input.checked;
+          if (item.allow_multiple) {
+            item.requires_correct = false;
+          } else if (item.requires_correct !== true) {
+            item.requires_correct = true;
+          }
+          ensureSingleChoiceCorrect(item);
+        }
+        break;
+      case 'item-requires-correct':
+        if (item.type === 'choice' && !item.allow_multiple) {
+          item.requires_correct = input.checked;
           ensureSingleChoiceCorrect(item);
         }
         break;
@@ -856,7 +895,7 @@ const Builder = (() => {
       }
       case 'option-correct': {
         const optId = input.closest('[data-option]')?.getAttribute('data-option');
-        if (!optId || item.type !== 'choice' || item.allow_multiple) {
+        if (!optId || item.type !== 'choice' || item.allow_multiple || !item.requires_correct) {
           break;
         }
         item.options.forEach((opt) => {
@@ -903,6 +942,7 @@ const Builder = (() => {
           { value: '' },
         ],
         weight_percent: 0,
+        requires_correct: true,
       })
     );
   }
