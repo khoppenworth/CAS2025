@@ -744,56 +744,6 @@ function ensure_questionnaire_item_schema(PDO $pdo): void
     }
 }
 
-function ensure_questionnaire_work_function_schema(PDO $pdo): void
-{
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
-            questionnaire_id INT NOT NULL,
-            work_function VARCHAR(191) NOT NULL,
-            PRIMARY KEY (questionnaire_id, work_function)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-        $columnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_work_function');
-        $columns = [];
-        if ($columnsStmt) {
-            while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
-                $columns[$column['Field']] = $column;
-            }
-        }
-
-        if (!isset($columns['work_function'])) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(191) NOT NULL AFTER questionnaire_id');
-        } else {
-            $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
-            $needsUpdate = true;
-            if (str_contains($type, 'varchar')) {
-                $length = 0;
-                if (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
-                    $length = (int)$matches[1];
-                }
-                $needsUpdate = $length < 1 || $length < 191;
-            }
-            if ($needsUpdate) {
-                $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(191) NOT NULL');
-            }
-        }
-
-        $primaryIndex = $pdo->query("SHOW INDEX FROM questionnaire_work_function WHERE Key_name = 'PRIMARY'");
-        $hasPrimary = $primaryIndex && $primaryIndex->fetch(PDO::FETCH_ASSOC);
-        if (!$hasPrimary) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
-        }
-
-        // Preserve any administrator-defined questionnaire assignments without
-        // seeding defaults on every request. The previous behaviour inserted
-        // every questionnaire/work function combination which overwrote custom
-        // selections made through the admin portal. By limiting this helper to
-        // structural concerns we ensure saved assignments remain intact.
-    } catch (PDOException $e) {
-        error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
-    }
-}
-
 function ensure_questionnaire_assignment_schema(PDO $pdo): void
 {
     try {
