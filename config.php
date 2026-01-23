@@ -1,11 +1,31 @@
 <?php
 declare(strict_types=1);
 
+$isBootstrapRequested = !defined('APP_BOOTSTRAPPED');
+if ($isBootstrapRequested) {
+    define('APP_BOOTSTRAPPED', true);
+}
+
 require_once __DIR__ . '/lib/email_templates.php';
 require_once __DIR__ . '/lib/work_functions.php';
+require_once __DIR__ . '/lib/rate_limiter.php';
+require_once __DIR__ . '/i18n.php';
+require_once __DIR__ . '/lib/path.php';
+require_once __DIR__ . '/lib/security.php';
+require_once __DIR__ . '/lib/mailer.php';
+require_once __DIR__ . '/lib/notifications.php';
 
-if (!defined('APP_BOOTSTRAPPED')) {
-    define('APP_BOOTSTRAPPED', true);
+$appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
+ini_set('display_errors', $appDebug ? '1' : '0');
+error_reporting(E_ALL);
+
+define('APP_DEBUG', $appDebug);
+
+if (!defined('JSON_THROW_ON_ERROR')) {
+    define('JSON_THROW_ON_ERROR', 0);
+}
+
+define('BASE_PATH', __DIR__);
 
     $envPath = __DIR__ . '/.env';
     if (is_readable($envPath)) {
@@ -42,30 +62,12 @@ if (!defined('APP_BOOTSTRAPPED')) {
     ini_set('display_errors', $appDebug ? '1' : '0');
     error_reporting(E_ALL);
 
-    require_once __DIR__ . '/lib/rate_limiter.php';
+if ($isBootstrapRequested) {
     enforce_rate_limit($_SERVER);
 
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
     }
-
-    define('APP_DEBUG', $appDebug);
-
-    if (!defined('JSON_THROW_ON_ERROR')) {
-        define('JSON_THROW_ON_ERROR', 0);
-    }
-
-    define('BASE_PATH', __DIR__);
-
-    $baseUrlEnv = getenv('BASE_URL') ?: '/';
-    $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
-    define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
-
-    require_once __DIR__ . '/i18n.php';
-    require_once __DIR__ . '/lib/path.php';
-    require_once __DIR__ . '/lib/security.php';
-    require_once __DIR__ . '/lib/mailer.php';
-    require_once __DIR__ . '/lib/notifications.php';
 
     $locale = ensure_locale();
     if (!isset($_SESSION['lang']) || $_SESSION['lang'] !== $locale) {
@@ -123,8 +125,6 @@ if (!defined('APP_BOOTSTRAPPED')) {
         exit;
     }
 }
-
-require_once __DIR__ . '/lib/email_templates.php';
 
 if (!function_exists('str_starts_with')) {
     function str_starts_with(string $haystack, string $needle): bool
