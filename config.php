@@ -27,9 +27,40 @@ if (!defined('JSON_THROW_ON_ERROR')) {
 
 define('BASE_PATH', __DIR__);
 
-$baseUrlEnv = getenv('BASE_URL') ?: '/';
-$normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
-define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
+    $envPath = __DIR__ . '/.env';
+    if (is_readable($envPath)) {
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (is_array($lines)) {
+            foreach ($lines as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === '' || $trimmed[0] === '#') {
+                    continue;
+                }
+                if (strpos($trimmed, '=') === false) {
+                    continue;
+                }
+                [$key, $value] = explode('=', $trimmed, 2);
+                $key = trim($key);
+                $value = trim($value);
+                $length = strlen($value);
+                if ($length >= 2) {
+                    $first = $value[0];
+                    $last = $value[$length - 1];
+                    if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                        $value = substr($value, 1, -1);
+                    }
+                }
+                if ($key !== '' && getenv($key) === false) {
+                    putenv($key . '=' . $value);
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
+    }
+
+    $appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
+    ini_set('display_errors', $appDebug ? '1' : '0');
+    error_reporting(E_ALL);
 
 if ($isBootstrapRequested) {
     enforce_rate_limit($_SERVER);
