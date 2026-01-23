@@ -2454,6 +2454,11 @@ body.theme-dark .md-button.md-primary {
   color: var(--app-on-primary);
 }
 
+body.theme-dark .md-button.md-secondary {
+  background: var(--app-secondary);
+  color: var(--app-on-primary);
+}
+
 .md-table {
   width: 100%;
   border-collapse: collapse;
