@@ -89,27 +89,6 @@ $featureItems = [
   <?php if ($brandStyle !== ''): ?>
     <style id="md-brand-style"><?= htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8') ?></style>
   <?php endif; ?>
-  <style>
-    .landing-hero__content {
-      max-width: 720px;
-    }
-
-    .landing-hero__actions {
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .landing-hero__cta-note {
-      margin: 0;
-      color: #2b3c55;
-      font-size: 0.98rem;
-    }
-
-    .landing-summary__stats {
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    }
-  </style>
 </head>
 <body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>">
   <div class="landing-page">
