@@ -358,7 +358,9 @@ const Builder = (() => {
     if (!key) return;
     state.activeKey = key;
     state.navActiveKey = 'root';
-    rememberSet(STORAGE_KEYS.active, key);
+    const selected = state.questionnaires.find((q) => q.clientId === key);
+    const rememberKey = selected?.id ? String(selected.id) : key;
+    rememberSet(STORAGE_KEYS.active, rememberKey);
     render();
   }
 
@@ -1239,6 +1241,18 @@ const Builder = (() => {
         state.csrf = data.csrf || state.csrf;
         state.dirty = false;
         renderMessage(data.message || 'Changes saved', 'success');
+        const questionnaireMap = data?.idMap?.questionnaires || {};
+        state.questionnaires.forEach((q) => {
+          if (!q.id && questionnaireMap[q.clientId]) {
+            q.id = questionnaireMap[q.clientId];
+          }
+        });
+        const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+        const activeId = active?.id || (active?.clientId ? questionnaireMap[active.clientId] : null);
+        if (activeId) {
+          initialActiveId = activeId;
+          rememberSet(STORAGE_KEYS.active, String(activeId));
+        }
         fetchData({ silent: true });
       })
       .catch((err) => renderMessage(err.message || 'Save failed', 'error'))

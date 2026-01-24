@@ -1150,6 +1150,7 @@ if (isset($_POST['import'])) {
                                 case 'choice':
                                     return 'choice';
                                 case 'text':
+                                    return 'text';
                                 case 'textarea':
                                     return 'textarea';
                                 default:
