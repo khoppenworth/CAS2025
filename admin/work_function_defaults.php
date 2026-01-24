@@ -121,6 +121,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $workFunctionCatalog = work_function_catalog($pdo);
+$hasActiveCatalog = false;
+foreach ($workFunctionCatalog as $record) {
+    if (($record['archived_at'] ?? null) === null) {
+        $hasActiveCatalog = true;
+        break;
+    }
+}
 $staffCounts = [];
 try {
     $stmt = $pdo->query("SELECT work_function, COUNT(*) AS c FROM users WHERE work_function IS NOT NULL AND work_function <> '' GROUP BY work_function");
@@ -187,8 +194,7 @@ foreach ($assignmentsByWorkFunction as $wf => $ids) {
         </div>
       </form>
       <div class="md-work-function-catalog">
-        <?php $activeCatalog = array_filter($workFunctionCatalog, static fn($row) => ($row['archived_at'] ?? null) === null); ?>
-        <?php if ($activeCatalog === []): ?>
+        <?php if (!$hasActiveCatalog): ?>
           <p class="md-hint"><?=htmlspecialchars(t($t, 'work_function_catalog_empty', 'No work functions are currently available.'), ENT_QUOTES, 'UTF-8')?></p>
         <?php endif; ?>
         <?php foreach ($workFunctionCatalog as $slug => $record): ?>
