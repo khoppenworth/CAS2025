@@ -1,6 +1,6 @@
 # Questionnaire Import Guide
 
-This guide explains how administrators can import questionnaires using the EPSS HR Assessment builder. The importer accepts FHIR Questionnaire resources in XML (recommended) or JSON.
+This guide explains how administrators can import questionnaires using the EPSS HR Assessment builder. The importer accepts FHIR Questionnaire resources in XML (recommended) or JSON, including single Questionnaire resources or Bundles containing Questionnaire entries.
 
 ## Prerequisites
 
@@ -10,17 +10,17 @@ This guide explains how administrators can import questionnaires using the EPSS 
 
 ## Preparing Your XML or JSON File
 
-1. Use the template as a starting point and update the `<title>` and `<description>` values.
-2. Add section-level `<item>` blocks with `type="group"`; set `<text>` for the section title and `<description>` for optional helper text.
+1. Use the template as a starting point and update the `<title>` and `<description>` values (status is imported as a draft regardless of the XML value).
+2. Add question `<item>` entries directly under the root to create items without a section, or add section-level `<item>` blocks with `type="group"`; set `<text>` for the section title and `<description>` for optional helper text.
 3. Within each section, create question `<item>` entries with:
    - A unique `<linkId>` for stable identification.
    - `<text>` containing the question prompt.
-   - `<type>` set to `likert`, `choice`, `text`, `textarea`, or `boolean` (other FHIR types import as free-text).
+   - `<type>` set to `likert`, `choice`, `text`, `textarea`, or `boolean` (other FHIR types import as free-text). `text` creates a short free-text input, while `textarea` creates a longer response field.
    - `<required value="true">` when a response is mandatory.
    - `<repeats value="true">` to allow multiple selections for `choice` items.
    - `<answerOption>` values for `likert` or `choice` items, using either `<valueString>` or `<valueCoding>` with `display` or `code`.
 4. Use `<type value="display">` for headings or instructional text you do not want stored; these entries are skipped during import.
-5. Validate that the XML or JSON is well-formed before uploading.
+5. Validate that the XML or JSON is well-formed before uploading. Work functions are applied to all available cadres by default and can be refined after import in the builder.
 
 ## Using the Excel Planning Template
 
