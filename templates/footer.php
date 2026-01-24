@@ -1,5 +1,7 @@
 <?php
-require_once __DIR__ . '/../config.php';
+if (!defined('APP_BOOTSTRAPPED')) {
+    require_once __DIR__ . '/../config.php';
+}
 
 $locale = ensure_locale();
 $t = load_lang($locale);

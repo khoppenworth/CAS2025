@@ -410,19 +410,12 @@ function canonical(string $value, ?array $definitions = null): string
  */
 function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
-
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
     $definitions = work_function_definitions($pdo, $forceRefresh);
     $choices = $definitions;
-    $sources = [];
 
+    $sources = [];
     try {
-        $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function <> "" ORDER BY work_function');
+        $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function IS NOT NULL AND work_function <> ""');
         if ($stmt) {
             $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
         }
@@ -431,7 +424,7 @@ function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
     }
 
     try {
-        $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> '' ORDER BY work_function");
+        $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> ''");
         if ($stmt) {
             $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
         }
@@ -445,13 +438,11 @@ function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
             continue;
         }
         if (!isset($choices[$key])) {
-            $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', (string)$key));
+            $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', $key));
         }
     }
 
-    uasort($choices, static fn ($a, $b) => strcasecmp((string)$a, (string)$b));
-
-    $cache[$cacheKey] = $choices;
+    uasort($choices, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
 
     return $choices;
 }
@@ -461,13 +452,6 @@ function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
  */
 function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
-
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
     $assignments = [];
     $definitions = work_function_definitions($pdo, $forceRefresh);
 
@@ -480,10 +464,7 @@ function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
                 if ($questionnaireId <= 0 || $workFunction === '') {
                     continue;
                 }
-                if (!isset($assignments[$workFunction])) {
-                    $assignments[$workFunction] = [];
-                }
-                $assignments[$workFunction][] = $questionnaireId;
+                $assignments[$workFunction][$questionnaireId] = $questionnaireId;
             }
         }
     } catch (PDOException $e) {
@@ -491,21 +472,12 @@ function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
     }
 
     foreach ($assignments as $workFunction => $ids) {
-        $filtered = [];
-        foreach ($ids as $id) {
-            $id = (int)$id;
-            if ($id > 0) {
-                $filtered[$id] = $id;
-            }
-        }
-        $list = array_values($filtered);
+        $list = array_values($ids);
         sort($list, SORT_NUMERIC);
         $assignments[$workFunction] = $list;
     }
 
     ksort($assignments);
-
-    $cache[$cacheKey] = $assignments;
 
     return $assignments;
 }
@@ -532,29 +504,20 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
         if ($canonical === '' || !isset($allowedWorkFunctionSet[$canonical])) {
             continue;
         }
-
         if (!is_array($ids)) {
             continue;
         }
-
         foreach ($ids as $id) {
             $id = (int)$id;
             if ($id <= 0 || !isset($allowedQuestionnaireSet[$id])) {
                 continue;
-            }
-            if (!isset($normalized[$canonical])) {
-                $normalized[$canonical] = [];
             }
             $normalized[$canonical][$id] = $id;
         }
     }
 
     foreach ($allowedWorkFunctions as $workFunction) {
-        if (!isset($normalized[$workFunction])) {
-            $normalized[$workFunction] = [];
-            continue;
-        }
-        $values = array_values($normalized[$workFunction]);
+        $values = array_values($normalized[$workFunction] ?? []);
         sort($values, SORT_NUMERIC);
         $normalized[$workFunction] = $values;
     }
@@ -574,8 +537,8 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
     $pdo->beginTransaction();
     try {
         $pdo->exec('DELETE FROM questionnaire_work_function');
+        $definitions = work_function_definitions($pdo);
         if ($assignments !== []) {
-            $definitions = work_function_definitions($pdo);
             $insert = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
             foreach ($assignments as $workFunction => $questionnaireIds) {
                 $workFunction = canonical_work_function_key((string)$workFunction, $definitions);
@@ -596,10 +559,6 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
         $pdo->rollBack();
         throw $e;
     }
-
-    work_function_assignments($pdo, true);
-    work_function_choices($pdo, true);
-    available_work_functions($pdo, true);
 }
 
 /**
@@ -607,13 +566,6 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
  */
 function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
-
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
     $definitions = work_function_definitions($pdo, $forceRefresh);
     $choices = work_function_choices($pdo, $forceRefresh);
     $assignments = work_function_assignments($pdo, $forceRefresh);
@@ -637,9 +589,7 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
         $labels[$canonical] = ucwords(str_replace('_', ' ', $canonical));
     }
 
-    uasort($labels, static fn ($a, $b) => strcasecmp((string)$a, (string)$b));
-
-    $cache[$cacheKey] = $labels;
+    uasort($labels, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
 
     return $labels;
 }

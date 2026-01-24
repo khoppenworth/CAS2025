@@ -1,5 +1,7 @@
 <?php
-require_once __DIR__ . '/../config.php';
+if (!defined('APP_BOOTSTRAPPED')) {
+    require_once __DIR__ . '/../config.php';
+}
 require_once __DIR__ . '/../lib/help.php';
 
 $locale = ensure_locale();
@@ -547,4 +549,3 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
   </div>
 </div>
 <main class="md-main">
-
