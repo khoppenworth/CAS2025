@@ -86,46 +86,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     <img src="<?=$logoPathSmall?>" alt="<?=$siteLogoAlt?>" class="md-appbar-logo" loading="lazy">
     <span><?=$siteTitle?></span>
   </div>
-  <nav class="md-appbar-actions">
-    <button
-      type="button"
-      class="md-appbar-button"
-      id="appbar-install-btn"
-      hidden
-      aria-hidden="true"
-    >
-      <?=htmlspecialchars(t($t, 'install_app', 'Install App'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <button
-      type="button"
-      class="md-status-indicator"
-      data-status-indicator
-      data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
-      data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
-      role="switch"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-checked="true"
-      data-status="online"
-      title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-    >
-      <span class="md-status-dot" aria-hidden="true"></span>
-      <span class="md-status-label"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
-    </button>
-    <button type="button" class="md-appbar-button" id="appbar-reload-btn">
-      <?=htmlspecialchars(t($t, 'reload_app', 'Reload App'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <button type="button" class="md-appbar-button" data-help-toggle aria-haspopup="dialog" aria-expanded="false">
-      <?=htmlspecialchars(t($t, 'system_help', 'Help & tips'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <div class="md-lang-switch">
-      <?php foreach ($availableLocales as $loc): ?>
-        <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="<?=($locale === $loc) ? 'active' : ''?>"><?=strtoupper($loc)?></a>
-      <?php endforeach; ?>
-    </div>
-    <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></a>
-    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link"><?=t($t, 'logout', 'Logout')?></a>
-  </nav>
 </header>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {
@@ -530,6 +490,100 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
         </ul>
       </li>
     <?php endif; ?>
+    <li class="md-topnav-item" data-topnav-item>
+      <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+        <span class="md-topnav-label">
+          <span class="md-topnav-title"><?=t($t, 'account_tools', 'Account & Tools')?></span>
+          <span class="md-topnav-desc"><?=t($t, 'account_tools_summary', 'Quick actions, profile, and preferences.')?></span>
+        </span>
+        <span class="md-topnav-chevron" aria-hidden="true"></span>
+      </button>
+      <ul class="md-topnav-submenu">
+        <li>
+          <button
+            type="button"
+            class="md-topnav-link"
+            id="appbar-install-btn"
+            hidden
+            aria-hidden="true"
+          >
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'install_app', 'Install App'), ENT_QUOTES, 'UTF-8')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'install_app_summary', 'Add this app to your device for quick access.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">↓</span>
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="md-topnav-link"
+            data-status-indicator
+            data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
+            data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
+            role="switch"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-checked="true"
+            data-status="online"
+            title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
+          >
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=t($t, 'connectivity_status', 'Connectivity')?></span>
+              <span class="md-topnav-link-desc md-status-label"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
+            </span>
+            <span class="md-topnav-link-icon md-status-dot" aria-hidden="true"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="md-topnav-link" id="appbar-reload-btn">
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'reload_app', 'Reload App'), ENT_QUOTES, 'UTF-8')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'reload_app_summary', 'Refresh the app and clear cached data.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">↻</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="md-topnav-link" data-help-toggle aria-haspopup="dialog" aria-expanded="false">
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'system_help', 'Help & tips'), ENT_QUOTES, 'UTF-8')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'system_help_summary', 'Review guidance and tips for this page.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">?</span>
+          </button>
+        </li>
+        <?php foreach ($availableLocales as $loc): ?>
+          <li>
+            <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link<?=($locale === $loc) ? ' active' : ''?>">
+              <span class="md-topnav-link-content">
+                <span class="md-topnav-link-title"><?=t($t, 'language_label', 'Language')?>: <?=strtoupper($loc)?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'language_switch', 'Switch language')?></span>
+              </span>
+              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+            </a>
+          </li>
+        <?php endforeach; ?>
+        <li>
+          <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'profile_summary', 'Update your profile details and settings.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </li>
+        <li>
+          <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=t($t, 'logout', 'Logout')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'logout_summary', 'Sign out of your account safely.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </li>
+      </ul>
+    </li>
   </ul>
 </nav>
 <div class="md-topnav-backdrop" data-topnav-backdrop aria-hidden="true" hidden></div>

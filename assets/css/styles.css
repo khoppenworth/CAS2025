@@ -334,13 +334,19 @@ button,
   justify-content: space-between;
   padding: 0.75rem 0.95rem;
   border-radius: 12px;
+  border: none;
+  background: transparent;
   color: var(--app-on-surface-strong);
   font-weight: 500;
+  font: inherit;
   text-decoration: none;
+  text-align: left;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
   min-height: calc(var(--app-button-height) - 4px);
   width: 100%;
   gap: 1rem;
+  cursor: pointer;
+  appearance: none;
 }
 
 .md-topnav-link:hover,
@@ -472,6 +478,11 @@ button,
 }
 
 .md-status-indicator.is-offline .md-status-dot {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.35);
+}
+
+.md-topnav-link.is-offline .md-status-dot {
   background: var(--status-warning);
   box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.35);
 }
