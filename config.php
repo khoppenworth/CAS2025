@@ -58,9 +58,9 @@ define('BASE_PATH', __DIR__);
         }
     }
 
-    $appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
-    ini_set('display_errors', $appDebug ? '1' : '0');
-    error_reporting(E_ALL);
+$baseUrlEnv = getenv('BASE_URL') ?: '/';
+$normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
+define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
 
 if ($isBootstrapRequested) {
     enforce_rate_limit($_SERVER);
