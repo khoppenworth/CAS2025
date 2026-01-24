@@ -1,14 +1,19 @@
 :root {
   --landing-primary: var(--app-primary, #20407f);
   --landing-primary-dark: var(--app-primary-dark, #14294e);
+  --landing-primary-darker: var(--app-primary-darker, #0c1a31);
   --landing-accent: var(--app-secondary, #ff8a3d);
   --landing-surface: var(--app-surface, #ffffff);
-  --landing-muted: #4b5a6b;
-  --landing-background: linear-gradient(
-    120deg,
-    var(--landing-primary-dark) 0%,
-    color-mix(in srgb, var(--landing-primary-dark) 70%, #0c1a31 30%) 45%,
-    var(--landing-primary) 100%
+  --landing-surface-muted: var(--app-surface-muted, #f3f6fb);
+  --landing-muted: var(--app-text-muted, #4b5a6b);
+  --landing-background: var(
+    --app-hero-gradient,
+    linear-gradient(
+      120deg,
+      var(--landing-primary-darker) 0%,
+      var(--landing-primary-dark) 48%,
+      var(--landing-primary) 100%
+    )
   );
   --landing-radius-lg: 28px;
   --landing-radius-md: 18px;
@@ -22,8 +27,8 @@ body.landing-body {
   margin: 0;
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #0f1c31;
-  background: #f3f6fb;
+  color: var(--app-text-primary, #0f1c31);
+  background: var(--app-bg, #f3f6fb);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -61,7 +66,11 @@ body.landing-body {
   height: 280px;
   top: -60px;
   left: -40px;
-  background: linear-gradient(145deg, rgba(255, 200, 87, 0.38), rgba(255, 138, 61, 0.4));
+  background: radial-gradient(
+    circle at 30% 30%,
+    color-mix(in srgb, var(--landing-accent) 70%, transparent),
+    color-mix(in srgb, var(--landing-accent) 35%, transparent)
+  );
 }
 
 .landing-hero::after {
@@ -69,7 +78,11 @@ body.landing-body {
   height: 320px;
   bottom: -80px;
   right: -60px;
-  background: radial-gradient(circle at 30% 30%, rgba(63, 135, 255, 0.38), rgba(24, 71, 160, 0.36));
+  background: radial-gradient(
+    circle at 30% 30%,
+    color-mix(in srgb, var(--landing-primary) 65%, transparent),
+    color-mix(in srgb, var(--landing-primary-dark) 40%, transparent)
+  );
 }
 
 .landing-hero__content,
@@ -104,8 +117,8 @@ body.landing-body {
   width: 0.9rem;
   height: 0.9rem;
   border-radius: 10px;
-  background: #ffd390;
-  box-shadow: 0 0 0 4px rgba(255, 211, 144, 0.18);
+  background: color-mix(in srgb, var(--landing-accent) 70%, #ffffff 30%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--landing-accent) 30%, transparent);
   flex-shrink: 0;
   margin-top: 0.35rem;
 }
@@ -207,25 +220,25 @@ body.landing-body {
 
 .landing-summary__card {
   align-self: stretch;
-  background: #fdfefe;
+  background: var(--landing-surface);
   border-radius: var(--landing-radius-lg);
   box-shadow: var(--landing-shadow-lg);
   padding: 2.5rem;
-  color: #0f1c31;
+  color: var(--app-text-primary, #0f1c31);
   max-width: 440px;
-  border: 1px solid rgba(16, 36, 78, 0.08);
+  border: 1px solid var(--app-primary-softer, rgba(16, 36, 78, 0.08));
 }
 
 .landing-summary__card h2 {
   margin: 0 0 1rem;
   font-size: 1.5rem;
   line-height: 1.35;
-  color: #102447;
+  color: var(--app-text-primary, #102447);
 }
 
 .landing-summary__card p {
   margin: 0 0 1.75rem;
-  color: #4b5a6b;
+  color: var(--app-text-secondary, #4b5a6b);
   line-height: 1.6;
 }
 
@@ -247,19 +260,19 @@ body.landing-body {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: #516078;
+  color: var(--app-text-muted, #516078);
 }
 
 .landing-summary__stats dd {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #0f1c31;
+  color: var(--app-text-primary, #0f1c31);
 }
 
 .landing-main {
   flex: 1;
-  background: #f3f6fb;
+  background: var(--landing-surface-muted);
   padding: clamp(3.25rem, 6vw, 5.25rem) 0;
 }
 
@@ -283,12 +296,12 @@ body.landing-body {
 .landing-section__header h2 {
   margin: 0 0 1rem;
   font-size: clamp(1.8rem, 3.2vw, 2.35rem);
-  color: #0f1c31;
+  color: var(--app-text-primary, #0f1c31);
 }
 
 .landing-section__header p {
   margin: 0;
-  color: #43546a;
+  color: var(--app-text-secondary, #43546a);
   line-height: 1.7;
   font-size: 1.05rem;
 }
@@ -304,9 +317,9 @@ body.landing-body {
 .landing-feature-card {
   padding: 1.85rem;
   border-radius: var(--landing-radius-md);
-  background: #ffffff;
+  background: var(--landing-surface);
   box-shadow: var(--landing-shadow-sm);
-  border: 1px solid rgba(12, 39, 88, 0.06);
+  border: 1px solid var(--app-primary-softer, rgba(12, 39, 88, 0.06));
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -314,18 +327,18 @@ body.landing-body {
 .landing-feature-card:focus-within {
   transform: translateY(-4px);
   box-shadow: var(--landing-shadow-md);
-  border-color: rgba(32, 64, 127, 0.16);
+  border-color: color-mix(in srgb, var(--landing-primary) 22%, transparent);
 }
 
 .landing-feature-card h3 {
   margin: 0 0 0.85rem;
   font-size: 1.35rem;
-  color: #1c2e4f;
+  color: var(--app-text-primary, #1c2e4f);
 }
 
 .landing-feature-card p {
   margin: 0;
-  color: #4b5a6b;
+  color: var(--app-text-secondary, #4b5a6b);
   line-height: 1.6;
 }
 
@@ -336,7 +349,11 @@ body.landing-body {
 
 .landing-section--cta .landing-section__content {
   width: var(--landing-container-width);
-  background: linear-gradient(135deg, rgba(44, 103, 242, 0.12), rgba(44, 103, 242, 0.02));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--app-primary-soft, #d7e5ff) 70%, transparent),
+    color-mix(in srgb, var(--app-primary-soft, #d7e5ff) 20%, transparent)
+  );
   border-radius: var(--landing-radius-lg);
   padding: clamp(2.5rem, 5vw, 3.5rem);
   text-align: center;
@@ -346,7 +363,7 @@ body.landing-body {
 .landing-section--cta h2 {
   margin: 0 0 1rem;
   font-size: clamp(1.9rem, 3vw, 2.4rem);
-  color: #12244b;
+  color: var(--app-text-primary, #12244b);
 }
 
 .landing-section--cta p {
