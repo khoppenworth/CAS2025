@@ -283,10 +283,26 @@ body.md-bg {
   background: var(--app-primary-softer);
 }
 
+.md-button:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
 .md-primary {
   background: var(--md-primary);
   color: var(--md-on-primary);
   box-shadow: var(--app-shadow-soft);
+}
+
+.md-secondary {
+  background: var(--app-secondary);
+  color: var(--md-on-primary);
+  box-shadow: 0 12px 30px var(--app-secondary-soft);
+}
+
+.md-button.md-secondary:hover {
+  background: color-mix(in srgb, var(--app-secondary) 85%, #ffffff 15%);
+  box-shadow: 0 12px 30px var(--app-secondary-soft);
 }
 
 .md-danger {

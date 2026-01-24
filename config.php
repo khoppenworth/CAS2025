@@ -27,6 +27,37 @@ if (!defined('JSON_THROW_ON_ERROR')) {
 
 define('BASE_PATH', __DIR__);
 
+    $envPath = __DIR__ . '/.env';
+    if (is_readable($envPath)) {
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (is_array($lines)) {
+            foreach ($lines as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === '' || $trimmed[0] === '#') {
+                    continue;
+                }
+                if (strpos($trimmed, '=') === false) {
+                    continue;
+                }
+                [$key, $value] = explode('=', $trimmed, 2);
+                $key = trim($key);
+                $value = trim($value);
+                $length = strlen($value);
+                if ($length >= 2) {
+                    $first = $value[0];
+                    $last = $value[$length - 1];
+                    if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                        $value = substr($value, 1, -1);
+                    }
+                }
+                if ($key !== '' && getenv($key) === false) {
+                    putenv($key . '=' . $value);
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
+    }
+
 $baseUrlEnv = getenv('BASE_URL') ?: '/';
 $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
 define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
