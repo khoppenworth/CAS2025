@@ -15,11 +15,6 @@ try {
     }
     $previousReviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
-    $themes = [
-        'light' => t($t, 'theme_light', 'Light'),
-        'dark' => t($t, 'theme_dark', 'Dark'),
-    ];
-
     $msg = '';
     $errors = [];
     $enabledLocales = site_enabled_locales($cfg);
@@ -72,20 +67,6 @@ try {
             $smtp_timeout = 20;
         }
 
-        $color_theme = strtolower(trim($_POST['color_theme'] ?? 'light'));
-        if (!array_key_exists($color_theme, $themes)) {
-            $color_theme = 'light';
-        }
-
-        $brand_color_reset = $_POST['brand_color_reset'] ?? '0';
-        $brand_color_input = normalize_hex_color((string)($_POST['brand_color'] ?? ''));
-        $brand_color = '';
-        if ($brand_color_reset === '1') {
-            $brand_color = '';
-        } elseif ($brand_color_input !== null) {
-            $brand_color = $brand_color_input;
-        }
-
         $enabledLocalesInput = $_POST['enabled_locales'] ?? [];
         if (!is_array($enabledLocalesInput)) {
             $enabledLocalesInput = [];
@@ -122,8 +103,6 @@ try {
             'microsoft_oauth_client_id' => $microsoft_oauth_client_id,
             'microsoft_oauth_client_secret' => $microsoft_oauth_client_secret,
             'microsoft_oauth_tenant' => $microsoft_oauth_tenant,
-            'color_theme' => $color_theme,
-            'brand_color' => $brand_color !== '' ? $brand_color : null,
             'local_login_enabled' => $local_login_enabled,
             'smtp_enabled' => $smtp_enabled,
             'smtp_host' => $smtp_host !== '' ? $smtp_host : null,
@@ -213,12 +192,6 @@ try {
     if (!isset($cfg) || !is_array($cfg)) {
         $cfg = site_config_defaults();
     }
-    if (!isset($themes) || !is_array($themes)) {
-        $themes = [
-            'light' => t($t, 'theme_light', 'Light'),
-            'dark' => t($t, 'theme_dark', 'Dark'),
-        ];
-    }
     if (!isset($enabledLocales) || !is_array($enabledLocales)) {
         $enabledLocales = site_enabled_locales($cfg);
     }
@@ -267,27 +240,6 @@ $pageHelpKey = 'admin.settings';
     <?php endif; ?>
     <form method="post" action="<?=htmlspecialchars(url_for('admin/settings.php'), ENT_QUOTES, 'UTF-8')?>">
       <input type="hidden" name="csrf" value="<?=htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8')?>">
-      <h3 class="md-subhead"><?=t($t,'appearance_settings','Appearance')?></h3>
-      <label class="md-field">
-        <span><?=t($t,'color_theme','Color Theme')?></span>
-        <select name="color_theme">
-          <?php foreach ($themes as $themeValue => $themeLabel): ?>
-            <option value="<?=htmlspecialchars($themeValue, ENT_QUOTES, 'UTF-8')?>" <?=site_color_theme($cfg) === $themeValue ? 'selected' : ''?>><?=htmlspecialchars($themeLabel, ENT_QUOTES, 'UTF-8')?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label class="md-field md-field-inline">
-        <span>
-          <?=t($t,'brand_color','Brand Color')?>
-          <?=render_help_icon(t($t,'brand_color_hint','Pick any brand color to personalize buttons, highlights, and gradients.'))?>
-        </span>
-        <div class="md-color-picker" data-brand-color-picker data-default-color="<?=htmlspecialchars(site_default_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>">
-          <input type="color" name="brand_color" value="<?=htmlspecialchars(site_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>" aria-label="<?=t($t,'brand_color_picker','Choose a brand color')?>">
-          <span class="md-color-value"><?=htmlspecialchars(strtoupper(site_brand_color($cfg)), ENT_QUOTES, 'UTF-8')?></span>
-          <button type="button" class="md-button md-outline md-compact" data-brand-color-reset><?=t($t,'brand_color_reset','Use default brand color')?></button>
-          <input type="hidden" name="brand_color_reset" value="0" data-brand-color-reset-field>
-        </div>
-      </label>
       <h3 class="md-subhead">
         <?=t($t,'language_settings','Languages')?>
         <?=render_help_icon(t($t,'language_settings_hint','Choose which interface languages are available to users.'))?>
