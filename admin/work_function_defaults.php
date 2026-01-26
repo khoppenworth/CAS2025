@@ -1,11 +1,29 @@
 <?php
 require_once __DIR__ . '/../config.php';
+
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
+
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+
+$flashKey = 'work_function_defaults_flash';
+$catalogFlashKey = 'work_function_catalog_flash';
+
+$msg = $_SESSION[$flashKey] ?? '';
+if ($msg !== '') {
+    unset($_SESSION[$flashKey]);
+}
+$catalogMsg = $_SESSION[$catalogFlashKey] ?? '';
+if ($catalogMsg !== '') {
+    unset($_SESSION[$catalogFlashKey]);
+}
+
+$errors = [];
+$catalogErrors = [];
+
 $questionnaires = [];
 $questionnaireMap = [];
 try {
@@ -22,16 +40,6 @@ try {
     }
 } catch (PDOException $e) {
     error_log('work_function_defaults questionnaire fetch failed: ' . $e->getMessage());
-    $questionnaires = [];
-    $questionnaireMap = [];
-}
-$msg = $_SESSION['work_function_defaults_flash'] ?? '';
-if ($msg !== '') {
-    unset($_SESSION['work_function_defaults_flash']);
-}
-$catalogMsg = $_SESSION['work_function_catalog_flash'] ?? '';
-if ($catalogMsg !== '') {
-    unset($_SESSION['work_function_catalog_flash']);
 }
 
 $workFunctionOptions = available_work_functions($pdo);
@@ -43,9 +51,6 @@ foreach ($workFunctionKeys as $wf) {
     }
 }
 
-$errors = [];
-$catalogErrors = [];
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mode = isset($_POST['mode']) ? (string)$_POST['mode'] : 'assignments';
     if (in_array($mode, ['catalog_add', 'catalog_update', 'catalog_archive'], true)) {
@@ -55,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $label = (string)($_POST['label'] ?? '');
                 $slugInput = isset($_POST['slug']) ? (string)$_POST['slug'] : null;
                 create_work_function($pdo, $label, $slugInput);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_created', 'Work function added.');
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_created', 'Work function added.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
@@ -63,14 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $slug = (string)($_POST['slug'] ?? '');
                 $label = (string)($_POST['label'] ?? '');
                 update_work_function_label($pdo, $slug, $label);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_updated', 'Work function updated.');
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_updated', 'Work function updated.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
             if ($mode === 'catalog_archive') {
                 $slug = (string)($_POST['slug'] ?? '');
                 archive_work_function($pdo, $slug);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_archived', 'Work function archived.');
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_archived', 'Work function archived.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
@@ -109,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($errors === []) {
             try {
                 save_work_function_assignments($pdo, $normalized);
-                $_SESSION['work_function_defaults_flash'] = t($t, 'work_function_defaults_saved', 'Default questionnaire assignments updated.');
+                $_SESSION[$flashKey] = t($t, 'work_function_defaults_saved', 'Default questionnaire assignments updated.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             } catch (Throwable $e) {
@@ -128,6 +133,7 @@ foreach ($workFunctionCatalog as $record) {
         break;
     }
 }
+
 $staffCounts = [];
 try {
     $stmt = $pdo->query("SELECT work_function, COUNT(*) AS c FROM users WHERE work_function IS NOT NULL AND work_function <> '' GROUP BY work_function");
@@ -142,18 +148,22 @@ try {
 } catch (PDOException $e) {
     error_log('work_function_defaults staff count failed: ' . $e->getMessage());
 }
+
 $assignmentCounts = [];
 foreach ($assignmentsByWorkFunction as $wf => $ids) {
     $assignmentCounts[$wf] = is_array($ids) ? count($ids) : 0;
 }
+
+$baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
+$pageTitle = htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8');
 ?>
 <!doctype html>
-<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
+<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=$baseUrl?>">
 <head>
   <meta charset="utf-8">
-  <title><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></title>
+  <title><?=$pageTitle?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="app-base-url" content="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
+  <meta name="app-base-url" content="<?=$baseUrl?>">
   <link rel="manifest" href="<?=asset_url('manifest.php')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
@@ -163,7 +173,7 @@ foreach ($assignmentsByWorkFunction as $wf => $ids) {
 <?php include __DIR__ . '/../templates/header.php'; ?>
 <section class="md-section">
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></h2>
+    <h2 class="md-card-title"><?=$pageTitle?></h2>
     <p class="md-hint md-work-function-hint"><?=htmlspecialchars(t($t, 'work_function_defaults_hint', 'Choose the questionnaires that should be provided automatically to staff members based on their work function or cadre.'), ENT_QUOTES, 'UTF-8')?></p>
     <?php if ($catalogMsg !== ''): ?>
       <div class="md-alert success"><?=htmlspecialchars($catalogMsg, ENT_QUOTES, 'UTF-8')?></div>
@@ -246,11 +256,7 @@ foreach ($assignmentsByWorkFunction as $wf => $ids) {
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
-    <form
-      method="post"
-      action="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"
-      data-work-function-form
-    >
+    <form method="post" action="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>" data-work-function-form>
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
       <input type="hidden" name="assignments_payload" value="" data-work-function-payload>
       <div class="md-work-function-grid">
@@ -286,12 +292,12 @@ foreach ($assignmentsByWorkFunction as $wf => $ids) {
               <?php if ($questionnaires): ?>
                 <?php foreach ($questionnaires as $questionnaire): ?>
                   <?php
-                    $qid = (int)$questionnaire['id'];
-                    $title = trim((string)($questionnaire['title'] ?? ''));
-                    $description = trim((string)($questionnaire['description'] ?? ''));
-                    $displayTitle = $title !== '' ? $title : t($t, 'untitled_questionnaire', 'Untitled questionnaire');
-                    $searchText = trim($displayTitle . ' ' . $description);
-                    $checked = in_array($qid, $assignmentsByWorkFunction[$wf] ?? [], true);
+                  $qid = (int)$questionnaire['id'];
+                  $title = trim((string)($questionnaire['title'] ?? ''));
+                  $description = trim((string)($questionnaire['description'] ?? ''));
+                  $displayTitle = $title !== '' ? $title : t($t, 'untitled_questionnaire', 'Untitled questionnaire');
+                  $searchText = trim($displayTitle . ' ' . $description);
+                  $checked = in_array($qid, $assignmentsByWorkFunction[$wf] ?? [], true);
                   ?>
                   <div
                     class="md-work-function-option"
