@@ -73,6 +73,22 @@ PREPARE stmt FROM @qi_required_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @qi_requires_correct_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item'
+    AND COLUMN_NAME = 'requires_correct'
+);
+SET @qi_requires_correct_sql = IF(
+  @qi_requires_correct_exists = 0,
+  'ALTER TABLE questionnaire_item ADD COLUMN requires_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER is_required',
+  'DO 1'
+);
+PREPARE stmt FROM @qi_requires_correct_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @q_status_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
