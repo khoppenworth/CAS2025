@@ -132,6 +132,7 @@ CREATE TABLE questionnaire_item (
   weight_percent INT NOT NULL DEFAULT 0,
   allow_multiple TINYINT(1) NOT NULL DEFAULT 0,
   is_required TINYINT(1) NOT NULL DEFAULT 0,
+  requires_correct TINYINT(1) NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE,
   FOREIGN KEY (section_id) REFERENCES questionnaire_section(id) ON DELETE SET NULL

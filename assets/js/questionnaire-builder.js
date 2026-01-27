@@ -1301,6 +1301,7 @@ const Builder = (() => {
       weight_percent: Number(item.weight_percent) || 0,
       allow_multiple: item.allow_multiple && item.type === 'choice',
       is_required: item.is_required,
+      requires_correct: item.requires_correct && item.type === 'choice' && !item.allow_multiple,
       is_active: item.is_active,
       options: ['choice', 'likert'].includes(item.type)
         ? item.options.map((opt, idx) => ({
