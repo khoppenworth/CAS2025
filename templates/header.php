@@ -86,6 +86,11 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     <img src="<?=$logoPathSmall?>" alt="<?=$siteLogoAlt?>" class="md-appbar-logo" loading="lazy">
     <span><?=$siteTitle?></span>
   </div>
+  <div class="md-appbar-actions">
+    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
+      <?=t($t, 'logout', 'Logout')?>
+    </a>
+  </div>
 </header>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {
@@ -560,15 +565,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <span class="md-topnav-link-content">
               <span class="md-topnav-link-title"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></span>
               <span class="md-topnav-link-desc"><?=t($t, 'profile_summary', 'Update your profile details and settings.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-          </a>
-        </li>
-        <li>
-          <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=t($t, 'logout', 'Logout')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'logout_summary', 'Sign out of your account safely.')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
           </a>
