@@ -32,9 +32,6 @@ $heroSubtitle = $landingText !== ''
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
 $addressLabel = htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8');
 $contactLabel = htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8');
-$metricSubmissions = htmlspecialchars(number_format((int)($cfg['landing_metric_submissions'] ?? 4280)), ENT_QUOTES, 'UTF-8');
-$metricCompletion = htmlspecialchars($cfg['landing_metric_completion'] ?? '12 min', ENT_QUOTES, 'UTF-8');
-$metricAdoption = htmlspecialchars($cfg['landing_metric_adoption'] ?? '94%', ENT_QUOTES, 'UTF-8');
 
 $highlightItems = [
     [
@@ -117,20 +114,6 @@ $featureItems = [
         <div class="landing-summary__card">
           <h2><?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?></h2>
           <p><?= htmlspecialchars(t($t, 'landing_summary_body', 'Use a single hub to align feedback, track completion, and surface development wins.'), ENT_QUOTES, 'UTF-8') ?></p>
-          <dl class="landing-summary__stats">
-            <div>
-              <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_one', 'Assessments submitted'), ENT_QUOTES, 'UTF-8') ?></dt>
-              <dd><?= $metricSubmissions ?></dd>
-            </div>
-            <div>
-              <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_two', 'Average completion time'), ENT_QUOTES, 'UTF-8') ?></dt>
-              <dd><?= $metricCompletion ?></dd>
-            </div>
-            <div>
-              <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_three', 'Leadership adoption'), ENT_QUOTES, 'UTF-8') ?></dt>
-              <dd><?= $metricAdoption ?></dd>
-            </div>
-          </dl>
         </div>
       </aside>
     </header>
@@ -151,26 +134,6 @@ $featureItems = [
         </div>
       </section>
 
-      <section class="landing-section landing-section--metrics" aria-labelledby="metrics-heading">
-        <div class="landing-section__header">
-          <h2 id="metrics-heading"><?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?></h2>
-          <p><?= htmlspecialchars(t($t, 'landing_summary_body', 'Use a single hub to align feedback, track completion, and surface development wins.'), ENT_QUOTES, 'UTF-8') ?></p>
-        </div>
-        <dl class="landing-summary__stats">
-          <div>
-            <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_one', 'Assessments submitted'), ENT_QUOTES, 'UTF-8') ?></dt>
-            <dd><?= $metricSubmissions ?></dd>
-          </div>
-          <div>
-            <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_two', 'Average completion time'), ENT_QUOTES, 'UTF-8') ?></dt>
-            <dd><?= $metricCompletion ?></dd>
-          </div>
-          <div>
-            <dt><?= htmlspecialchars(t($t, 'landing_summary_metric_three', 'Leadership adoption'), ENT_QUOTES, 'UTF-8') ?></dt>
-            <dd><?= $metricAdoption ?></dd>
-          </div>
-        </dl>
-      </section>
     </main>
 
     <footer class="landing-footer">
