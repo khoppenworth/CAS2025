@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../lib/work_functions.php';
+if (!function_exists('available_work_functions')) {
+    require_once __DIR__ . '/../lib/work_functions.php';
+}
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
