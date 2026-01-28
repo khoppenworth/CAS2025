@@ -233,7 +233,7 @@ body.landing-body {
   margin: 0 0 1rem;
   font-size: 1.5rem;
   line-height: 1.35;
-  color: var(--app-text-primary, #102447);
+  color: var(--landing-primary-dark);
 }
 
 .landing-summary__card p {
@@ -296,7 +296,7 @@ body.landing-body {
 .landing-section__header h2 {
   margin: 0 0 1rem;
   font-size: clamp(1.8rem, 3.2vw, 2.35rem);
-  color: var(--app-text-primary, #0f1c31);
+  color: var(--landing-primary-dark);
 }
 
 .landing-section__header p {
@@ -333,7 +333,7 @@ body.landing-body {
 .landing-feature-card h3 {
   margin: 0 0 0.85rem;
   font-size: 1.35rem;
-  color: var(--app-text-primary, #1c2e4f);
+  color: var(--landing-primary-dark);
 }
 
 .landing-feature-card p {
@@ -363,7 +363,7 @@ body.landing-body {
 .landing-section--cta h2 {
   margin: 0 0 1rem;
   font-size: clamp(1.9rem, 3vw, 2.4rem);
-  color: var(--app-text-primary, #12244b);
+  color: var(--landing-primary-dark);
 }
 
 .landing-section--cta p {
