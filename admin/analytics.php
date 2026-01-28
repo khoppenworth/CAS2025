@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('available_work_functions')) {
+    require_once __DIR__ . '/../lib/work_functions.php';
+}
 require_once __DIR__ . '/../lib/analytics_report.php';
 require_once __DIR__ . '/../lib/scoring.php';
 
