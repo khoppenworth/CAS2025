@@ -138,6 +138,8 @@ if ($upgradeState['upgrade_repo'] === '') {
 $flashMessage = $_SESSION['admin_dashboard_flash'] ?? '';
 $flashType = $_SESSION['admin_dashboard_flash_type'] ?? 'info';
 unset($_SESSION['admin_dashboard_flash'], $_SESSION['admin_dashboard_flash_type']);
+$upgradePopup = $_SESSION['admin_upgrade_popup'] ?? null;
+unset($_SESSION['admin_upgrade_popup']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -310,6 +312,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $flashMessage = t($t, 'upgrade_command_failed', 'The upgrade command returned a non-zero exit code. Review the log for details.');
                     $flashType = 'error';
+                    $_SESSION['admin_upgrade_popup'] = [
+                        'message' => $flashMessage,
+                    ];
                 }
             } catch (Throwable $upgradeError) {
                 error_log('Admin upgrade failed: ' . $upgradeError->getMessage());
@@ -327,6 +332,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'The upgrade could not be completed. Review the logs and database permissions, then try again.'
                 );
                 $flashType = 'error';
+                $_SESSION['admin_upgrade_popup'] = [
+                    'message' => $flashMessage,
+                ];
             }
             break;
 
@@ -379,6 +387,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $flashMessage = t($t, 'restore_backup_failed', 'The restore command failed. Review the log for details.');
                     $flashType = 'error';
+                    $_SESSION['admin_upgrade_popup'] = [
+                        'message' => $flashMessage,
+                    ];
                 }
             } catch (Throwable $restoreError) {
                 error_log('Admin restore failed: ' . $restoreError->getMessage());
@@ -392,6 +403,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
                 $flashMessage = t($t, 'restore_backup_failed', 'The restore command failed. Review the log for details.');
                 $flashType = 'error';
+                $_SESSION['admin_upgrade_popup'] = [
+                    'message' => $flashMessage,
+                ];
             }
             break;
 
@@ -563,6 +577,18 @@ $pageHelpKey = 'admin.dashboard';
       }
     ?>
     <div class="md-alert<?=$alertClass?>"><?=htmlspecialchars($flashMessage, ENT_QUOTES, 'UTF-8')?></div>
+  <?php endif; ?>
+  <?php if (is_array($upgradePopup) && !empty($upgradePopup['message'])): ?>
+    <div class="md-upgrade-popup" role="alertdialog" aria-live="assertive" aria-label="<?=htmlspecialchars(t($t, 'upgrade_failed', 'Upgrade failed'), ENT_QUOTES, 'UTF-8')?>">
+      <div class="md-upgrade-popup__backdrop"></div>
+      <div class="md-upgrade-popup__dialog">
+        <div class="md-upgrade-popup__header">
+          <span class="md-upgrade-popup__title"><?=htmlspecialchars(t($t, 'upgrade_failed', 'Upgrade failed'), ENT_QUOTES, 'UTF-8')?></span>
+          <button type="button" class="md-upgrade-popup__close" data-upgrade-popup-close aria-label="<?=htmlspecialchars(t($t, 'close', 'Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+        </div>
+        <p class="md-upgrade-popup__message"><?=htmlspecialchars((string)$upgradePopup['message'], ENT_QUOTES, 'UTF-8')?></p>
+      </div>
+    </div>
   <?php endif; ?>
 
   <div class="md-upgrade-progress" data-upgrade-progress hidden aria-hidden="true">
@@ -788,5 +814,17 @@ $pageHelpKey = 'admin.dashboard';
     </div>
   </div>
 </section>
+<script>
+  document.addEventListener('click', function (event) {
+    const closeButton = event.target.closest('[data-upgrade-popup-close]');
+    if (!closeButton) {
+      return;
+    }
+    const popup = closeButton.closest('.md-upgrade-popup');
+    if (popup) {
+      popup.remove();
+    }
+  });
+</script>
 <?php include __DIR__.'/../templates/footer.php'; ?>
 </body></html>

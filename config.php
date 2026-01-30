@@ -126,27 +126,30 @@ if ($isBootstrapRequested) {
     }
 }
 
-if (!function_exists('str_starts_with')) {
-    function str_starts_with(string $haystack, string $needle): bool
-    {
-        if ($needle === '') {
-            return true;
-        }
+if (!defined('APP_FUNCTIONS_LOADED')) {
+    define('APP_FUNCTIONS_LOADED', true);
 
-        return strncmp($haystack, $needle, strlen($needle)) === 0;
+    if (!function_exists('str_starts_with')) {
+function str_starts_with(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
     }
+
+    return strncmp($haystack, $needle, strlen($needle)) === 0;
 }
-
-if (!function_exists('str_contains')) {
-    function str_contains(string $haystack, string $needle): bool
-    {
-        if ($needle === '') {
-            return true;
-        }
-
-        return strpos($haystack, $needle) !== false;
     }
+
+    if (!function_exists('str_contains')) {
+function str_contains(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
+    }
+
+    return strpos($haystack, $needle) !== false;
 }
+    }
 
 function site_default_brand_color(array $cfg): string
 {
@@ -1569,5 +1572,6 @@ function contrast_color(string $hex): string
         return shade_color($hex, 0.85);
     }
     return tint_color($hex, 0.85);
+}
 }
 ?>
