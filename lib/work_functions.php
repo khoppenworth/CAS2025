@@ -409,10 +409,16 @@ function canonical(string $value, ?array $definitions = null): string
     return canonical_work_function_key($value, $definitions);
 }
 
+if (!function_exists('canonical_work_function')) {
+    function canonical_work_function(string $value, ?array $definitions = null): string
+    {
+        return canonical_work_function_key($value, $definitions);
+    }
+}
+
 /**
  * @return array<string,string>
  */
-/*
 if (!function_exists('work_function_choices')) {
     function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
     {
@@ -453,7 +459,6 @@ if (!function_exists('work_function_choices')) {
         return $choices;
     }
 }
-*/
 
 /**
  * @return array<string,list<int>>
