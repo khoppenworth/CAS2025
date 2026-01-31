@@ -1028,9 +1028,9 @@ body.theme-dark .md-user-card__heading h3 {
 }
 
 .md-user-chip.status-active {
-  background: var(--status-success-soft);
-  color: var(--status-success-text);
-  box-shadow: inset 0 0 0 1px var(--status-success-soft);
+  background: rgba(34, 197, 94, 0.18);
+  color: #166534;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
 }
 
 .md-user-chip.status-pending {
@@ -1052,9 +1052,9 @@ body.theme-dark .md-user-chip {
 }
 
 body.theme-dark .md-user-chip.status-active {
-  background: var(--status-success-soft);
-  color: var(--status-success-surface);
-  box-shadow: inset 0 0 0 1px var(--status-success-soft);
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.4);
 }
 
 body.theme-dark .md-user-chip.status-pending {
@@ -3359,6 +3359,61 @@ body.theme-dark .md-upgrade-progress__dialog {
 
 body.theme-dark .md-upgrade-progress__message {
   color: var(--app-on-surface);
+}
+
+.md-upgrade-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.md-upgrade-popup__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.md-upgrade-popup__dialog {
+  position: relative;
+  z-index: 1;
+  background: #fff1f1;
+  border: 2px solid #c62828;
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 520px;
+  width: calc(100% - 32px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+}
+
+.md-upgrade-popup__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.md-upgrade-popup__title {
+  font-weight: 600;
+  color: #b71c1c;
+  font-size: 1.1rem;
+}
+
+.md-upgrade-popup__close {
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #b71c1c;
+}
+
+.md-upgrade-popup__message {
+  margin: 0;
+  color: #5f2121;
+  font-size: 0.95rem;
 }
 
 @keyframes md-upgrade-progress-spin {

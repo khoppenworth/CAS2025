@@ -1,11 +1,138 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('available_work_functions')) {
+    require_once __DIR__ . '/../lib/work_functions.php';
+}
+
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+
+$flashKey = 'work_function_defaults_flash';
+$catalogFlashKey = 'work_function_catalog_flash';
+
+$builtInWorkFunctions = [
+    'cmd' => 'Change Management & Development',
+    'communication' => 'Communications & Partnerships',
+    'dfm' => 'Demand Forecasting & Management',
+    'driver' => 'Driver Services',
+    'ethics' => 'Ethics & Compliance',
+    'finance' => 'Finance & Grants',
+    'general_service' => 'General Services',
+    'hrm' => 'Human Resources Management',
+    'ict' => 'Information & Communication Technology',
+    'leadership_tn' => 'Leadership & Team Nurturing',
+    'legal_service' => 'Legal Services',
+    'pme' => 'Planning, Monitoring & Evaluation',
+    'quantification' => 'Quantification & Procurement',
+    'records_documentation' => 'Records & Documentation',
+    'security' => 'Security Operations',
+    'security_driver' => 'Security & Driver Management',
+    'tmd' => 'Training & Mentorship Development',
+    'wim' => 'Warehouse & Inventory Management',
+];
+
+$normalizedDefinitions = [];
+foreach ($builtInWorkFunctions as $key => $label) {
+    $normalizedDefinitions[strtolower((string)$key)] = (string)$key;
+}
+
+$canonicalize = static function (string $value) use ($builtInWorkFunctions, $normalizedDefinitions): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (isset($builtInWorkFunctions[$value])) {
+        return $value;
+    }
+
+    $lowerValue = strtolower($value);
+    if (isset($normalizedDefinitions[$lowerValue])) {
+        return $normalizedDefinitions[$lowerValue];
+    }
+
+    foreach ($builtInWorkFunctions as $key => $label) {
+        if (strcasecmp($value, (string)$label) === 0) {
+            return (string)$key;
+        }
+    }
+
+    $normalized = preg_replace('/[^a-z0-9]+/i', '_', $lowerValue) ?? '';
+    $normalized = trim($normalized, '_');
+    if ($normalized === '') {
+        return '';
+    }
+
+    if (isset($normalizedDefinitions[$normalized])) {
+        return $normalizedDefinitions[$normalized];
+    }
+
+    return $normalized;
+};
+
+$driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
+try {
+    if ($driver === 'sqlite') {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+            . 'slug TEXT NOT NULL PRIMARY KEY, '
+            . 'label TEXT NOT NULL, '
+            . 'sort_order INTEGER NOT NULL DEFAULT 0, '
+            . 'archived_at TEXT NULL, '
+            . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
+            . ')'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS questionnaire_work_function ('
+            . 'questionnaire_id INTEGER NOT NULL, '
+            . 'work_function TEXT NOT NULL, '
+            . 'PRIMARY KEY (questionnaire_id, work_function)'
+            . ')'
+        );
+    } else {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+            . 'slug VARCHAR(100) NOT NULL PRIMARY KEY, '
+            . 'label VARCHAR(255) NOT NULL, '
+            . 'sort_order INT NOT NULL DEFAULT 0, '
+            . 'archived_at DATETIME NULL, '
+            . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+        try {
+            $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+        } catch (Throwable $e) {
+            // ignore duplicate index errors
+        }
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS questionnaire_work_function ('
+            . 'questionnaire_id INT NOT NULL, '
+            . 'work_function VARCHAR(191) NOT NULL, '
+            . 'PRIMARY KEY (questionnaire_id, work_function)'
+            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults schema setup failed: ' . $e->getMessage());
+}
+
+$msg = $_SESSION[$flashKey] ?? '';
+if ($msg !== '') {
+    unset($_SESSION[$flashKey]);
+}
+$catalogMsg = $_SESSION[$catalogFlashKey] ?? '';
+if ($catalogMsg !== '') {
+    unset($_SESSION[$catalogFlashKey]);
+}
+
+$errors = [];
+$catalogErrors = [];
+
 $questionnaires = [];
 $questionnaireMap = [];
 try {
@@ -34,9 +161,120 @@ if ($catalogMsg !== '') {
     unset($_SESSION['work_function_catalog_flash']);
 }
 
-$workFunctionOptions = available_work_functions($pdo);
+$catalogCount = 0;
+try {
+    $stmt = $pdo->query('SELECT COUNT(*) FROM work_function_catalog');
+    if ($stmt) {
+        $catalogCount = (int) $stmt->fetchColumn();
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults catalog count failed: ' . $e->getMessage());
+}
+
+if ($catalogCount === 0) {
+    $sortOrder = 1;
+    try {
+        $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
+        foreach ($builtInWorkFunctions as $slug => $label) {
+            try {
+                $insert->execute([$slug, $label, $sortOrder]);
+                $sortOrder++;
+            } catch (PDOException $e) {
+                error_log('work_function_defaults catalog seed failed: ' . $e->getMessage());
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('work_function_defaults catalog seed prepare failed: ' . $e->getMessage());
+    }
+}
+
+$workFunctionCatalog = [];
+try {
+    $stmt = $pdo->query('SELECT slug, label, sort_order, archived_at FROM work_function_catalog ORDER BY archived_at IS NOT NULL, sort_order, label');
+    if ($stmt) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $slug = (string)($row['slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+            $workFunctionCatalog[$slug] = [
+                'label' => (string)($row['label'] ?? ''),
+                'sort_order' => (int)($row['sort_order'] ?? 0),
+                'archived_at' => $row['archived_at'] ?? null,
+            ];
+        }
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults catalog fetch failed: ' . $e->getMessage());
+}
+
+$workFunctionOptions = [];
+foreach ($workFunctionCatalog as $slug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $label = trim((string)($record['label'] ?? ''));
+    if ($label !== '') {
+        $workFunctionOptions[$slug] = $label;
+    }
+}
+
+$sourceKeys = [];
+try {
+    $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function IS NOT NULL AND work_function <> ""');
+    if ($stmt) {
+        $sourceKeys = array_merge($sourceKeys, $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults assignment keys failed: ' . $e->getMessage());
+}
+
+try {
+    $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> ''");
+    if ($stmt) {
+        $sourceKeys = array_merge($sourceKeys, $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults user keys failed: ' . $e->getMessage());
+}
+
+foreach ($sourceKeys as $key) {
+    $canonical = $canonicalize((string)$key);
+    if ($canonical === '') {
+        continue;
+    }
+    if (!isset($workFunctionOptions[$canonical])) {
+        if (isset($workFunctionCatalog[$canonical]['label']) && $workFunctionCatalog[$canonical]['label'] !== '') {
+            $workFunctionOptions[$canonical] = $workFunctionCatalog[$canonical]['label'];
+        } elseif (isset($builtInWorkFunctions[$canonical])) {
+            $workFunctionOptions[$canonical] = $builtInWorkFunctions[$canonical];
+        } else {
+            $workFunctionOptions[$canonical] = ucwords(str_replace('_', ' ', $canonical));
+        }
+    }
+}
+
 $workFunctionKeys = array_keys($workFunctionOptions);
-$assignmentsByWorkFunction = work_function_assignments($pdo);
+$assignmentsByWorkFunction = [];
+try {
+    $stmt = $pdo->query('SELECT questionnaire_id, work_function FROM questionnaire_work_function');
+    if ($stmt) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $wf = $canonicalize((string)($row['work_function'] ?? ''));
+            $qid = (int)($row['questionnaire_id'] ?? 0);
+            if ($wf === '' || $qid <= 0) {
+                continue;
+            }
+            if (!isset($assignmentsByWorkFunction[$wf])) {
+                $assignmentsByWorkFunction[$wf] = [];
+            }
+            $assignmentsByWorkFunction[$wf][] = $qid;
+        }
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults assignments fetch failed: ' . $e->getMessage());
+}
+
 foreach ($workFunctionKeys as $wf) {
     if (!isset($assignmentsByWorkFunction[$wf])) {
         $assignmentsByWorkFunction[$wf] = [];
@@ -52,25 +290,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         try {
             if ($mode === 'catalog_add') {
-                $label = (string)($_POST['label'] ?? '');
-                $slugInput = isset($_POST['slug']) ? (string)$_POST['slug'] : null;
-                create_work_function($pdo, $label, $slugInput);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_created', 'Work function added.');
+                $label = trim((string)($_POST['label'] ?? ''));
+                $slugInput = isset($_POST['slug']) ? trim((string)$_POST['slug']) : '';
+                if ($label === '') {
+                    throw new InvalidArgumentException('Work function name is required.');
+                }
+                $slugSource = $slugInput !== '' ? $slugInput : $label;
+                $slug = $canonicalize($slugSource);
+                if ($slug === '') {
+                    throw new InvalidArgumentException('Work function key is required.');
+                }
+                $checkStmt = $pdo->prepare('SELECT COUNT(*) FROM work_function_catalog WHERE slug = ?');
+                $checkStmt->execute([$slug]);
+                if ((int)$checkStmt->fetchColumn() > 0) {
+                    throw new InvalidArgumentException('Work function key already exists.');
+                }
+                $sortOrder = 0;
+                $sortStmt = $pdo->query('SELECT MAX(sort_order) FROM work_function_catalog');
+                if ($sortStmt) {
+                    $sortOrder = (int)$sortStmt->fetchColumn();
+                }
+                $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
+                $insert->execute([$slug, $label, $sortOrder + 1]);
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_created', 'Work function added.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
             if ($mode === 'catalog_update') {
-                $slug = (string)($_POST['slug'] ?? '');
-                $label = (string)($_POST['label'] ?? '');
-                update_work_function_label($pdo, $slug, $label);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_updated', 'Work function updated.');
+                $slug = $canonicalize((string)($_POST['slug'] ?? ''));
+                $label = trim((string)($_POST['label'] ?? ''));
+                if ($slug === '' || $label === '') {
+                    throw new InvalidArgumentException('Work function name is required.');
+                }
+                $update = $pdo->prepare('UPDATE work_function_catalog SET label = ? WHERE slug = ?');
+                $update->execute([$label, $slug]);
+                if ($update->rowCount() === 0) {
+                    throw new InvalidArgumentException('Work function does not exist.');
+                }
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_updated', 'Work function updated.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
             if ($mode === 'catalog_archive') {
-                $slug = (string)($_POST['slug'] ?? '');
-                archive_work_function($pdo, $slug);
-                $_SESSION['work_function_catalog_flash'] = t($t, 'work_function_catalog_archived', 'Work function archived.');
+                $slug = $canonicalize((string)($_POST['slug'] ?? ''));
+                if ($slug === '') {
+                    throw new InvalidArgumentException('Work function does not exist.');
+                }
+                $pdo->beginTransaction();
+                try {
+                    $archive = $pdo->prepare('UPDATE work_function_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ?');
+                    $archive->execute([$slug]);
+                    if ($archive->rowCount() === 0) {
+                        throw new InvalidArgumentException('Work function does not exist.');
+                    }
+                    $removeAssignments = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE work_function = ?');
+                    $removeAssignments->execute([$slug]);
+                    $clearUsers = $pdo->prepare('UPDATE users SET work_function = NULL WHERE work_function = ?');
+                    $clearUsers->execute([$slug]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+                $_SESSION[$catalogFlashKey] = t($t, 'work_function_catalog_archived', 'Work function archived.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             }
@@ -100,19 +382,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_array($input)) {
             $input = [];
         }
-        $normalized = normalize_work_function_assignments(
-            $input,
-            $workFunctionKeys,
-            array_keys($questionnaireMap)
-        );
+        $validWorkFunctions = array_flip($workFunctionKeys);
+        $validQuestionnaires = array_flip(array_keys($questionnaireMap));
+        $normalized = [];
+        foreach ($input as $workFunction => $ids) {
+            $canonical = $canonicalize((string)$workFunction);
+            if ($canonical === '' || !isset($validWorkFunctions[$canonical])) {
+                continue;
+            }
+            if (!is_array($ids)) {
+                $ids = [$ids];
+            }
+            $clean = [];
+            foreach ($ids as $id) {
+                $qid = (int)$id;
+                if ($qid > 0 && isset($validQuestionnaires[$qid])) {
+                    $clean[] = $qid;
+                }
+            }
+            $clean = array_values(array_unique($clean));
+            sort($clean, SORT_NUMERIC);
+            $normalized[$canonical] = $clean;
+        }
+        foreach ($workFunctionKeys as $workFunction) {
+            if (!isset($normalized[$workFunction])) {
+                $normalized[$workFunction] = [];
+            }
+        }
+        ksort($normalized);
         $assignmentsByWorkFunction = $normalized;
         if ($errors === []) {
             try {
-                save_work_function_assignments($pdo, $normalized);
-                $_SESSION['work_function_defaults_flash'] = t($t, 'work_function_defaults_saved', 'Default questionnaire assignments updated.');
+                $pdo->beginTransaction();
+                $pdo->exec('DELETE FROM questionnaire_work_function');
+                if ($normalized !== []) {
+                    $insert = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+                    foreach ($normalized as $workFunction => $questionnaireIds) {
+                        foreach ($questionnaireIds as $questionnaireId) {
+                            $insert->execute([(int)$questionnaireId, $workFunction]);
+                        }
+                    }
+                }
+                $pdo->commit();
+                $_SESSION[$flashKey] = t($t, 'work_function_defaults_saved', 'Default questionnaire assignments updated.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             } catch (Throwable $e) {
+                $pdo->rollBack();
                 error_log('work_function_defaults save failed: ' . $e->getMessage());
                 $errors[] = t($t, 'work_function_defaults_save_failed', 'Unable to save work function defaults. Please try again.');
             }
@@ -120,7 +436,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$workFunctionCatalog = work_function_catalog($pdo);
 $hasActiveCatalog = false;
 foreach ($workFunctionCatalog as $record) {
     if (($record['archived_at'] ?? null) === null) {
@@ -133,7 +448,7 @@ try {
     $stmt = $pdo->query("SELECT work_function, COUNT(*) AS c FROM users WHERE work_function IS NOT NULL AND work_function <> '' GROUP BY work_function");
     if ($stmt) {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $wf = canonical_work_function_key((string)($row['work_function'] ?? ''));
+            $wf = $canonicalize((string)($row['work_function'] ?? ''));
             if ($wf !== '') {
                 $staffCounts[$wf] = (int)($row['c'] ?? 0);
             }
@@ -258,7 +573,17 @@ foreach ($assignmentsByWorkFunction as $wf => $ids) {
           <p class="md-hint"><?=htmlspecialchars(t($t, 'work_function_defaults_none', 'No work functions are available yet. Staff members can continue to receive questionnaires assigned directly to them.'), ENT_QUOTES, 'UTF-8')?></p>
         <?php endif; ?>
         <?php foreach ($workFunctionKeys as $wf): ?>
-          <?php $label = $workFunctionOptions[$wf] ?? work_function_label($pdo, $wf); ?>
+          <?php
+          if (isset($workFunctionOptions[$wf])) {
+              $label = $workFunctionOptions[$wf];
+          } elseif (isset($workFunctionCatalog[$wf]['label']) && $workFunctionCatalog[$wf]['label'] !== '') {
+              $label = $workFunctionCatalog[$wf]['label'];
+          } elseif (isset($builtInWorkFunctions[$wf])) {
+              $label = $builtInWorkFunctions[$wf];
+          } else {
+              $label = ucwords(str_replace('_', ' ', (string)$wf));
+          }
+          ?>
           <div class="md-work-function-card" data-work-function-block data-work-function="<?=htmlspecialchars($wf, ENT_QUOTES, 'UTF-8')?>">
             <div class="md-work-function-heading">
               <h3><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></h3>

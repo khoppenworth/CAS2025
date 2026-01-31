@@ -86,6 +86,11 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     <img src="<?=$logoPathSmall?>" alt="<?=$siteLogoAlt?>" class="md-appbar-logo" loading="lazy">
     <span><?=$siteTitle?></span>
   </div>
+  <div class="md-appbar-actions">
+    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
+      <?=t($t, 'logout', 'Logout')?>
+    </a>
+  </div>
 </header>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {
@@ -535,15 +540,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <span class="md-topnav-link-icon" aria-hidden="true">↻</span>
           </button>
         </li>
-        <li>
-          <button type="button" class="md-topnav-link" data-help-toggle aria-haspopup="dialog" aria-expanded="false">
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'system_help', 'Help & tips'), ENT_QUOTES, 'UTF-8')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'system_help_summary', 'Review guidance and tips for this page.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">?</span>
-          </button>
-        </li>
         <?php foreach ($availableLocales as $loc): ?>
           <li>
             <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link<?=($locale === $loc) ? ' active' : ''?>">
@@ -560,15 +556,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <span class="md-topnav-link-content">
               <span class="md-topnav-link-title"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></span>
               <span class="md-topnav-link-desc"><?=t($t, 'profile_summary', 'Update your profile details and settings.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-          </a>
-        </li>
-        <li>
-          <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=t($t, 'logout', 'Logout')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'logout_summary', 'Sign out of your account safely.')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
           </a>
