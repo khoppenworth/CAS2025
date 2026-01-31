@@ -229,9 +229,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete'])) {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            $stm = $pdo->prepare('DELETE FROM users WHERE id=?');
+            $stm = $pdo->prepare("UPDATE users SET account_status = 'disabled' WHERE id=?");
             $stm->execute([$id]);
-            $_SESSION['admin_users_flash'] = t($t, 'user_deleted', 'User deleted successfully.');
+            $_SESSION['admin_users_flash'] = t($t, 'user_deactivated', 'User deactivated successfully.');
             header('Location: ' . url_for('admin/users.php'));
             exit;
         }
@@ -553,10 +553,10 @@ foreach ($rows as $r) {
                 <button name="reset" class="md-button md-elev-1 md-user-action-button"><?=t($t,'apply','Apply')?></button>
               </div>
             </form>
-            <form method="post" action="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" class="md-user-delete-form" data-verify-user="<?=htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8')?>" data-verify-prompt="<?=htmlspecialchars(t($t,'confirm_delete_prompt','Type the username to confirm deletion.'), ENT_QUOTES, 'UTF-8')?>" data-verify-mismatch="<?=htmlspecialchars(t($t,'delete_verification_failed','The entered username did not match. No changes were made.'), ENT_QUOTES, 'UTF-8')?>">
+            <form method="post" action="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" class="md-user-delete-form" data-verify-user="<?=htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8')?>" data-verify-prompt="<?=htmlspecialchars(t($t,'confirm_deactivate_prompt','Type the username to confirm deactivation.'), ENT_QUOTES, 'UTF-8')?>" data-verify-mismatch="<?=htmlspecialchars(t($t,'deactivate_verification_failed','The entered username did not match. No changes were made.'), ENT_QUOTES, 'UTF-8')?>">
               <input type="hidden" name="csrf" value="<?=csrf_token()?>">
               <input type="hidden" name="id" value="<?=$record['id']?>">
-              <button name="delete" class="md-button md-danger md-elev-1 md-user-action-button" type="submit"><?=t($t,'delete','Delete')?></button>
+              <button name="delete" class="md-button md-danger md-elev-1 md-user-action-button" type="submit"><?=t($t,'deactivate','Deactivate')?></button>
             </form>
           </div>
         </article>
@@ -612,7 +612,7 @@ foreach ($rows as $r) {
   forms.forEach((form) => {
     form.addEventListener('submit', (event) => {
       const expected = form.dataset.verifyUser || '';
-      const promptMessage = form.dataset.verifyPrompt || 'Type the username to confirm deletion.';
+      const promptMessage = form.dataset.verifyPrompt || 'Type the username to confirm deactivation.';
       const mismatch = form.dataset.verifyMismatch || 'The entered username did not match. No changes were made.';
       const response = window.prompt(promptMessage, '');
       if (response === null) {

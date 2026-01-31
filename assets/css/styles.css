@@ -1208,6 +1208,18 @@ body.theme-dark .md-field.md-field--compact select {
   min-width: clamp(8rem, 18vw, 10.5rem);
 }
 
+.md-user-delete-form .md-user-action-button.md-danger {
+  background: var(--app-danger, #dc2626);
+  box-shadow: 0 12px 30px rgba(220, 38, 38, 0.35);
+  color: var(--app-on-primary, #ffffff);
+}
+
+.md-user-delete-form .md-user-action-button.md-danger:hover,
+.md-user-delete-form .md-user-action-button.md-danger:focus {
+  background: #b91c1c;
+  box-shadow: 0 12px 30px rgba(185, 28, 28, 0.35);
+}
+
 @media (max-width: 720px) {
   .md-user-card__footer {
     flex-direction: column;
