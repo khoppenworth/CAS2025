@@ -1070,6 +1070,7 @@ unset($_SESSION['questionnaire_import_flash'], $_SESSION['questionnaire_import_f
 if (isset($_POST['import'])) {
     csrf_check();
     $recentImportId = null;
+    $parseErrors = [];
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
         $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
@@ -1091,8 +1092,10 @@ if (isset($_POST['import'])) {
                         return trim($err->message) . ' on line ' . $err->line;
                     }, $xmlErrors);
                     error_log('Questionnaire import XML parse errors: ' . implode(' | ', $messages));
+                    $parseErrors = array_slice($messages, 0, 3);
                 } else {
                     error_log('Questionnaire import XML parse failed with no libxml errors.');
+                    $parseErrors = ['XML parsing failed with no additional error details.'];
                 }
                 libxml_clear_errors();
             }
@@ -1100,9 +1103,14 @@ if (isset($_POST['import'])) {
         }
         if ($data) {
             $qs = [];
+            $bundleResourceTypes = [];
             if (($data['resourceType'] ?? '') === 'Bundle') {
                 foreach ($data['entry'] ?? [] as $entry) {
-                    if (($entry['resource']['resourceType'] ?? '') === 'Questionnaire') {
+                    $entryResourceType = $entry['resource']['resourceType'] ?? null;
+                    if ($entryResourceType) {
+                        $bundleResourceTypes[] = $entryResourceType;
+                    }
+                    if ($entryResourceType === 'Questionnaire') {
                         $qs[] = $entry['resource'];
                     }
                 }
@@ -1112,6 +1120,10 @@ if (isset($_POST['import'])) {
 
             if ($qs) {
                 $startedTransaction = false;
+                $importedQuestionnaires = 0;
+                $importedSections = 0;
+                $importedItems = 0;
+                $importedOptions = 0;
                 try {
                     if (!$pdo->inTransaction()) {
                         $pdo->beginTransaction();
@@ -1130,6 +1142,7 @@ if (isset($_POST['import'])) {
                         $insertQuestionnaireStmt->execute([$title, $description]);
                         $qid = (int)$pdo->lastInsertId();
                         $recentImportId = $qid;
+                        $importedQuestionnaires++;
 
                         foreach ($availableWorkFunctions as $wf) {
                             $insertWorkFunctionStmt->execute([$qid, $wf]);
@@ -1191,7 +1204,7 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy) {
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, &$importedSections, &$importedItems, &$importedOptions) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -1211,6 +1224,7 @@ if (isset($_POST['import'])) {
                                     $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
                                     $newSectionId = (int)$pdo->lastInsertId();
                                     $sectionOrder++;
+                                    $importedSections++;
                                     if ($hasChildren) {
                                         $processItems($childList, $newSectionId);
                                     }
@@ -1245,6 +1259,7 @@ if (isset($_POST['import'])) {
                                     $isTruthy($it['required'] ?? false) ? 1 : 0,
                                 ]);
                                 $itemId = (int)$pdo->lastInsertId();
+                                $importedItems++;
                                 if ($dbType === 'choice' || $dbType === 'likert') {
                                     $options = $toList($it['answerOption'] ?? []);
                                     $optionOrder = 1;
@@ -1266,11 +1281,13 @@ if (isset($_POST['import'])) {
                                         }
                                         $insertOptionStmt->execute([$itemId, $normalizedValue, 0, $optionOrder]);
                                         $optionOrder++;
+                                        $importedOptions++;
                                     }
                                     if ($dbType === 'likert' && $optionOrder === 1) {
                                         foreach (LIKERT_DEFAULT_OPTIONS as $label) {
                                             $insertOptionStmt->execute([$itemId, qb_import_truncate($label, QB_IMPORT_MAX_OPTION_VALUE), 0, $optionOrder]);
                                             $optionOrder++;
+                                            $importedOptions++;
                                         }
                                     }
                                 }
@@ -1284,7 +1301,17 @@ if (isset($_POST['import'])) {
                     if ($startedTransaction) {
                         $pdo->commit();
                     }
-                    $msg = t($t, 'fhir_import_complete', 'FHIR import complete');
+                    $summary = sprintf(
+                        'FHIR import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
+                        $importedQuestionnaires,
+                        $importedSections,
+                        $importedItems,
+                        $importedOptions
+                    );
+                    if ($importedItems === 0) {
+                        $summary .= ' No items were imported. Verify that your Questionnaire resources include item definitions.';
+                    }
+                    $msg = t($t, 'fhir_import_complete', $summary);
                 } catch (Throwable $e) {
                     if ($startedTransaction && $pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -1293,10 +1320,29 @@ if (isset($_POST['import'])) {
                     $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
                 }
             } else {
-                $msg = t($t, 'no_questionnaires_found', 'No questionnaires found in the import file.');
+                $resourceType = $data['resourceType'] ?? 'unknown';
+                $detail = 'No questionnaires found in the import file.';
+                if ($resourceType === 'Bundle') {
+                    $uniqueTypes = array_values(array_unique($bundleResourceTypes));
+                    if ($uniqueTypes) {
+                        $detail .= ' Bundle contained: ' . implode(', ', $uniqueTypes) . '.';
+                    } else {
+                        $detail .= ' Bundle entries were empty or missing resource types.';
+                    }
+                    $detail .= ' Ensure the Bundle includes Questionnaire resources.';
+                } elseif ($resourceType !== 'unknown') {
+                    $detail .= ' Detected resourceType "' . $resourceType . '". Expected Questionnaire or Bundle.';
+                } else {
+                    $detail .= ' Expected a FHIR Questionnaire or Bundle payload.';
+                }
+                $msg = t($t, 'no_questionnaires_found', $detail);
             }
         } else {
-            $msg = t($t, 'invalid_file', 'Invalid file');
+            $detail = 'Invalid file. Upload a FHIR Questionnaire XML or JSON file.';
+            if ($parseErrors) {
+                $detail .= ' XML parse errors: ' . implode(' | ', $parseErrors) . '.';
+            }
+            $msg = t($t, 'invalid_file', $detail);
         }
     } else {
         $msg = t($t, 'no_file_uploaded', 'No file uploaded');
