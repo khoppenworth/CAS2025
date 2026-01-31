@@ -1,7 +1,7 @@
 :root {
-  --landing-primary: var(--app-primary, #20407f);
-  --landing-primary-dark: var(--app-primary-dark, #14294e);
-  --landing-primary-darker: var(--app-primary-darker, #0c1a31);
+  --landing-primary: var(--app-primary, #0d63d9);
+  --landing-primary-dark: var(--app-primary-dark, #0c4fb0);
+  --landing-primary-darker: var(--app-primary-darker, #083575);
   --landing-accent: var(--app-secondary, #ff8a3d);
   --landing-surface: var(--app-surface, #ffffff);
   --landing-surface-muted: var(--app-surface-muted, #f3f6fb);
@@ -9,10 +9,9 @@
   --landing-background: var(
     --app-hero-gradient,
     linear-gradient(
-      120deg,
-      var(--landing-primary-darker) 0%,
-      var(--landing-primary-dark) 48%,
-      var(--landing-primary) 100%
+      135deg,
+      var(--landing-primary) 0%,
+      color-mix(in srgb, var(--landing-primary) 70%, #2ba7ff 30%) 100%
     )
   );
   --landing-radius-lg: 28px;
@@ -42,10 +41,9 @@ body.landing-body {
 
 .landing-hero {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(280px, 520px) minmax(280px, 1fr);
-  gap: clamp(2.5rem, 5vw, 4.5rem);
-  padding: clamp(3.25rem, 7vw, 6.25rem) clamp(1.75rem, 6vw, 4.5rem);
+  display: flex;
+  justify-content: center;
+  padding: clamp(3.5rem, 7vw, 6.5rem) clamp(1.75rem, 6vw, 4.5rem);
   background: var(--landing-background);
   overflow: hidden;
   align-items: center;
@@ -92,7 +90,7 @@ body.landing-body {
 }
 
 .landing-hero__content {
-  max-width: 720px;
+  max-width: 780px;
   color: #e8edf7;
 }
 
@@ -164,6 +162,28 @@ body.landing-body {
   color: rgba(226, 233, 245, 0.92);
 }
 
+.landing-hero__summary {
+  margin: 1.75rem 0 0;
+  padding: 1.5rem 1.75rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 26px rgba(5, 20, 46, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.landing-hero__summary h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.25rem;
+  color: #ffffff;
+}
+
+.landing-hero__summary p {
+  margin: 0;
+  color: rgba(230, 238, 249, 0.9);
+  line-height: 1.6;
+}
+
 .landing-hero__actions {
   display: flex;
   flex-wrap: wrap;
@@ -174,7 +194,7 @@ body.landing-body {
 
 .landing-hero__cta-note {
   margin: 0;
-  color: #2b3c55;
+  color: rgba(235, 242, 252, 0.85);
   font-size: 0.98rem;
 }
 
@@ -211,63 +231,6 @@ body.landing-body {
 .landing-button--ghost:hover,
 .landing-button--ghost:focus-visible {
   background: rgba(255, 255, 255, 0.12);
-}
-
-.landing-hero__summary {
-  display: flex;
-  justify-content: center;
-}
-
-.landing-summary__card {
-  align-self: stretch;
-  background: var(--landing-surface);
-  border-radius: var(--landing-radius-lg);
-  box-shadow: var(--landing-shadow-lg);
-  padding: 2.5rem;
-  color: var(--app-text-primary, #0f1c31);
-  max-width: 440px;
-  border: 1px solid var(--app-primary-softer, rgba(16, 36, 78, 0.08));
-}
-
-.landing-summary__card h2 {
-  margin: 0 0 1rem;
-  font-size: 1.5rem;
-  line-height: 1.35;
-  color: var(--landing-primary-dark);
-}
-
-.landing-summary__card p {
-  margin: 0 0 1.75rem;
-  color: var(--app-text-secondary, #4b5a6b);
-  line-height: 1.6;
-}
-
-.landing-summary__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1.25rem;
-  margin: 0;
-  padding: 0;
-}
-
-.landing-summary__stats div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.landing-summary__stats dt {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--app-text-muted, #516078);
-}
-
-.landing-summary__stats dd {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--app-text-primary, #0f1c31);
 }
 
 .landing-main {
@@ -432,7 +395,6 @@ body.landing-body {
 
 @media (max-width: 720px) {
   .landing-hero {
-    grid-template-columns: 1fr;
     text-align: center;
   }
 
@@ -442,11 +404,6 @@ body.landing-body {
 
   .landing-hero__actions {
     justify-content: center;
-  }
-
-  .landing-hero__summary {
-    justify-content: center;
-    margin-top: 2.5rem;
   }
 
   .landing-footer {

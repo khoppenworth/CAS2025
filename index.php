@@ -97,6 +97,10 @@ $featureItems = [
         </div>
         <h1 id="landing-title" class="landing-hero__title"><?= htmlspecialchars(t($t, 'landing_title', 'Performance that powers people'), ENT_QUOTES, 'UTF-8') ?></h1>
         <p class="landing-hero__subtitle"><?= $heroSubtitle ?></p>
+        <div class="landing-hero__summary" aria-label="<?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?>">
+          <h2><?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?></h2>
+          <p><?= htmlspecialchars(t($t, 'landing_summary_body', 'Use a single hub to align feedback, track completion, and surface development wins.'), ENT_QUOTES, 'UTF-8') ?></p>
+        </div>
         <div class="landing-hero__actions">
           <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
           <p class="landing-hero__cta-note"><?= htmlspecialchars(t($t, 'landing_cta_note', 'One secure sign-in for managers, reviewers, and employees.'), ENT_QUOTES, 'UTF-8') ?></p>
@@ -110,12 +114,6 @@ $featureItems = [
           <?php endforeach; ?>
         </ul>
       </div>
-      <aside class="landing-hero__summary" aria-label="<?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?>">
-        <div class="landing-summary__card">
-          <h2><?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?></h2>
-          <p><?= htmlspecialchars(t($t, 'landing_summary_body', 'Use a single hub to align feedback, track completion, and surface development wins.'), ENT_QUOTES, 'UTF-8') ?></p>
-        </div>
-      </aside>
     </header>
 
     <main class="landing-main" aria-labelledby="features-heading">
