@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
 
-if (function_exists('available_work_functions')) {
+if (defined('WORK_FUNCTIONS_LOADED')) {
     return;
 }
+define('WORK_FUNCTIONS_LOADED', true);
 
 /**
  * Retrieve the built-in (code-level) work function definition list.
