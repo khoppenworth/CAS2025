@@ -933,14 +933,21 @@
   syncOfflineCredentials();
   window.addEventListener('pageshow', syncOfflineCredentials);
 
+  let lastConnectivityState = isAppOnline() ? 'online' : 'offline';
+
   const handleConnectivityUpdate = (state) => {
     const online = state && typeof state.online === 'boolean' ? state.online : isAppOnline();
+    const nextState = online ? 'online' : 'offline';
+    if (lastConnectivityState === nextState) {
+      return;
+    }
     if (online) {
       showOfflineBanner('online');
     } else {
       offlineDismissedWhileOffline = false;
       showOfflineBanner('offline');
     }
+    lastConnectivityState = nextState;
   };
 
   if (connectivity) {
