@@ -7,7 +7,6 @@ if (!function_exists('available_work_functions')) {
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
-
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
@@ -150,6 +149,16 @@ try {
     }
 } catch (PDOException $e) {
     error_log('work_function_defaults questionnaire fetch failed: ' . $e->getMessage());
+    $questionnaires = [];
+    $questionnaireMap = [];
+}
+$msg = $_SESSION['work_function_defaults_flash'] ?? '';
+if ($msg !== '') {
+    unset($_SESSION['work_function_defaults_flash']);
+}
+$catalogMsg = $_SESSION['work_function_catalog_flash'] ?? '';
+if ($catalogMsg !== '') {
+    unset($_SESSION['work_function_catalog_flash']);
 }
 
 $catalogCount = 0;
@@ -271,6 +280,9 @@ foreach ($workFunctionKeys as $wf) {
         $assignmentsByWorkFunction[$wf] = [];
     }
 }
+
+$errors = [];
+$catalogErrors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mode = isset($_POST['mode']) ? (string)$_POST['mode'] : 'assignments';
@@ -431,7 +443,6 @@ foreach ($workFunctionCatalog as $record) {
         break;
     }
 }
-
 $staffCounts = [];
 try {
     $stmt = $pdo->query("SELECT work_function, COUNT(*) AS c FROM users WHERE work_function IS NOT NULL AND work_function <> '' GROUP BY work_function");
@@ -446,22 +457,18 @@ try {
 } catch (PDOException $e) {
     error_log('work_function_defaults staff count failed: ' . $e->getMessage());
 }
-
 $assignmentCounts = [];
 foreach ($assignmentsByWorkFunction as $wf => $ids) {
     $assignmentCounts[$wf] = is_array($ids) ? count($ids) : 0;
 }
-
-$baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
-$pageTitle = htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8');
 ?>
 <!doctype html>
-<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=$baseUrl?>">
+<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
 <head>
   <meta charset="utf-8">
-  <title><?=$pageTitle?></title>
+  <title><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="app-base-url" content="<?=$baseUrl?>">
+  <meta name="app-base-url" content="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
   <link rel="manifest" href="<?=asset_url('manifest.php')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
@@ -471,7 +478,7 @@ $pageTitle = htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Functi
 <?php include __DIR__ . '/../templates/header.php'; ?>
 <section class="md-section">
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=$pageTitle?></h2>
+    <h2 class="md-card-title"><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></h2>
     <p class="md-hint md-work-function-hint"><?=htmlspecialchars(t($t, 'work_function_defaults_hint', 'Choose the questionnaires that should be provided automatically to staff members based on their work function or cadre.'), ENT_QUOTES, 'UTF-8')?></p>
     <?php if ($catalogMsg !== ''): ?>
       <div class="md-alert success"><?=htmlspecialchars($catalogMsg, ENT_QUOTES, 'UTF-8')?></div>
@@ -554,7 +561,11 @@ $pageTitle = htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Functi
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
-    <form method="post" action="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>" data-work-function-form>
+    <form
+      method="post"
+      action="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"
+      data-work-function-form
+    >
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
       <input type="hidden" name="assignments_payload" value="" data-work-function-payload>
       <div class="md-work-function-grid">
@@ -600,12 +611,12 @@ $pageTitle = htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Functi
               <?php if ($questionnaires): ?>
                 <?php foreach ($questionnaires as $questionnaire): ?>
                   <?php
-                  $qid = (int)$questionnaire['id'];
-                  $title = trim((string)($questionnaire['title'] ?? ''));
-                  $description = trim((string)($questionnaire['description'] ?? ''));
-                  $displayTitle = $title !== '' ? $title : t($t, 'untitled_questionnaire', 'Untitled questionnaire');
-                  $searchText = trim($displayTitle . ' ' . $description);
-                  $checked = in_array($qid, $assignmentsByWorkFunction[$wf] ?? [], true);
+                    $qid = (int)$questionnaire['id'];
+                    $title = trim((string)($questionnaire['title'] ?? ''));
+                    $description = trim((string)($questionnaire['description'] ?? ''));
+                    $displayTitle = $title !== '' ? $title : t($t, 'untitled_questionnaire', 'Untitled questionnaire');
+                    $searchText = trim($displayTitle . ' ' . $description);
+                    $checked = in_array($qid, $assignmentsByWorkFunction[$wf] ?? [], true);
                   ?>
                   <div
                     class="md-work-function-option"
