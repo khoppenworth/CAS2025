@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (defined('APP_WORK_FUNCTIONS_LOADED')) {
+    return;
+}
+define('APP_WORK_FUNCTIONS_LOADED', true);
+
 /**
  * Retrieve the built-in (code-level) work function definition list.
  *

@@ -1028,9 +1028,9 @@ body.theme-dark .md-user-card__heading h3 {
 }
 
 .md-user-chip.status-active {
-  background: var(--status-success-soft);
-  color: var(--status-success-text);
-  box-shadow: inset 0 0 0 1px var(--status-success-soft);
+  background: rgba(34, 197, 94, 0.18);
+  color: #166534;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
 }
 
 .md-user-chip.status-pending {
@@ -1052,9 +1052,9 @@ body.theme-dark .md-user-chip {
 }
 
 body.theme-dark .md-user-chip.status-active {
-  background: var(--status-success-soft);
-  color: var(--status-success-surface);
-  box-shadow: inset 0 0 0 1px var(--status-success-soft);
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.4);
 }
 
 body.theme-dark .md-user-chip.status-pending {
