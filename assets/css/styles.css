@@ -552,6 +552,20 @@ button,
   background: var(--app-on-primary-soft);
 }
 
+.md-appbar-link.md-appbar-language {
+  padding: 0;
+  width: var(--app-button-height);
+  height: var(--app-button-height);
+  border-radius: 50%;
+  font-size: 1.1rem;
+  background: var(--app-on-primary-subtle);
+}
+
+.md-appbar-link.md-appbar-language:hover,
+.md-appbar-link.md-appbar-language:focus {
+  background: var(--app-on-primary-soft);
+}
+
 .md-lang-switch a {
   margin: 0 0.15rem;
   padding: 0.25rem 0.55rem;

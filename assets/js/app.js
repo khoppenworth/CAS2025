@@ -505,7 +505,7 @@
     }
   };
 
-  const langLinkSelector = '.md-lang-switch a, .lang-switch a';
+  const langLinkSelector = '.md-lang-switch a, .lang-switch a, .md-appbar-language';
   document.querySelectorAll(langLinkSelector).forEach((link) => {
     link.addEventListener('click', () => {
       let targetLocale = '';
