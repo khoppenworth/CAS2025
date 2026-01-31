@@ -62,6 +62,18 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     $aria = $isActiveNav(...$keys) ? ' aria-current="page"' : '';
     return sprintf('class="%s"%s', $class, $aria);
 };
+$localeFlags = [
+    'en' => '🇬🇧',
+    'fr' => '🇫🇷',
+    'am' => '🇪🇹',
+];
+$currentLocale = $locale ?? $defaultLocale;
+$localeCount = count($availableLocales);
+$localeIndex = $localeCount > 0 ? array_search($currentLocale, $availableLocales, true) : false;
+$nextLocale = $localeCount > 0
+    ? $availableLocales[(($localeIndex === false ? 0 : $localeIndex) + 1) % $localeCount]
+    : $currentLocale;
+$currentLocaleFlag = $localeFlags[$currentLocale] ?? '🌐';
 ?>
 <?php if ($brandStyle !== ''): ?>
 <style id="md-brand-style"><?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?></style>
@@ -87,6 +99,14 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     <span><?=$siteTitle?></span>
   </div>
   <div class="md-appbar-actions">
+    <a
+      href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
+      class="md-appbar-link md-appbar-language"
+      aria-label="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
+    >
+      <span aria-hidden="true"><?=$currentLocaleFlag?></span>
+    </a>
     <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
       <?=t($t, 'logout', 'Logout')?>
     </a>
@@ -510,17 +530,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <span class="md-topnav-link-icon md-status-dot" aria-hidden="true"></span>
           </button>
         </li>
-        <?php foreach ($availableLocales as $loc): ?>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link<?=($locale === $loc) ? ' active' : ''?>">
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'language_label', 'Language')?>: <?=strtoupper($loc)?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'language_switch', 'Switch language')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-        <?php endforeach; ?>
         <li>
           <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
             <span class="md-topnav-link-content">
