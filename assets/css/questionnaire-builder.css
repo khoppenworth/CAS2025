@@ -77,6 +77,10 @@
   padding: 0.75rem 0.9rem;
 }
 
+.qb-start-card > * + * {
+  margin-top: 0;
+}
+
 .qb-start-card .md-card-title {
   margin-bottom: 0.25rem;
 }
