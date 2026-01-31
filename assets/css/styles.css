@@ -1242,6 +1242,7 @@ body.theme-dark .md-field.md-field--compact select {
 
 .md-form-grid > .md-button {
   justify-self: start;
+  align-self: start;
 }
 
 .md-form-grid > .md-form-actions {
