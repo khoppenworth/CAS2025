@@ -531,15 +531,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <span class="md-topnav-link-icon md-status-dot" aria-hidden="true"></span>
           </button>
         </li>
-        <li>
-          <button type="button" class="md-topnav-link" id="appbar-reload-btn">
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'reload_app', 'Reload App'), ENT_QUOTES, 'UTF-8')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'reload_app_summary', 'Refresh the app and clear cached data.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">↻</span>
-          </button>
-        </li>
         <?php foreach ($availableLocales as $loc): ?>
           <li>
             <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link<?=($locale === $loc) ? ' active' : ''?>">
