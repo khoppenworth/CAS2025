@@ -1,10 +1,6 @@
 <?php
 declare(strict_types=1);
 
-if (function_exists('available_work_functions')) {
-    return;
-}
-
 /**
  * Retrieve the built-in (code-level) work function definition list.
  *
