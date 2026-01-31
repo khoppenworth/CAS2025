@@ -359,7 +359,7 @@
 }
 
 .qb-message[data-state="success"] {
-  color: var(--status-success-text);
+  color: var(--app-primary-dark, var(--app-primary));
 }
 
 .qb-scoring-note {
