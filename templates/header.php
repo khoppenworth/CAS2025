@@ -341,7 +341,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     </li>
     <?php if (in_array($role, ['admin', 'supervisor'], true)): ?>
       <?php
-      $teamNavKeys = ['team.pending_accounts', 'team.assignments', 'team.analytics'];
+      $teamNavKeys = ['team.pending_accounts', 'team.analytics'];
       if ($reviewEnabled) {
           array_unshift($teamNavKeys, 'team.review_queue');
       }
@@ -376,27 +376,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
           </li>
-          <?php if ($role === 'admin'): ?>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/users.php') . '#questionnaire-assignments', ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.assignments','admin.users')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'assign_questionnaires', 'Assign Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'assign_questionnaires_summary', 'Send questionnaires to the right people in seconds.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <?php else: ?>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/questionnaire_assignments.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.assignments')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'assign_questionnaires', 'Assign Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'assign_questionnaires_summary', 'Send questionnaires to the right people in seconds.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <?php endif; ?>
           <li>
             <a href="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.analytics')?>>
               <span class="md-topnav-link-content">
