@@ -1059,6 +1059,7 @@ if ($action === 'save' || $action === 'publish') {
 }
 
 $msg = $_SESSION['questionnaire_import_flash'] ?? '';
+$importPopup = $_SESSION['questionnaire_import_popup'] ?? null;
 $recentImportId = null;
 if (isset($_SESSION['questionnaire_import_focus'])) {
     $candidate = (int)$_SESSION['questionnaire_import_focus'];
@@ -1066,11 +1067,18 @@ if (isset($_SESSION['questionnaire_import_focus'])) {
         $recentImportId = $candidate;
     }
 }
-unset($_SESSION['questionnaire_import_flash'], $_SESSION['questionnaire_import_focus']);
+unset($_SESSION['questionnaire_import_flash'], $_SESSION['questionnaire_import_focus'], $_SESSION['questionnaire_import_popup']);
 if (isset($_POST['import'])) {
     csrf_check();
     $recentImportId = null;
     $parseErrors = [];
+    $importDetails = [];
+    $importStatus = 'error';
+    $importTitle = t($t, 'import_log_title', 'Import log');
+    $importFilename = $_FILES['file']['name'] ?? '';
+    if ($importFilename) {
+        $importDetails[] = 'File: ' . $importFilename;
+    }
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
         $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
@@ -1093,9 +1101,11 @@ if (isset($_POST['import'])) {
                     }, $xmlErrors);
                     error_log('Questionnaire import XML parse errors: ' . implode(' | ', $messages));
                     $parseErrors = array_slice($messages, 0, 3);
+                    $importDetails[] = 'XML parse errors: ' . implode(' | ', $parseErrors) . '.';
                 } else {
                     error_log('Questionnaire import XML parse failed with no libxml errors.');
                     $parseErrors = ['XML parsing failed with no additional error details.'];
+                    $importDetails[] = $parseErrors[0];
                 }
                 libxml_clear_errors();
             }
@@ -1310,14 +1320,21 @@ if (isset($_POST['import'])) {
                     );
                     if ($importedItems === 0) {
                         $summary .= ' No items were imported. Verify that your Questionnaire resources include item definitions.';
+                        $importDetails[] = 'Warning: no items were imported.';
                     }
                     $msg = t($t, 'fhir_import_complete', $summary);
+                    $importStatus = 'success';
+                    $importDetails[] = 'Questionnaires imported: ' . $importedQuestionnaires;
+                    $importDetails[] = 'Sections imported: ' . $importedSections;
+                    $importDetails[] = 'Items imported: ' . $importedItems;
+                    $importDetails[] = 'Options imported: ' . $importedOptions;
                 } catch (Throwable $e) {
                     if ($startedTransaction && $pdo->inTransaction()) {
                         $pdo->rollBack();
                     }
                     error_log('FHIR questionnaire import failed: ' . $e->getMessage());
                     $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
+                    $importDetails[] = 'Database error: ' . $e->getMessage();
                 }
             } else {
                 $resourceType = $data['resourceType'] ?? 'unknown';
@@ -1336,6 +1353,7 @@ if (isset($_POST['import'])) {
                     $detail .= ' Expected a FHIR Questionnaire or Bundle payload.';
                 }
                 $msg = t($t, 'no_questionnaires_found', $detail);
+                $importDetails[] = $detail;
             }
         } else {
             $detail = 'Invalid file. Upload a FHIR Questionnaire XML or JSON file.';
@@ -1343,11 +1361,19 @@ if (isset($_POST['import'])) {
                 $detail .= ' XML parse errors: ' . implode(' | ', $parseErrors) . '.';
             }
             $msg = t($t, 'invalid_file', $detail);
+            $importDetails[] = $detail;
         }
     } else {
         $msg = t($t, 'no_file_uploaded', 'No file uploaded');
+        $importDetails[] = 'No file uploaded.';
     }
     $_SESSION['questionnaire_import_flash'] = $msg;
+    $_SESSION['questionnaire_import_popup'] = [
+        'title' => $importTitle,
+        'status' => $importStatus,
+        'message' => $msg,
+        'details' => $importDetails,
+    ];
     if ($recentImportId) {
         $_SESSION['questionnaire_import_focus'] = $recentImportId;
     }
@@ -1387,6 +1413,35 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
   <?php if ($msg): ?>
     <div class="md-alert"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div>
   <?php endif; ?>
+  <?php if ($importPopup): ?>
+    <div class="md-upgrade-popup md-import-popup" role="alertdialog" aria-live="assertive" aria-label="<?=htmlspecialchars($importPopup['title'] ?? t($t, 'import_log_title', 'Import log'), ENT_QUOTES, 'UTF-8')?>">
+      <div class="md-upgrade-popup__backdrop"></div>
+      <div class="md-upgrade-popup__dialog">
+        <div class="md-upgrade-popup__header">
+          <span class="md-upgrade-popup__title"><?=htmlspecialchars($importPopup['title'] ?? t($t, 'import_log_title', 'Import log'), ENT_QUOTES, 'UTF-8')?></span>
+          <button type="button" class="md-upgrade-popup__close" data-import-popup-close aria-label="<?=htmlspecialchars(t($t, 'close', 'Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+        </div>
+        <p class="md-upgrade-popup__message"><?=htmlspecialchars((string)($importPopup['message'] ?? ''), ENT_QUOTES, 'UTF-8')?></p>
+        <?php if (!empty($importPopup['details']) && is_array($importPopup['details'])): ?>
+          <ul class="md-import-popup__list">
+            <?php foreach ($importPopup['details'] as $detail): ?>
+              <li><?=htmlspecialchars((string)$detail, ENT_QUOTES, 'UTF-8')?></li>
+            <?php endforeach; ?>
+          </ul>
+        <?php endif; ?>
+      </div>
+    </div>
+    <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
+      document.addEventListener('click', (event) => {
+        if (event.target.closest('[data-import-popup-close]') || event.target.classList.contains('md-upgrade-popup__backdrop')) {
+          const popup = event.target.closest('.md-import-popup');
+          if (popup) {
+            popup.remove();
+          }
+        }
+      });
+    </script>
+  <?php endif; ?>
   <div class="qb-start-grid">
     <div class="md-card md-elev-2 qb-start-card">
       <div class="qb-start-card-header">
@@ -1422,7 +1477,7 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
         <input type="hidden" name="csrf" value="<?=csrf_token()?>">
         <div class="qb-import-inline">
-          <label class="md-field"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
+          <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
           <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
         </div>
         <div class="qb-start-actions">
