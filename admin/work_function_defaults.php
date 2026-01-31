@@ -366,21 +366,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $input = $_POST['assignments'] ?? [];
         $payloadJson = $_POST['assignments_payload'] ?? '';
+        $payloadInvalid = false;
         if (is_string($payloadJson) && $payloadJson !== '') {
             $decoded = json_decode($payloadJson, true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $input = $decoded;
             } else {
-                $errors[] = t(
-                    $t,
-                    'work_function_defaults_invalid_payload',
-                    'The work function selections could not be processed. Please try again.'
-                );
-                $input = [];
+                $payloadInvalid = true;
             }
         }
         if (!is_array($input)) {
             $input = [];
+        }
+        if ($payloadInvalid && $input === []) {
+            $errors[] = t(
+                $t,
+                'work_function_defaults_invalid_payload',
+                'The work function selections could not be processed. Please try again.'
+            );
         }
         $validWorkFunctions = array_flip($workFunctionKeys);
         $validQuestionnaires = array_flip(array_keys($questionnaireMap));
