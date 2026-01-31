@@ -1474,6 +1474,9 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       </div>
     </div>
   </div>
+  <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
+    <?=t($t,'save','Save Changes')?>
+  </button>
 </section>
 <?php if ($recentImportId): ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_INITIAL_ACTIVE_ID = <?=json_encode($recentImportId, JSON_THROW_ON_ERROR)?>;</script>

@@ -23,6 +23,7 @@ const Builder = (() => {
     tabs: '#qb-tabs',
     addButton: '#qb-add-questionnaire',
     saveButton: '#qb-save',
+    floatingSaveButton: '#qb-save-floating',
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
     openButton: '#qb-open-selected',
@@ -230,6 +231,7 @@ const Builder = (() => {
   function attachStaticListeners() {
     const addBtn = document.querySelector(selectors.addButton);
     const saveBtn = document.querySelector(selectors.saveButton);
+    const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     const exportBtns = document.querySelectorAll(selectors.exportButton);
     const openBtn = document.querySelector(selectors.openButton);
@@ -243,6 +245,7 @@ const Builder = (() => {
     });
 
     saveBtn?.addEventListener('click', () => saveAll(false));
+    floatingSaveBtn?.addEventListener('click', () => saveAll(false));
     publishBtn?.addEventListener('click', () => saveAll(true));
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     openBtn?.addEventListener('click', () => {
@@ -382,8 +385,10 @@ const Builder = (() => {
   function markDirty() {
     state.dirty = true;
     const saveBtn = document.querySelector(selectors.saveButton);
+    const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     if (saveBtn) saveBtn.disabled = false;
+    if (floatingSaveBtn) floatingSaveBtn.disabled = false;
     if (publishBtn) publishBtn.disabled = false;
   }
 
@@ -706,9 +711,11 @@ const Builder = (() => {
 
   function toggleSaveButtons() {
     const saveBtn = document.querySelector(selectors.saveButton);
+    const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     const disabled = state.questionnaires.length === 0 || state.saving;
     if (saveBtn) saveBtn.disabled = disabled || (!state.dirty && !state.loading);
+    if (floatingSaveBtn) floatingSaveBtn.disabled = disabled || (!state.dirty && !state.loading);
     if (publishBtn) publishBtn.disabled = disabled || (!state.dirty && !state.loading);
   }
 
