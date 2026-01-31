@@ -101,55 +101,59 @@ function ensure_work_function_catalog(PDO $pdo): void
     }
 }
 
-function ensure_questionnaire_work_function_schema(PDO $pdo): void
-{
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
-            questionnaire_id INT NOT NULL,
-            work_function VARCHAR(191) NOT NULL,
-            PRIMARY KEY (questionnaire_id, work_function)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+/*
+if (!function_exists('ensure_questionnaire_work_function_schema')) {
+    function ensure_questionnaire_work_function_schema(PDO $pdo): void
+    {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
+                questionnaire_id INT NOT NULL,
+                work_function VARCHAR(191) NOT NULL,
+                PRIMARY KEY (questionnaire_id, work_function)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-        $columnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_work_function');
-        $columns = [];
-        if ($columnsStmt) {
-            while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
-                $columns[$column['Field']] = $column;
-            }
-        }
-
-        if (!isset($columns['work_function'])) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(191) NOT NULL AFTER questionnaire_id');
-        } else {
-            $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
-            $needsUpdate = true;
-            if (str_contains($type, 'varchar')) {
-                $length = 0;
-                if (preg_match('/varchar\\((\\d+)\\)/i', $type, $matches)) {
-                    $length = (int)$matches[1];
+            $columnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_work_function');
+            $columns = [];
+            if ($columnsStmt) {
+                while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $columns[$column['Field']] = $column;
                 }
-                $needsUpdate = $length < 1 || $length < 191;
             }
-            if ($needsUpdate) {
-                $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(191) NOT NULL');
+
+            if (!isset($columns['work_function'])) {
+                $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(191) NOT NULL AFTER questionnaire_id');
+            } else {
+                $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
+                $needsUpdate = true;
+                if (str_contains($type, 'varchar')) {
+                    $length = 0;
+                    if (preg_match('/varchar\\((\\d+)\\)/i', $type, $matches)) {
+                        $length = (int)$matches[1];
+                    }
+                    $needsUpdate = $length < 1 || $length < 191;
+                }
+                if ($needsUpdate) {
+                    $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(191) NOT NULL');
+                }
             }
-        }
 
-        $primaryIndex = $pdo->query("SHOW INDEX FROM questionnaire_work_function WHERE Key_name = 'PRIMARY'");
-        $hasPrimary = $primaryIndex && $primaryIndex->fetch(PDO::FETCH_ASSOC);
-        if (!$hasPrimary) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
-        }
+            $primaryIndex = $pdo->query("SHOW INDEX FROM questionnaire_work_function WHERE Key_name = 'PRIMARY'");
+            $hasPrimary = $primaryIndex && $primaryIndex->fetch(PDO::FETCH_ASSOC);
+            if (!$hasPrimary) {
+                $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
+            }
 
-        // Preserve any administrator-defined questionnaire assignments without
-        // seeding defaults on every request. The previous behaviour inserted
-        // every questionnaire/work function combination which overwrote custom
-        // selections made through the admin portal. By limiting this helper to
-        // structural concerns we ensure saved assignments remain intact.
-    } catch (PDOException $e) {
-        error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
+            // Preserve any administrator-defined questionnaire assignments without
+            // seeding defaults on every request. The previous behaviour inserted
+            // every questionnaire/work function combination which overwrote custom
+            // selections made through the admin portal. By limiting this helper to
+            // structural concerns we ensure saved assignments remain intact.
+        } catch (PDOException $e) {
+            error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
+        }
     }
 }
+*/
 
 /**
  * Fetch the active work function definitions from the catalog.
@@ -408,44 +412,48 @@ function canonical(string $value, ?array $definitions = null): string
 /**
  * @return array<string,string>
  */
-function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
-{
-    $definitions = work_function_definitions($pdo, $forceRefresh);
-    $choices = $definitions;
+/*
+if (!function_exists('work_function_choices')) {
+    function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
+    {
+        $definitions = work_function_definitions($pdo, $forceRefresh);
+        $choices = $definitions;
 
-    $sources = [];
-    try {
-        $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function IS NOT NULL AND work_function <> ""');
-        if ($stmt) {
-            $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+        $sources = [];
+        try {
+            $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function IS NOT NULL AND work_function <> ""');
+            if ($stmt) {
+                $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (PDOException $e) {
+            error_log('work_function_choices (questionnaire_work_function): ' . $e->getMessage());
         }
-    } catch (PDOException $e) {
-        error_log('work_function_choices (questionnaire_work_function): ' . $e->getMessage());
+
+        try {
+            $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> ''");
+            if ($stmt) {
+                $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (PDOException $e) {
+            error_log('work_function_choices (users): ' . $e->getMessage());
+        }
+
+        foreach ($sources as $rawValue) {
+            $key = canonical_work_function_key((string)$rawValue, $definitions);
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($choices[$key])) {
+                $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', $key));
+            }
+        }
+
+        uasort($choices, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
+
+        return $choices;
     }
-
-    try {
-        $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> ''");
-        if ($stmt) {
-            $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
-        }
-    } catch (PDOException $e) {
-        error_log('work_function_choices (users): ' . $e->getMessage());
-    }
-
-    foreach ($sources as $rawValue) {
-        $key = canonical_work_function_key((string)$rawValue, $definitions);
-        if ($key === '') {
-            continue;
-        }
-        if (!isset($choices[$key])) {
-            $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', $key));
-        }
-    }
-
-    uasort($choices, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
-
-    return $choices;
 }
+*/
 
 /**
  * @return array<string,list<int>>
@@ -597,22 +605,26 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 /**
  * Resolve the display label for a work function key.
  */
-function work_function_label(PDO $pdo, string $workFunction): string
-{
-    $definitions = work_function_definitions($pdo);
-    $canonical = canonical_work_function_key($workFunction, $definitions);
-    if ($canonical === '') {
-        return '';
-    }
+/*
+if (!function_exists('work_function_label')) {
+    function work_function_label(PDO $pdo, string $workFunction): string
+    {
+        $definitions = work_function_definitions($pdo);
+        $canonical = canonical_work_function_key($workFunction, $definitions);
+        if ($canonical === '') {
+            return '';
+        }
 
-    $options = available_work_functions($pdo);
-    if (isset($options[$canonical])) {
-        return (string) $options[$canonical];
-    }
+        $options = available_work_functions($pdo);
+        if (isset($options[$canonical])) {
+            return (string) $options[$canonical];
+        }
 
-    if (isset($definitions[$canonical])) {
-        return (string) $definitions[$canonical];
-    }
+        if (isset($definitions[$canonical])) {
+            return (string) $definitions[$canonical];
+        }
 
-    return ucwords(str_replace('_', ' ', $canonical));
+        return ucwords(str_replace('_', ' ', $canonical));
+    }
 }
+*/
