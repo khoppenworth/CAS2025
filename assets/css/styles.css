@@ -559,11 +559,20 @@ button,
   border-radius: 50%;
   font-size: 1.1rem;
   background: var(--app-on-primary-subtle);
+  overflow: hidden;
 }
 
 .md-appbar-link.md-appbar-language:hover,
 .md-appbar-link.md-appbar-language:focus {
   background: var(--app-on-primary-soft);
+}
+
+.md-appbar-link.md-appbar-language .md-appbar-flag {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+  object-fit: cover;
 }
 
 .md-lang-switch a {
