@@ -1252,6 +1252,8 @@ body.theme-dark .md-field.md-field--compact select {
 .md-form-grid > .md-button {
   justify-self: start;
   align-self: start;
+  height: fit-content;
+  min-height: var(--app-button-height, 48px);
 }
 
 .md-form-grid > .md-form-actions {
