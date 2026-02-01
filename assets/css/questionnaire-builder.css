@@ -127,7 +127,8 @@
 .qb-scroll-top {
   position: fixed;
   bottom: 1.25rem;
-  right: clamp(1rem, 2vw, 1.75rem);
+  left: clamp(1rem, 2vw, 1.75rem);
+  right: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
