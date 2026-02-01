@@ -16,7 +16,7 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
 $user = current_user();
 try {
-    if ($user['role'] === 'staff') {
+    if (($user['role'] ?? '') !== 'admin') {
         $workFunction = canonical(trim((string)($user['work_function'] ?? '')));
         $assigned = [];
 
