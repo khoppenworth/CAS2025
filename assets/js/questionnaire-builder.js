@@ -96,6 +96,7 @@ const Builder = (() => {
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
+  let pendingImportFocus = false;
 
   const baseMeta = document.querySelector('meta[name="app-base-url"]');
   let appBase = window.APP_BASE_URL || (baseMeta ? baseMeta.content : '/');
@@ -320,6 +321,9 @@ const Builder = (() => {
       if (match) {
         state.activeKey = match.clientId;
         state.navActiveKey = 'root';
+        const rememberKey = match.id ? String(match.id) : match.clientId;
+        rememberSet(STORAGE_KEYS.active, rememberKey);
+        pendingImportFocus = true;
         initialActiveId = null;
         return;
       }
@@ -398,6 +402,10 @@ const Builder = (() => {
     renderQuestionnaires();
     renderSectionNav();
     toggleSaveButtons();
+    if (pendingImportFocus) {
+      pendingImportFocus = false;
+      focusActiveQuestionnaire();
+    }
   }
 
   function renderSelector() {
@@ -433,6 +441,15 @@ const Builder = (() => {
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     bindSortables();
+  }
+
+  function focusActiveQuestionnaire() {
+    const card = document.querySelector(`[data-q="${state.activeKey}"]`);
+    if (!card) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    card.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    titleInput?.focus({ preventScroll: true });
   }
 
   function buildQuestionnaireCard(questionnaire) {
