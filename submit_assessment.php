@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
+if (!function_exists('canonical')) {
+    require_once __DIR__ . '/lib/work_functions.php';
+}
 auth_required(['staff','supervisor','admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -14,7 +17,7 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 $user = current_user();
 try {
     if ($user['role'] === 'staff') {
-        $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')));
+        $workFunction = canonical(trim((string)($user['work_function'] ?? '')));
         $assigned = [];
 
         if ($workFunction !== '') {
