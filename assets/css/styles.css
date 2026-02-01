@@ -1057,15 +1057,15 @@ body.theme-dark .md-user-card__heading h3 {
 }
 
 .md-user-chip.status-pending {
-  background: var(--status-warning-soft);
-  color: var(--status-warning-text);
-  box-shadow: inset 0 0 0 1px var(--status-warning-soft);
+  background: var(--semantic-warning-soft);
+  color: var(--semantic-warning-text);
+  box-shadow: inset 0 0 0 1px var(--semantic-warning-soft);
 }
 
 .md-user-chip.status-disabled {
-  background: var(--status-danger-soft);
-  color: var(--status-danger-text);
-  box-shadow: inset 0 0 0 1px var(--status-danger-soft);
+  background: var(--semantic-danger-soft);
+  color: var(--semantic-danger-text);
+  box-shadow: inset 0 0 0 1px var(--semantic-danger-soft);
 }
 
 body.theme-dark .md-user-chip {
@@ -1081,15 +1081,15 @@ body.theme-dark .md-user-chip.status-active {
 }
 
 body.theme-dark .md-user-chip.status-pending {
-  background: var(--status-warning-soft);
-  color: var(--status-warning-surface);
-  box-shadow: inset 0 0 0 1px var(--status-warning-soft);
+  background: var(--semantic-warning-soft);
+  color: var(--semantic-warning-text);
+  box-shadow: inset 0 0 0 1px var(--semantic-warning-soft);
 }
 
 body.theme-dark .md-user-chip.status-disabled {
-  background: var(--status-danger-soft);
-  color: var(--status-danger-surface);
-  box-shadow: inset 0 0 0 1px var(--status-danger-soft);
+  background: var(--semantic-danger-soft);
+  color: var(--semantic-danger-text);
+  box-shadow: inset 0 0 0 1px var(--semantic-danger-soft);
 }
 
 .md-user-meta {
@@ -1218,15 +1218,15 @@ body.theme-dark .md-field.md-field--compact select {
 }
 
 .md-user-delete-form .md-user-action-button.md-danger {
-  background: var(--app-danger, #dc2626);
-  box-shadow: 0 12px 30px rgba(220, 38, 38, 0.35);
-  color: var(--app-on-primary, #ffffff);
+  background: var(--semantic-danger, #dc2626);
+  box-shadow: 0 12px 30px var(--semantic-danger-soft);
+  color: var(--semantic-danger-text, #ffffff);
 }
 
 .md-user-delete-form .md-user-action-button.md-danger:hover,
 .md-user-delete-form .md-user-action-button.md-danger:focus {
-  background: #b91c1c;
-  box-shadow: 0 12px 30px rgba(185, 28, 28, 0.35);
+  background: var(--semantic-danger-strong, #b91c1c);
+  box-shadow: 0 12px 30px var(--semantic-danger-soft);
 }
 
 @media (max-width: 720px) {

@@ -9,7 +9,7 @@
   --md-surface: var(--app-surface);
   --md-muted: var(--app-muted);
   --md-muted-light: var(--app-muted-light);
-  --md-danger: var(--app-danger);
+  --md-danger: var(--semantic-danger);
   --md-radius: 16px;
   --md-shadow: var(--app-shadow-soft);
 }

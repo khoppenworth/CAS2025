@@ -1081,6 +1081,9 @@ function site_theme_tokens(array $cfg): array
     $danger = adjust_hsl($primary, -40.0, 1.18, 0.9);
     $success = adjust_hsl($primary, 120.0, 0.95, 0.78);
     $info = adjust_hsl($primary, -20.0, 1.08, 1.02);
+    $semanticDanger = '#dc2626';
+    $semanticWarning = '#f59e0b';
+    $semanticSuccess = '#16a34a';
 
     $lightSurface = tint_color($primary, 0.9);
     $lightSurfaceAlt = tint_color($primary, 0.95);
@@ -1118,21 +1121,34 @@ function site_theme_tokens(array $cfg): array
     $warningSoft = rgba_string($warning, 0.22);
     $dangerSoft = rgba_string($danger, 0.24);
     $infoSoft = rgba_string($info, 0.2);
+    $semanticDangerSoft = rgba_string($semanticDanger, 0.24);
+    $semanticWarningSoft = rgba_string($semanticWarning, 0.22);
+    $semanticSuccessSoft = rgba_string($semanticSuccess, 0.2);
 
     $successSurface = tint_color($success, 0.85);
     $warningSurface = tint_color($warning, 0.86);
     $dangerSurface = tint_color($danger, 0.88);
     $infoSurface = tint_color($info, 0.86);
+    $semanticDangerSurface = tint_color($semanticDanger, 0.88);
+    $semanticWarningSurface = tint_color($semanticWarning, 0.86);
+    $semanticSuccessSurface = tint_color($semanticSuccess, 0.85);
 
     $successBorder = rgba_string($success, 0.28);
     $warningBorder = rgba_string($warning, 0.28);
     $dangerBorder = rgba_string($danger, 0.28);
     $infoBorder = rgba_string($info, 0.26);
+    $semanticDangerBorder = rgba_string($semanticDanger, 0.28);
+    $semanticWarningBorder = rgba_string($semanticWarning, 0.28);
+    $semanticSuccessBorder = rgba_string($semanticSuccess, 0.28);
 
     $successText = contrast_color($success);
     $warningText = contrast_color($warning);
     $dangerText = contrast_color($danger);
     $infoText = contrast_color($info);
+    $semanticDangerText = contrast_color($semanticDanger);
+    $semanticWarningText = contrast_color($semanticWarning);
+    $semanticSuccessText = contrast_color($semanticSuccess);
+    $semanticDangerStrong = shade_color($semanticDanger, 0.18);
 
     $successGradient = sprintf('linear-gradient(160deg, %s 0%%, %s 55%%, %s 100%%)', shade_color($success, 0.55), shade_color($success, 0.45), shade_color($success, 0.7));
 
@@ -1162,6 +1178,22 @@ function site_theme_tokens(array $cfg): array
     $darkWarningSoft = rgba_string($darkWarning, 0.34);
     $darkInfo = tint_color($info, 0.32);
     $darkInfoSoft = rgba_string($darkInfo, 0.32);
+    $semanticDangerDark = tint_color($semanticDanger, 0.32);
+    $semanticWarningDark = tint_color($semanticWarning, 0.32);
+    $semanticSuccessDark = tint_color($semanticSuccess, 0.32);
+    $semanticDangerDarkSoft = rgba_string($semanticDangerDark, 0.38);
+    $semanticWarningDarkSoft = rgba_string($semanticWarningDark, 0.34);
+    $semanticSuccessDarkSoft = rgba_string($semanticSuccessDark, 0.32);
+    $semanticDangerDarkSurface = tint_color($semanticDangerDark, 0.88);
+    $semanticWarningDarkSurface = tint_color($semanticWarningDark, 0.86);
+    $semanticSuccessDarkSurface = tint_color($semanticSuccessDark, 0.85);
+    $semanticDangerDarkBorder = rgba_string($semanticDangerDark, 0.28);
+    $semanticWarningDarkBorder = rgba_string($semanticWarningDark, 0.28);
+    $semanticSuccessDarkBorder = rgba_string($semanticSuccessDark, 0.28);
+    $semanticDangerDarkText = contrast_color($semanticDangerDark);
+    $semanticWarningDarkText = contrast_color($semanticWarningDark);
+    $semanticSuccessDarkText = contrast_color($semanticSuccessDark);
+    $semanticDangerDarkStrong = shade_color($semanticDangerDark, 0.18);
     $darkInputBg = rgba_string($darkSurfaceAlt, 0.92);
     $darkOnPrimary = contrast_color($primaryLight);
     $darkOnPrimarySoft = rgba_string($darkOnPrimary, 0.22);
@@ -1205,6 +1237,22 @@ function site_theme_tokens(array $cfg): array
         '--status-info-text' => $infoText,
         '--status-info-border' => $infoBorder,
         '--status-info-surface' => $infoSurface,
+        '--semantic-success' => $semanticSuccess,
+        '--semantic-success-soft' => $semanticSuccessSoft,
+        '--semantic-success-text' => $semanticSuccessText,
+        '--semantic-success-border' => $semanticSuccessBorder,
+        '--semantic-success-surface' => $semanticSuccessSurface,
+        '--semantic-warning' => $semanticWarning,
+        '--semantic-warning-soft' => $semanticWarningSoft,
+        '--semantic-warning-text' => $semanticWarningText,
+        '--semantic-warning-border' => $semanticWarningBorder,
+        '--semantic-warning-surface' => $semanticWarningSurface,
+        '--semantic-danger' => $semanticDanger,
+        '--semantic-danger-strong' => $semanticDangerStrong,
+        '--semantic-danger-soft' => $semanticDangerSoft,
+        '--semantic-danger-text' => $semanticDangerText,
+        '--semantic-danger-border' => $semanticDangerBorder,
+        '--semantic-danger-surface' => $semanticDangerSurface,
         '--app-hero-gradient' => $bgGradient,
         '--app-success-gradient' => $successGradient,
     ];
@@ -1300,6 +1348,22 @@ function site_theme_tokens(array $cfg): array
         '--app-text-secondary' => $darkTextSecondary,
         '--app-text-muted' => $darkTextMuted,
         '--app-text-inverse' => $inverseText,
+        '--semantic-success' => $semanticSuccessDark,
+        '--semantic-success-soft' => $semanticSuccessDarkSoft,
+        '--semantic-success-text' => $semanticSuccessDarkText,
+        '--semantic-success-border' => $semanticSuccessDarkBorder,
+        '--semantic-success-surface' => $semanticSuccessDarkSurface,
+        '--semantic-warning' => $semanticWarningDark,
+        '--semantic-warning-soft' => $semanticWarningDarkSoft,
+        '--semantic-warning-text' => $semanticWarningDarkText,
+        '--semantic-warning-border' => $semanticWarningDarkBorder,
+        '--semantic-warning-surface' => $semanticWarningDarkSurface,
+        '--semantic-danger' => $semanticDangerDark,
+        '--semantic-danger-strong' => $semanticDangerDarkStrong,
+        '--semantic-danger-soft' => $semanticDangerDarkSoft,
+        '--semantic-danger-text' => $semanticDangerDarkText,
+        '--semantic-danger-border' => $semanticDangerDarkBorder,
+        '--semantic-danger-surface' => $semanticDangerDarkSurface,
         '--app-table-stripe' => rgba_string($darkText, 0.08),
         '--app-table-border' => $darkDivider,
         '--app-chart-grid' => rgba_string($primaryLight, 0.18),
