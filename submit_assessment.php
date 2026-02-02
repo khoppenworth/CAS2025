@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
+if (!function_exists('canonical')) {
+    require_once __DIR__ . '/lib/work_functions.php';
+}
 auth_required(['staff','supervisor','admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -13,8 +16,8 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
 $user = current_user();
 try {
-    if ($user['role'] === 'staff') {
-        $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')));
+    if (($user['role'] ?? '') !== 'admin') {
+        $workFunction = canonical(trim((string)($user['work_function'] ?? '')));
         $assigned = [];
 
         if ($workFunction !== '') {
@@ -308,6 +311,40 @@ if ($qid) {
     $i = $pdo->prepare("SELECT * FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC");
     $i->execute([$qid]);
     $items = $i->fetchAll();
+    $sectionIds = [];
+    foreach ($sections as $sectionRow) {
+        $sectionId = (int)($sectionRow['id'] ?? 0);
+        if ($sectionId > 0) {
+            $sectionIds[$sectionId] = true;
+        }
+    }
+    $missingSectionIds = [];
+    foreach ($items as $itemRow) {
+        if ($itemRow['section_id'] === null) {
+            continue;
+        }
+        $sectionId = (int)$itemRow['section_id'];
+        if ($sectionId > 0 && !isset($sectionIds[$sectionId])) {
+            $missingSectionIds[$sectionId] = true;
+        }
+    }
+    if ($missingSectionIds) {
+        $placeholders = implode(',', array_fill(0, count($missingSectionIds), '?'));
+        $missingStmt = $pdo->prepare(
+            "SELECT * FROM questionnaire_section WHERE questionnaire_id=? AND id IN ($placeholders) " .
+            "ORDER BY order_index ASC, id ASC"
+        );
+        $missingStmt->execute(array_merge([$qid], array_keys($missingSectionIds)));
+        $sections = array_merge($sections, $missingStmt->fetchAll());
+        usort($sections, static function (array $a, array $b): int {
+            $orderA = (int)($a['order_index'] ?? 0);
+            $orderB = (int)($b['order_index'] ?? 0);
+            if ($orderA === $orderB) {
+                return (int)($a['id'] ?? 0) <=> (int)($b['id'] ?? 0);
+            }
+            return $orderA <=> $orderB;
+        });
+    }
     $itemOptions = [];
     if ($items) {
         $itemIds = array_column($items, 'id');

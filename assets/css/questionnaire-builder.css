@@ -127,7 +127,8 @@
 .qb-scroll-top {
   position: fixed;
   bottom: 1.25rem;
-  right: clamp(1rem, 2vw, 1.75rem);
+  left: clamp(1rem, 2vw, 1.75rem);
+  right: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -553,18 +554,23 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  background: rgba(107, 114, 128, 0.15);
-  color: #374151;
+  background: var(--app-secondary-soft);
+  color: var(--app-primary-dark);
+}
+
+.qb-status-badge.qb-status-draft {
+  background: var(--semantic-warning-soft);
+  color: var(--semantic-warning-text);
 }
 
 .qb-status-badge.qb-status-published {
-  background: rgba(16, 185, 129, 0.18);
-  color: #047857;
+  background: var(--semantic-success-soft);
+  color: var(--semantic-success-text);
 }
 
 .qb-status-badge.qb-status-inactive {
-  background: rgba(148, 163, 184, 0.2);
-  color: #475569;
+  background: var(--semantic-danger-soft);
+  color: var(--semantic-danger-text);
 }
 
 .qb-response-pill {

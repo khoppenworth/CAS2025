@@ -1140,7 +1140,7 @@ if (isset($_POST['import'])) {
                         $startedTransaction = true;
                     }
 
-                    $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description) VALUES (?, ?)');
+                    $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
                     $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
 
                     foreach ($qs as $resource) {
@@ -1149,7 +1149,23 @@ if (isset($_POST['import'])) {
                             $title = 'FHIR Questionnaire';
                         }
                         $description = qb_import_normalize_nullable_string($resource['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
-                        $insertQuestionnaireStmt->execute([$title, $description]);
+                        $rawStatus = strtolower((string)($resource['status'] ?? ''));
+                        switch ($rawStatus) {
+                            case 'draft':
+                                $status = 'draft';
+                                break;
+                            case 'retired':
+                            case 'inactive':
+                                $status = 'inactive';
+                                break;
+                            case 'active':
+                                $status = 'published';
+                                break;
+                            default:
+                                $status = 'published';
+                                break;
+                        }
+                        $insertQuestionnaireStmt->execute([$title, $description, $status]);
                         $qid = (int)$pdo->lastInsertId();
                         $recentImportId = $qid;
                         $importedQuestionnaires++;

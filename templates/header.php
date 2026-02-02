@@ -429,6 +429,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
         <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'admin_navigation', 'Administration')?></span>
+            <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Manage system configuration, users, and data exports.')?></span>
           </span>
           <span class="md-topnav-chevron" aria-hidden="true"></span>
         </button>
@@ -437,6 +438,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -445,6 +447,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.users')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_users', 'Manage Users')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'manage_users_summary', 'Invite, edit, or deactivate accounts and roles.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -453,6 +456,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.manage_questionnaires')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_questionnaires', 'Manage Questionnaires')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'manage_questionnaires_summary', 'Build, organize, and publish assessment questionnaires.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -461,6 +465,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.work_function_defaults')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'work_function_defaults_title', 'Work Function Defaults')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'work_function_defaults_summary', 'Set default work function options for new assessments.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -469,6 +474,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download assessment data for reporting or analysis.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -477,6 +483,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/branding.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.branding')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -485,6 +492,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('admin/settings.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.settings')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'settings', 'Settings')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'settings_summary', 'Adjust platform settings and integrations.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -493,6 +501,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             <a href="<?=htmlspecialchars(url_for('swagger.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link md-topnav-link--external" target="_blank" rel="noopener">
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t,'api_documentation','API Documentation')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'api_documentation_summary', 'Browse the interactive API reference.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">↗</span>
             </a>
