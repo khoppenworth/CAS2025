@@ -473,31 +473,25 @@ const Builder = (() => {
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
 
-    const handleTitle = () => {
+    titleInput?.addEventListener('input', () => {
       questionnaire.title = titleInput.value;
       markDirty();
       renderTabs();
       renderSelector();
       renderSectionNav();
-    };
-    titleInput?.addEventListener('input', handleTitle);
-    titleInput?.addEventListener('change', handleTitle);
+    });
 
-    const handleDescription = () => {
+    descriptionInput?.addEventListener('input', () => {
       questionnaire.description = descriptionInput.value;
       markDirty();
-    };
-    descriptionInput?.addEventListener('input', handleDescription);
-    descriptionInput?.addEventListener('change', handleDescription);
+    });
 
-    const handleStatus = () => {
+    statusInput?.addEventListener('change', () => {
       questionnaire.status = normalizeStatusValue(statusInput.value);
       markDirty();
       renderTabs();
       renderSelector();
-    };
-    statusInput?.addEventListener('input', handleStatus);
-    statusInput?.addEventListener('change', handleStatus);
+    });
   }
 
   function focusActiveQuestionnaire() {
@@ -810,8 +804,6 @@ const Builder = (() => {
         renderSectionNav();
         break;
       case 'q-description':
-        questionnaire.description = event.target.value;
-        break;
       case 'q-status':
         questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
@@ -1065,6 +1057,7 @@ const Builder = (() => {
     const items = collectItems(questionnaire);
     const scorable = items.filter((item) => isScorable(item.type));
     const singleChoiceItems = scorable.filter((item) => item.type === 'choice' && !item.allow_multiple);
+    const singleChoiceWithCorrectItems = singleChoiceItems.filter((item) => item.requires_correct);
     const likertItems = scorable.filter((item) => item.type === 'likert');
     const manualTotal = scorable.reduce((sum, item) => sum + (Number(item.weight_percent) || 0), 0);
     let effectiveTotal = manualTotal;
@@ -1092,6 +1085,7 @@ const Builder = (() => {
       scorableCount: scorable.length,
       weightedCount,
       hasSingleChoice: singleChoiceItems.length > 0,
+      singleChoiceWithCorrectCount: singleChoiceWithCorrectItems.length,
       hasLikert: likertItems.length > 0,
       canNormalize: manualTotal > 0 && manualTotal !== 100,
       canDistribute: scorable.length > 0,
@@ -1113,7 +1107,11 @@ const Builder = (() => {
     const actions = [
       { role: 'normalize-weights', label: STRINGS.normalizeWeights, enabled: summary.canNormalize },
       { role: 'even-weights', label: STRINGS.evenWeights, enabled: summary.canDistribute },
-      { role: 'single-choice-weights', label: 'Auto-weight single-choice', enabled: summary.scorableCount > 0 },
+      {
+        role: 'single-choice-weights',
+        label: 'Auto-weight single-choice with correct answer',
+        enabled: summary.singleChoiceWithCorrectCount > 0,
+      },
       { role: 'clear-weights', label: STRINGS.clearWeights, enabled: summary.canClear },
     ]
       .map(
@@ -1165,8 +1163,7 @@ const Builder = (() => {
 
   function autoWeightSingleChoice(questionnaire) {
     const items = collectItems(questionnaire);
-    const singleChoiceItems = items.filter((item) => item.type === 'choice' && !item.allow_multiple);
-    const targetItems = singleChoiceItems.length > 0 ? singleChoiceItems : items.filter((item) => item.type === 'likert');
+    const targetItems = items.filter((item) => item.type === 'choice' && !item.allow_multiple && item.requires_correct);
     if (targetItems.length === 0) return renderMessage(STRINGS.evenNoop);
     const weight = (100 / targetItems.length).toFixed(2);
     targetItems.forEach((item) => {

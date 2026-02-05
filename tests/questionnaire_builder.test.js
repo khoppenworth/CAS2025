@@ -206,8 +206,8 @@ class FakeDocument {
   document.card.statusInput.value = 'inactive';
   document.card.statusInput.dispatch('change');
 
-  // click floating save
-  document.byId.get('qb-save-floating').dispatch('click');
+  // click save
+  document.byId.get('qb-save').dispatch('click');
 
   await new Promise((r) => setTimeout(r, 0));
 
