@@ -73,6 +73,22 @@ PREPARE stmt FROM @qi_required_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @qi_requires_correct_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item'
+    AND COLUMN_NAME = 'requires_correct'
+);
+SET @qi_requires_correct_sql = IF(
+  @qi_requires_correct_exists = 0,
+  'ALTER TABLE questionnaire_item ADD COLUMN requires_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER is_required',
+  'DO 1'
+);
+PREPARE stmt FROM @qi_requires_correct_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @q_status_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -147,15 +163,31 @@ UPDATE questionnaire_item
 SET is_active = 1
 WHERE is_active IS NULL;
 
-ALTER TABLE questionnaire_item MODIFY COLUMN type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'likert';
+ALTER TABLE questionnaire_item MODIFY COLUMN type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'choice';
 
 CREATE TABLE IF NOT EXISTS questionnaire_item_option (
   id INT AUTO_INCREMENT PRIMARY KEY,
   questionnaire_item_id INT NOT NULL,
   value VARCHAR(500) NOT NULL,
+  is_correct TINYINT(1) NOT NULL DEFAULT 0,
   order_index INT NOT NULL DEFAULT 0,
   FOREIGN KEY (questionnaire_item_id) REFERENCES questionnaire_item(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SET @qio_correct_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item_option'
+    AND COLUMN_NAME = 'is_correct'
+);
+SET @qio_correct_sql = IF(
+  @qio_correct_exists = 0,
+  'ALTER TABLE questionnaire_item_option ADD COLUMN is_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER value',
+  'DO 1'
+);
+PREPARE stmt FROM @qio_correct_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS site_config (
   id INT PRIMARY KEY,
   site_name VARCHAR(200) NULL,
@@ -766,7 +798,6 @@ INSERT IGNORE INTO site_config (
   '12 min',
   '94%',
   NULL,
-  NULL,
   'Ethiopian Pharmaceutical Supply Service',
   'EPSS / EPS',
   'epss.gov.et',
@@ -1085,11 +1116,20 @@ CREATE TABLE IF NOT EXISTS performance_period (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO performance_period (id, label, period_start, period_end) VALUES
-(1,'2021','2021-01-01','2021-12-31'),
-(2,'2022','2022-01-01','2022-12-31'),
-(3,'2023','2023-01-01','2023-12-31'),
-(4,'2024','2024-01-01','2024-12-31'),
-(5,'2025','2025-01-01','2025-12-31');
+(1,'2021 H1','2021-01-01','2021-06-30'),
+(2,'2021 H2','2021-07-01','2021-12-31'),
+(3,'2022 H1','2022-01-01','2022-06-30'),
+(4,'2022 H2','2022-07-01','2022-12-31'),
+(5,'2023 H1','2023-01-01','2023-06-30'),
+(6,'2023 H2','2023-07-01','2023-12-31'),
+(7,'2024 H1','2024-01-01','2024-06-30'),
+(8,'2024 H2','2024-07-01','2024-12-31'),
+(9,'2025 H1','2025-01-01','2025-06-30'),
+(10,'2025 H2','2025-07-01','2025-12-31'),
+(11,'2026 H1','2026-01-01','2026-06-30'),
+(12,'2026 H2','2026-07-01','2026-12-31'),
+(13,'2027 H1','2027-01-01','2027-06-30'),
+(14,'2027 H2','2027-07-01','2027-12-31');
 
 SET @qr_period_exists = (
   SELECT COUNT(1)

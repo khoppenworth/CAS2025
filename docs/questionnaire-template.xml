@@ -5,6 +5,12 @@
   <description value="Starter template for importing a questionnaire into the EPSS HR Assessment builder."/>
   <status value="draft"/>
   <item>
+    <linkId value="overall-role"/>
+    <text value="Overall role title"/>
+    <type value="text"/>
+    <required value="true"/>
+  </item>
+  <item>
     <linkId value="section-1"/>
     <text value="Team Delivery"/>
     <description value="Questions about how work is planned, executed, and shared with teammates."/>

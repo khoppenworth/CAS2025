@@ -9,6 +9,10 @@ $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $msg = '';
 $errors = [];
+$themes = [
+    'light' => t($t, 'theme_light', 'Light'),
+    'dark' => t($t, 'theme_dark', 'Dark'),
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -25,6 +29,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $footer_hotline_label = trim($_POST['footer_hotline_label'] ?? '');
     $footer_hotline_number = trim($_POST['footer_hotline_number'] ?? '');
     $footer_rights = trim($_POST['footer_rights'] ?? '');
+    $color_theme = strtolower(trim($_POST['color_theme'] ?? 'light'));
+    if (!array_key_exists($color_theme, $themes)) {
+        $color_theme = 'light';
+    }
+    $brand_color_reset = $_POST['brand_color_reset'] ?? '0';
+    $brand_color_input = normalize_hex_color((string)($_POST['brand_color'] ?? ''));
+    $brand_color = '';
+    if ($brand_color_reset === '1') {
+        $brand_color = '';
+    } elseif ($brand_color_input !== null) {
+        $brand_color = $brand_color_input;
+    }
     if ($footer_website_url && !preg_match('#^https?://#i', $footer_website_url)) {
         $footer_website_url = 'https://' . ltrim($footer_website_url, '/');
     }
@@ -137,6 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'footer_hotline_label' => $footer_hotline_label,
         'footer_hotline_number' => $footer_hotline_number,
         'footer_rights' => $footer_rights,
+        'color_theme' => $color_theme,
+        'brand_color' => $brand_color !== '' ? $brand_color : null,
     ];
 
     $assignments = [];
@@ -201,6 +219,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label class="md-field"><span><?=t($t,'landing_text','Landing Text')?></span><textarea name="landing_text" rows="3"><?=htmlspecialchars($cfg['landing_text'] ?? '')?></textarea></label>
       <label class="md-field"><span><?=t($t,'address_label','Address')?></span><input name="address" value="<?=htmlspecialchars($cfg['address'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'contact_label','Contact')?></span><input name="contact" value="<?=htmlspecialchars($cfg['contact'] ?? '')?>"></label>
+      <h3 class="md-subhead"><?=t($t,'appearance_settings','Appearance')?></h3>
+      <label class="md-field">
+        <span><?=t($t,'color_theme','Color Theme')?></span>
+        <select name="color_theme">
+          <?php foreach ($themes as $themeValue => $themeLabel): ?>
+            <option value="<?=htmlspecialchars($themeValue, ENT_QUOTES, 'UTF-8')?>" <?=site_color_theme($cfg) === $themeValue ? 'selected' : ''?>><?=htmlspecialchars($themeLabel, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label class="md-field md-field-inline">
+        <span>
+          <?=t($t,'brand_color','Brand Color')?>
+          <?=render_help_icon(t($t,'brand_color_hint','Pick any brand color to personalize buttons, highlights, and gradients.'))?>
+        </span>
+        <div class="md-color-picker" data-brand-color-picker data-default-color="<?=htmlspecialchars(site_default_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>">
+          <input type="color" name="brand_color" value="<?=htmlspecialchars(site_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>" aria-label="<?=t($t,'brand_color_picker','Choose a brand color')?>">
+          <span class="md-color-value"><?=htmlspecialchars(strtoupper(site_brand_color($cfg)), ENT_QUOTES, 'UTF-8')?></span>
+          <button type="button" class="md-button md-outline md-compact" data-brand-color-reset><?=t($t,'brand_color_reset','Use default brand color')?></button>
+          <input type="hidden" name="brand_color_reset" value="0" data-brand-color-reset-field>
+        </div>
+      </label>
       <h3 class="md-subhead"><?=t($t,'footer_settings','Footer Details')?></h3>
       <label class="md-field"><span><?=t($t,'footer_org_name_label','Organization Name')?></span><input name="footer_org_name" value="<?=htmlspecialchars($cfg['footer_org_name'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'footer_org_short_label','Organization Short Name')?></span><input name="footer_org_short" value="<?=htmlspecialchars($cfg['footer_org_short'] ?? '')?>"></label>

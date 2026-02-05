@@ -78,10 +78,12 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
 
     $nonScorableTypes = ['display', 'group', 'section'];
     foreach ($itemsByQuestionnaire as $qid => &$itemsForQuestionnaire) {
+        $singleChoiceWeights = questionnaire_even_single_choice_weights($itemsForQuestionnaire);
         $likertWeights = questionnaire_even_likert_weights($itemsForQuestionnaire);
         foreach ($itemsForQuestionnaire as &$item) {
             $item['weight'] = questionnaire_resolve_effective_weight(
                 $item,
+                $singleChoiceWeights,
                 $likertWeights,
                 !in_array($item['type'], $nonScorableTypes, true)
             );
@@ -92,6 +94,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
 
     $responseIds = array_keys($responseMeta);
     $answersByResponse = [];
+    $correctByItem = [];
     if ($responseIds) {
         $answerPlaceholder = implode(',', array_fill(0, count($responseIds), '?'));
         $answerStmt = $pdo->prepare(
@@ -109,12 +112,37 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
         }
     }
 
+    $itemIds = [];
+    foreach ($itemsByQuestionnaire as $qid => $itemsForQuestionnaire) {
+        foreach ($itemsForQuestionnaire as $item) {
+            if (!empty($item['id'])) {
+                $itemIds[] = (int)$item['id'];
+            }
+        }
+    }
+    if ($itemIds) {
+        $itemIds = array_values(array_unique($itemIds));
+        $optionPlaceholder = implode(',', array_fill(0, count($itemIds), '?'));
+        $optStmt = $pdo->prepare(
+            "SELECT questionnaire_item_id, value FROM questionnaire_item_option " .
+            "WHERE questionnaire_item_id IN ($optionPlaceholder) AND is_correct=1 " .
+            "ORDER BY questionnaire_item_id, order_index, id"
+        );
+        $optStmt->execute($itemIds);
+        foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $itemId = (int)$row['questionnaire_item_id'];
+            if (!isset($correctByItem[$itemId])) {
+                $correctByItem[$itemId] = (string)($row['value'] ?? '');
+            }
+        }
+    }
+
     $sectionBreakdowns = [];
     $generalLabel = t($translations, 'unassigned_section_label', 'General');
     $sectionFallback = t($translations, 'section_placeholder', 'Section');
     $questionnaireFallback = t($translations, 'questionnaire_placeholder', 'Questionnaire');
 
-    $scoreCalculator = static function (array $item, array $answerSet, float $weight) use (&$translations): float {
+    $scoreCalculator = static function (array $item, array $answerSet, float $weight, array $correctByItem) use (&$translations): float {
         $type = (string)($item['type'] ?? 'text');
         if ($weight <= 0) {
             return 0.0;
@@ -156,6 +184,18 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             return 0.0;
         }
         if ($type === 'choice') {
+            if (empty($item['allow_multiple'])) {
+                $correct = $correctByItem[(int)($item['id'] ?? 0)] ?? null;
+                if ($correct === null || $correct === '') {
+                    return 0.0;
+                }
+                foreach ($answerSet as $entry) {
+                    if (isset($entry['valueString']) && (string)$entry['valueString'] === $correct) {
+                        return $weight;
+                    }
+                }
+                return 0.0;
+            }
             foreach ($answerSet as $entry) {
                 if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
                     return $weight;
@@ -214,7 +254,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             }
             $sectionStats[$sectionKey]['weight'] += $weight;
             $answerSet = $answers[$item['linkId']] ?? [];
-            $sectionStats[$sectionKey]['achieved'] += $scoreCalculator($item, $answerSet, $weight);
+            $sectionStats[$sectionKey]['achieved'] += $scoreCalculator($item, $answerSet, $weight, $correctByItem);
         }
 
         $sections = [];

@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('available_work_functions')) {
+    require_once __DIR__ . '/../lib/work_functions.php';
+}
 require_once __DIR__ . '/../lib/analytics_report.php';
 require_once __DIR__ . '/../lib/scoring.php';
 
@@ -67,6 +70,18 @@ function analytics_score_item(array $item, array $answerSet, float $weight): flo
         return 0.0;
     }
     if ($type === 'choice') {
+        if (empty($item['allow_multiple'])) {
+            $correct = isset($item['correct_value']) ? (string)$item['correct_value'] : '';
+            if ($correct === '') {
+                return 0.0;
+            }
+            foreach ($answerSet as $entry) {
+                if (isset($entry['valueString']) && (string)$entry['valueString'] === $correct) {
+                    return $weight;
+                }
+            }
+            return 0.0;
+        }
         foreach ($answerSet as $entry) {
             if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
                 return $weight;
@@ -101,27 +116,52 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
     $stmt = $pdo->prepare($sql);
     $stmt->execute($ids);
     $rawItems = [];
+    $itemIds = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $qid = (int)($row['questionnaire_id'] ?? 0);
         if ($qid <= 0) {
             continue;
         }
+        $itemId = (int)($row['id'] ?? 0);
         $rawItems[$qid][] = [
-            'id' => (int)($row['id'] ?? 0),
+            'id' => $itemId,
             'linkId' => (string)($row['linkId'] ?? ''),
             'type' => (string)($row['type'] ?? ''),
             'allow_multiple' => !empty($row['allow_multiple']),
             'weight_percent' => (float)($row['weight_percent'] ?? 0.0),
         ];
+        if ($itemId > 0) {
+            $itemIds[] = $itemId;
+        }
+    }
+
+    $correctByItem = [];
+    if ($itemIds) {
+        $itemIds = array_values(array_unique($itemIds));
+        $optionPlaceholder = implode(',', array_fill(0, count($itemIds), '?'));
+        $optStmt = $pdo->prepare(
+            "SELECT questionnaire_item_id, value FROM questionnaire_item_option " .
+            "WHERE questionnaire_item_id IN ($optionPlaceholder) AND is_correct=1 " .
+            "ORDER BY questionnaire_item_id, order_index, id"
+        );
+        $optStmt->execute($itemIds);
+        foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $itemId = (int)$row['questionnaire_item_id'];
+            if (!isset($correctByItem[$itemId])) {
+                $correctByItem[$itemId] = (string)($row['value'] ?? '');
+            }
+        }
     }
 
     $nonScorableTypes = ['display', 'group', 'section'];
     $itemsByQuestionnaire = [];
     foreach ($rawItems as $qid => $items) {
+        $singleChoiceWeights = questionnaire_even_single_choice_weights($items);
         $likertWeights = questionnaire_even_likert_weights($items);
         foreach ($items as $item) {
             $weight = questionnaire_resolve_effective_weight(
                 $item,
+                $singleChoiceWeights,
                 $likertWeights,
                 !in_array($item['type'], $nonScorableTypes, true)
             );
@@ -133,6 +173,7 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
                 'type' => (string)($item['type'] ?? ''),
                 'allow_multiple' => !empty($item['allow_multiple']),
                 'weight' => $weight,
+                'correct_value' => $correctByItem[(int)($item['id'] ?? 0)] ?? null,
             ];
         }
     }
@@ -584,6 +625,56 @@ $downloadUrlFor = static function (array $params = []): string {
     }
     return url_for($path);
 };
+
+$lookerStudioQuery = <<<'SQL'
+SELECT
+  qr.id AS response_id,
+  qr.created_at AS response_created_at,
+  qr.status AS response_status,
+  qr.score AS response_score,
+  qr.reviewed_at,
+  qr.review_comment,
+  pp.label AS performance_period,
+  q.id AS questionnaire_id,
+  q.title AS questionnaire_title,
+  u.id AS user_id,
+  u.username,
+  u.full_name,
+  u.email,
+  u.department,
+  u.cadre,
+  u.work_function,
+  u.gender,
+  u.account_status,
+  u.created_at AS user_created_at,
+  reviewer.full_name AS reviewer_name,
+  reviewer.email AS reviewer_email,
+  qi.id AS item_id,
+  qi.linkId AS item_link_id,
+  qi.text AS item_text,
+  qi.type AS item_type,
+  qs.title AS section_title,
+  qri.answer AS item_answer,
+  tr.recommended_courses,
+  tr.recommendation_reasons
+FROM questionnaire_response qr
+JOIN users u ON u.id = qr.user_id
+JOIN questionnaire q ON q.id = qr.questionnaire_id
+LEFT JOIN users reviewer ON reviewer.id = qr.reviewed_by
+LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id
+LEFT JOIN questionnaire_response_item qri ON qri.response_id = qr.id
+LEFT JOIN questionnaire_item qi ON qi.linkId = qri.linkId AND qi.questionnaire_id = qr.questionnaire_id
+LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id
+LEFT JOIN (
+  SELECT
+    tr.questionnaire_response_id,
+    GROUP_CONCAT(cc.title ORDER BY cc.title SEPARATOR '; ') AS recommended_courses,
+    GROUP_CONCAT(tr.recommendation_reason ORDER BY cc.title SEPARATOR '; ') AS recommendation_reasons
+  FROM training_recommendation tr
+  JOIN course_catalogue cc ON cc.id = tr.course_id
+  GROUP BY tr.questionnaire_response_id
+) tr ON tr.questionnaire_response_id = qr.id;
+SQL;
 
 $defaultReportDownloads = [
     [
@@ -1176,6 +1267,46 @@ $pageHelpKey = 'team.analytics';
     .md-download-card .md-button {
       align-self: flex-start;
     }
+    .md-analytics-guide {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+    .md-guide-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .md-query-card {
+      border-radius: 12px;
+      border: 1px solid var(--app-border, #e2e8f0);
+      background: var(--app-surface-alt, #f8fafc);
+      padding: 1.25rem;
+    }
+    .md-query-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .md-query-header h3 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    .md-query-pre {
+      margin: 1rem 0 0;
+      max-height: 320px;
+      overflow: auto;
+      padding: 1rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      white-space: pre;
+    }
     .md-report-grid textarea {
       min-height: 80px;
     }
@@ -1330,6 +1461,25 @@ $pageHelpKey = 'team.analytics';
             <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
         </div>
       <?php endforeach; ?>
+    </div>
+  </div>
+
+  <div class="md-card md-elev-2">
+    <h2 class="md-card-title"><?=t($t, 'analytics_looker_resources', 'Analytics guide & Looker Studio query')?></h2>
+    <p><?=t($t, 'analytics_looker_resources_hint', 'Share the PDF guide and copy the SQL query into Google Looker Studio to build custom dashboards.')?></p>
+    <div class="md-analytics-guide">
+      <div class="md-guide-actions">
+        <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(asset_url('assets/analytics-guide.pdf'), ENT_QUOTES, 'UTF-8')?>" target="_blank" rel="noopener noreferrer">
+          <?=t($t, 'analytics_download_guide', 'Download analytics guide (PDF)')?>
+        </a>
+      </div>
+      <div class="md-query-card">
+        <div class="md-query-header">
+          <h3><?=t($t, 'analytics_looker_query_title', 'Google Looker Studio query')?></h3>
+          <button class="md-button md-outline" type="button" data-copy-target="looker-query" data-copy-default="<?=htmlspecialchars(t($t, 'copy_query', 'Copy query'), ENT_QUOTES, 'UTF-8')?>" data-copy-success="<?=htmlspecialchars(t($t, 'copy_query_success', 'Copied!'), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'copy_query', 'Copy query')?></button>
+        </div>
+        <pre class="md-query-pre" id="looker-query"><code><?=htmlspecialchars($lookerStudioQuery, ENT_QUOTES, 'UTF-8')?></code></pre>
+      </div>
     </div>
   </div>
 
@@ -1710,6 +1860,57 @@ $pageHelpKey = 'team.analytics';
     <?php endif; ?>
   </div>
 </section>
+<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
+  document.addEventListener('DOMContentLoaded', () => {
+    const copyButtons = document.querySelectorAll('[data-copy-target]');
+    if (!copyButtons.length) {
+      return;
+    }
+
+    const fallbackCopy = (text) => {
+      const helper = document.createElement('textarea');
+      helper.value = text;
+      helper.setAttribute('readonly', '');
+      helper.style.position = 'absolute';
+      helper.style.left = '-9999px';
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand('copy');
+      document.body.removeChild(helper);
+    };
+
+    copyButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const targetId = button.getAttribute('data-copy-target');
+        if (!targetId) {
+          return;
+        }
+        const target = document.getElementById(targetId);
+        if (!target) {
+          return;
+        }
+        const text = target.textContent || '';
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            fallbackCopy(text);
+          }
+          const successLabel = button.getAttribute('data-copy-success');
+          const defaultLabel = button.getAttribute('data-copy-default');
+          if (successLabel && defaultLabel) {
+            button.textContent = successLabel;
+            window.setTimeout(() => {
+              button.textContent = defaultLabel;
+            }, 2000);
+          }
+        } catch (error) {
+          fallbackCopy(text);
+        }
+      });
+    });
+  });
+</script>
 <?php if ($hasAnalyticsCharts): ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {

@@ -1,40 +1,73 @@
 <?php
 declare(strict_types=1);
 
+$isBootstrapRequested = !defined('APP_BOOTSTRAPPED');
+if ($isBootstrapRequested) {
+    define('APP_BOOTSTRAPPED', true);
+}
+
 require_once __DIR__ . '/lib/email_templates.php';
 require_once __DIR__ . '/lib/work_functions.php';
+require_once __DIR__ . '/lib/rate_limiter.php';
+require_once __DIR__ . '/i18n.php';
+require_once __DIR__ . '/lib/path.php';
+require_once __DIR__ . '/lib/security.php';
+require_once __DIR__ . '/lib/mailer.php';
+require_once __DIR__ . '/lib/notifications.php';
 
-if (!defined('APP_BOOTSTRAPPED')) {
-    define('APP_BOOTSTRAPPED', true);
+$appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
+ini_set('display_errors', $appDebug ? '1' : '0');
+error_reporting(E_ALL);
 
-    $appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
-    ini_set('display_errors', $appDebug ? '1' : '0');
-    error_reporting(E_ALL);
+define('APP_DEBUG', $appDebug);
 
-    require_once __DIR__ . '/lib/rate_limiter.php';
+if (!defined('JSON_THROW_ON_ERROR')) {
+    define('JSON_THROW_ON_ERROR', 0);
+}
+
+define('BASE_PATH', __DIR__);
+
+    $envPath = __DIR__ . '/.env';
+    if (is_readable($envPath)) {
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (is_array($lines)) {
+            foreach ($lines as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === '' || $trimmed[0] === '#') {
+                    continue;
+                }
+                if (strpos($trimmed, '=') === false) {
+                    continue;
+                }
+                [$key, $value] = explode('=', $trimmed, 2);
+                $key = trim($key);
+                $value = trim($value);
+                $length = strlen($value);
+                if ($length >= 2) {
+                    $first = $value[0];
+                    $last = $value[$length - 1];
+                    if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                        $value = substr($value, 1, -1);
+                    }
+                }
+                if ($key !== '' && getenv($key) === false) {
+                    putenv($key . '=' . $value);
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
+    }
+
+$baseUrlEnv = getenv('BASE_URL') ?: '/';
+$normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
+define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
+
+if ($isBootstrapRequested) {
     enforce_rate_limit($_SERVER);
 
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
     }
-
-    define('APP_DEBUG', $appDebug);
-
-    if (!defined('JSON_THROW_ON_ERROR')) {
-        define('JSON_THROW_ON_ERROR', 0);
-    }
-
-    define('BASE_PATH', __DIR__);
-
-    $baseUrlEnv = getenv('BASE_URL') ?: '/';
-    $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
-    define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
-
-    require_once __DIR__ . '/i18n.php';
-    require_once __DIR__ . '/lib/path.php';
-    require_once __DIR__ . '/lib/security.php';
-    require_once __DIR__ . '/lib/mailer.php';
-    require_once __DIR__ . '/lib/notifications.php';
 
     $locale = ensure_locale();
     if (!isset($_SESSION['lang']) || $_SESSION['lang'] !== $locale) {
@@ -70,7 +103,11 @@ if (!defined('APP_BOOTSTRAPPED')) {
 
     try {
         $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
-        initialize_database_schema($pdo);
+        try {
+            initialize_database_schema($pdo);
+        } catch (Throwable $e) {
+            error_log('Database schema initialization failed: ' . $e->getMessage());
+        }
     } catch (PDOException $e) {
         $friendly = 'Unable to connect to the application database. Please try again later or contact support.';
         error_log('DB connection failed: ' . $e->getMessage());
@@ -89,18 +126,30 @@ if (!defined('APP_BOOTSTRAPPED')) {
     }
 }
 
-require_once __DIR__ . '/lib/email_templates.php';
+if (!defined('APP_FUNCTIONS_LOADED')) {
+    define('APP_FUNCTIONS_LOADED', true);
 
-if (!function_exists('str_starts_with')) {
-    function str_starts_with(string $haystack, string $needle): bool
-    {
-        if ($needle === '') {
-            return true;
-        }
-
-        return strncmp($haystack, $needle, strlen($needle)) === 0;
+    if (!function_exists('str_starts_with')) {
+function str_starts_with(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
     }
+
+    return strncmp($haystack, $needle, strlen($needle)) === 0;
 }
+    }
+
+    if (!function_exists('str_contains')) {
+function str_contains(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
+    }
+
+    return strpos($haystack, $needle) !== false;
+}
+    }
 
 function site_default_brand_color(array $cfg): string
 {
@@ -655,32 +704,40 @@ function ensure_users_schema(PDO $pdo): void
         }
     }
 
-    if ($roleColumn && isset($roleColumn['Type']) && stripos((string)$roleColumn['Type'], 'enum(') !== false) {
-        $pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+    try {
+        if ($roleColumn && isset($roleColumn['Type']) && stripos((string)$roleColumn['Type'], 'enum(') !== false) {
+            $pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema role update failed: ' . $e->getMessage());
     }
 
     $workFunctionColumn = $columnDetails['work_function'] ?? null;
-    if ($workFunctionColumn === null) {
-        $pdo->exec("ALTER TABLE users ADD COLUMN work_function VARCHAR(100) NULL AFTER cadre");
-    } else {
-        $type = strtolower((string)($workFunctionColumn['Type'] ?? ''));
-        $nullable = strtolower((string)($workFunctionColumn['Null'] ?? '')) === 'yes';
-        $needsAlter = false;
-        if (str_contains($type, 'enum(')) {
-            $needsAlter = true;
-        } elseif (!str_contains($type, 'char')) {
-            $needsAlter = true;
-        } elseif (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
-            if ((int)$matches[1] < 100) {
+    try {
+        if ($workFunctionColumn === null) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN work_function VARCHAR(100) NULL AFTER cadre");
+        } else {
+            $type = strtolower((string)($workFunctionColumn['Type'] ?? ''));
+            $nullable = strtolower((string)($workFunctionColumn['Null'] ?? '')) === 'yes';
+            $needsAlter = false;
+            if (str_contains($type, 'enum(')) {
+                $needsAlter = true;
+            } elseif (!str_contains($type, 'char')) {
+                $needsAlter = true;
+            } elseif (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
+                if ((int)$matches[1] < 100) {
+                    $needsAlter = true;
+                }
+            }
+            if (!$nullable) {
                 $needsAlter = true;
             }
+            if ($needsAlter) {
+                $pdo->exec('ALTER TABLE users MODIFY COLUMN work_function VARCHAR(100) NULL');
+            }
         }
-        if (!$nullable) {
-            $needsAlter = true;
-        }
-        if ($needsAlter) {
-            $pdo->exec('ALTER TABLE users MODIFY COLUMN work_function VARCHAR(100) NULL');
-        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema work_function update failed: ' . $e->getMessage());
     }
 
     $changes = [
@@ -694,7 +751,11 @@ function ensure_users_schema(PDO $pdo): void
 
     foreach ($changes as $field => $sql) {
         if (!isset($existing[$field])) {
-            $pdo->exec($sql);
+            try {
+                $pdo->exec($sql);
+            } catch (PDOException $e) {
+                error_log(sprintf('ensure_users_schema add column %s failed: %s', $field, $e->getMessage()));
+            }
         }
     }
 }
@@ -714,56 +775,6 @@ function ensure_questionnaire_item_schema(PDO $pdo): void
         }
     } catch (PDOException $e) {
         error_log('ensure_questionnaire_item_schema: ' . $e->getMessage());
-    }
-}
-
-function ensure_questionnaire_work_function_schema(PDO $pdo): void
-{
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
-            questionnaire_id INT NOT NULL,
-            work_function VARCHAR(191) NOT NULL,
-            PRIMARY KEY (questionnaire_id, work_function)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-        $columnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_work_function');
-        $columns = [];
-        if ($columnsStmt) {
-            while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
-                $columns[$column['Field']] = $column;
-            }
-        }
-
-        if (!isset($columns['work_function'])) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(191) NOT NULL AFTER questionnaire_id');
-        } else {
-            $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
-            $needsUpdate = true;
-            if (str_contains($type, 'varchar')) {
-                $length = 0;
-                if (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
-                    $length = (int)$matches[1];
-                }
-                $needsUpdate = $length < 1 || $length < 191;
-            }
-            if ($needsUpdate) {
-                $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(191) NOT NULL');
-            }
-        }
-
-        $primaryIndex = $pdo->query("SHOW INDEX FROM questionnaire_work_function WHERE Key_name = 'PRIMARY'");
-        $hasPrimary = $primaryIndex && $primaryIndex->fetch(PDO::FETCH_ASSOC);
-        if (!$hasPrimary) {
-            $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
-        }
-
-        // Preserve any administrator-defined questionnaire assignments without
-        // seeding defaults on every request. The previous behaviour inserted
-        // every questionnaire/work function combination which overwrote custom
-        // selections made through the admin portal. By limiting this helper to
-        // structural concerns we ensure saved assignments remain intact.
-    } catch (PDOException $e) {
-        error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
     }
 }
 
@@ -841,7 +852,7 @@ function ensure_biannual_performance_periods(PDO $pdo): void
     }
 
     $currentYear = (int)date('Y');
-    $years = range($currentYear - 1, $currentYear + 2);
+    $years = range($currentYear - 2, $currentYear + 3);
 
     $startedTransaction = false;
 
@@ -1070,6 +1081,9 @@ function site_theme_tokens(array $cfg): array
     $danger = adjust_hsl($primary, -40.0, 1.18, 0.9);
     $success = adjust_hsl($primary, 120.0, 0.95, 0.78);
     $info = adjust_hsl($primary, -20.0, 1.08, 1.02);
+    $semanticDanger = '#dc2626';
+    $semanticWarning = '#f59e0b';
+    $semanticSuccess = '#16a34a';
 
     $lightSurface = tint_color($primary, 0.9);
     $lightSurfaceAlt = tint_color($primary, 0.95);
@@ -1107,21 +1121,34 @@ function site_theme_tokens(array $cfg): array
     $warningSoft = rgba_string($warning, 0.22);
     $dangerSoft = rgba_string($danger, 0.24);
     $infoSoft = rgba_string($info, 0.2);
+    $semanticDangerSoft = rgba_string($semanticDanger, 0.24);
+    $semanticWarningSoft = rgba_string($semanticWarning, 0.22);
+    $semanticSuccessSoft = rgba_string($semanticSuccess, 0.2);
 
     $successSurface = tint_color($success, 0.85);
     $warningSurface = tint_color($warning, 0.86);
     $dangerSurface = tint_color($danger, 0.88);
     $infoSurface = tint_color($info, 0.86);
+    $semanticDangerSurface = tint_color($semanticDanger, 0.88);
+    $semanticWarningSurface = tint_color($semanticWarning, 0.86);
+    $semanticSuccessSurface = tint_color($semanticSuccess, 0.85);
 
     $successBorder = rgba_string($success, 0.28);
     $warningBorder = rgba_string($warning, 0.28);
     $dangerBorder = rgba_string($danger, 0.28);
     $infoBorder = rgba_string($info, 0.26);
+    $semanticDangerBorder = rgba_string($semanticDanger, 0.28);
+    $semanticWarningBorder = rgba_string($semanticWarning, 0.28);
+    $semanticSuccessBorder = rgba_string($semanticSuccess, 0.28);
 
     $successText = contrast_color($success);
     $warningText = contrast_color($warning);
     $dangerText = contrast_color($danger);
     $infoText = contrast_color($info);
+    $semanticDangerText = contrast_color($semanticDanger);
+    $semanticWarningText = contrast_color($semanticWarning);
+    $semanticSuccessText = contrast_color($semanticSuccess);
+    $semanticDangerStrong = shade_color($semanticDanger, 0.18);
 
     $successGradient = sprintf('linear-gradient(160deg, %s 0%%, %s 55%%, %s 100%%)', shade_color($success, 0.55), shade_color($success, 0.45), shade_color($success, 0.7));
 
@@ -1151,6 +1178,22 @@ function site_theme_tokens(array $cfg): array
     $darkWarningSoft = rgba_string($darkWarning, 0.34);
     $darkInfo = tint_color($info, 0.32);
     $darkInfoSoft = rgba_string($darkInfo, 0.32);
+    $semanticDangerDark = tint_color($semanticDanger, 0.32);
+    $semanticWarningDark = tint_color($semanticWarning, 0.32);
+    $semanticSuccessDark = tint_color($semanticSuccess, 0.32);
+    $semanticDangerDarkSoft = rgba_string($semanticDangerDark, 0.38);
+    $semanticWarningDarkSoft = rgba_string($semanticWarningDark, 0.34);
+    $semanticSuccessDarkSoft = rgba_string($semanticSuccessDark, 0.32);
+    $semanticDangerDarkSurface = tint_color($semanticDangerDark, 0.88);
+    $semanticWarningDarkSurface = tint_color($semanticWarningDark, 0.86);
+    $semanticSuccessDarkSurface = tint_color($semanticSuccessDark, 0.85);
+    $semanticDangerDarkBorder = rgba_string($semanticDangerDark, 0.28);
+    $semanticWarningDarkBorder = rgba_string($semanticWarningDark, 0.28);
+    $semanticSuccessDarkBorder = rgba_string($semanticSuccessDark, 0.28);
+    $semanticDangerDarkText = contrast_color($semanticDangerDark);
+    $semanticWarningDarkText = contrast_color($semanticWarningDark);
+    $semanticSuccessDarkText = contrast_color($semanticSuccessDark);
+    $semanticDangerDarkStrong = shade_color($semanticDangerDark, 0.18);
     $darkInputBg = rgba_string($darkSurfaceAlt, 0.92);
     $darkOnPrimary = contrast_color($primaryLight);
     $darkOnPrimarySoft = rgba_string($darkOnPrimary, 0.22);
@@ -1194,6 +1237,22 @@ function site_theme_tokens(array $cfg): array
         '--status-info-text' => $infoText,
         '--status-info-border' => $infoBorder,
         '--status-info-surface' => $infoSurface,
+        '--semantic-success' => $semanticSuccess,
+        '--semantic-success-soft' => $semanticSuccessSoft,
+        '--semantic-success-text' => $semanticSuccessText,
+        '--semantic-success-border' => $semanticSuccessBorder,
+        '--semantic-success-surface' => $semanticSuccessSurface,
+        '--semantic-warning' => $semanticWarning,
+        '--semantic-warning-soft' => $semanticWarningSoft,
+        '--semantic-warning-text' => $semanticWarningText,
+        '--semantic-warning-border' => $semanticWarningBorder,
+        '--semantic-warning-surface' => $semanticWarningSurface,
+        '--semantic-danger' => $semanticDanger,
+        '--semantic-danger-strong' => $semanticDangerStrong,
+        '--semantic-danger-soft' => $semanticDangerSoft,
+        '--semantic-danger-text' => $semanticDangerText,
+        '--semantic-danger-border' => $semanticDangerBorder,
+        '--semantic-danger-surface' => $semanticDangerSurface,
         '--app-hero-gradient' => $bgGradient,
         '--app-success-gradient' => $successGradient,
     ];
@@ -1289,6 +1348,22 @@ function site_theme_tokens(array $cfg): array
         '--app-text-secondary' => $darkTextSecondary,
         '--app-text-muted' => $darkTextMuted,
         '--app-text-inverse' => $inverseText,
+        '--semantic-success' => $semanticSuccessDark,
+        '--semantic-success-soft' => $semanticSuccessDarkSoft,
+        '--semantic-success-text' => $semanticSuccessDarkText,
+        '--semantic-success-border' => $semanticSuccessDarkBorder,
+        '--semantic-success-surface' => $semanticSuccessDarkSurface,
+        '--semantic-warning' => $semanticWarningDark,
+        '--semantic-warning-soft' => $semanticWarningDarkSoft,
+        '--semantic-warning-text' => $semanticWarningDarkText,
+        '--semantic-warning-border' => $semanticWarningDarkBorder,
+        '--semantic-warning-surface' => $semanticWarningDarkSurface,
+        '--semantic-danger' => $semanticDangerDark,
+        '--semantic-danger-strong' => $semanticDangerDarkStrong,
+        '--semantic-danger-soft' => $semanticDangerDarkSoft,
+        '--semantic-danger-text' => $semanticDangerDarkText,
+        '--semantic-danger-border' => $semanticDangerDarkBorder,
+        '--semantic-danger-surface' => $semanticDangerDarkSurface,
         '--app-table-stripe' => rgba_string($darkText, 0.08),
         '--app-table-border' => $darkDivider,
         '--app-chart-grid' => rgba_string($primaryLight, 0.18),
@@ -1561,5 +1636,6 @@ function contrast_color(string $hex): string
         return shade_color($hex, 0.85);
     }
     return tint_color($hex, 0.85);
+}
 }
 ?>

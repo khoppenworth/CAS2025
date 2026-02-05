@@ -91,6 +91,7 @@ $languageLabel = htmlspecialchars(t($t, 'language_label', 'Language'), ENT_QUOTE
   <meta name="app-base-url" content="<?= $baseUrl ?>">
   <link rel="stylesheet" href="<?= asset_url('assets/css/material.css') ?>">
   <link rel="stylesheet" href="<?= asset_url('assets/css/styles.css') ?>">
+  <link rel="stylesheet" href="<?= asset_url('assets/css/auth.css') ?>">
   <?php if ($brandStyle !== ''): ?>
     <style id="md-brand-style"><?= htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8') ?></style>
   <?php endif; ?>
@@ -102,10 +103,10 @@ $languageLabel = htmlspecialchars(t($t, 'language_label', 'Language'), ENT_QUOTE
         <div class="login-visual__brand">
           <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="login-visual__logo">
           <div>
-            <p class="md-login-simple__eyebrow" style="margin: 0; opacity: 0.9;">
+            <p class="login-visual__tagline">
               <?= htmlspecialchars(t($t, 'admin_portal_tagline', 'Secure administrator access'), ENT_QUOTES, 'UTF-8') ?>
             </p>
-            <h1 style="margin: 4px 0 0;">Admin — <?= $siteName ?></h1>
+            <h1 class="login-visual__title">Admin — <?= $siteName ?></h1>
           </div>
         </div>
         <p class="login-visual__intro">
@@ -154,7 +155,7 @@ $languageLabel = htmlspecialchars(t($t, 'language_label', 'Language'), ENT_QUOTE
             </div>
           <?php endif; ?>
 
-          <p class="md-help-note" style="text-align: center; margin-bottom: 0;">
+          <p class="md-help-note login-panel__note">
             <a class="md-login-footer-link" href="<?= htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8') ?>">
               <?= htmlspecialchars(t($t, 'back_to_user_login', 'Back to employee login'), ENT_QUOTES, 'UTF-8') ?>
             </a>

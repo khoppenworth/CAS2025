@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__.'/../config.php';
+if (!function_exists('available_work_functions')) {
+    require_once __DIR__ . '/../lib/work_functions.php';
+}
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -24,6 +27,16 @@ $qbStrings = [
     'normalizeWeights' => t($t, 'qb_scoring_normalize', 'Normalize to 100%'),
     'evenWeights' => t($t, 'qb_scoring_even', 'Split evenly'),
     'clearWeights' => t($t, 'qb_scoring_clear', 'Clear weights'),
+    'singleChoiceAutoNote' => t(
+        $t,
+        'qb_scoring_single_choice_note',
+        'Single-choice questions automatically share 100% of the score in analytics.'
+    ),
+    'nonSingleChoiceIgnoredNote' => t(
+        $t,
+        'qb_scoring_non_single_choice_note',
+        'While a questionnaire contains single-choice questions, other question types are excluded from scoring.'
+    ),
     'likertAutoNote' => t(
         $t,
         'qb_scoring_likert_note',
@@ -48,7 +61,7 @@ $qbStrings = [
     'noScorableNote' => t(
         $t,
         'qb_scoring_no_scorable',
-        'Add Likert or weighted questions to enable scoring.'
+        'Add single-choice or weighted questions to enable scoring.'
     ),
     'normalizeSuccess' => t($t, 'qb_scoring_normalize_success', 'Weights normalized to total 100%.'),
     'normalizeNoop' => t($t, 'qb_scoring_normalize_noop', 'Add weights to questions before normalizing.'),
@@ -293,6 +306,59 @@ function qb_questionnaire_to_fhir_resource(array $questionnaire): array
     return $resource;
 }
 
+function qb_is_list_array(array $value): bool
+{
+    if ($value === []) {
+        return true;
+    }
+    return array_keys($value) === range(0, count($value) - 1);
+}
+
+function qb_xml_append_value(DOMDocument $doc, DOMElement $parent, string $key, $value): void
+{
+    if ($value === null) {
+        return;
+    }
+    if (is_array($value)) {
+        if (qb_is_list_array($value)) {
+            foreach ($value as $item) {
+                qb_xml_append_value($doc, $parent, $key, $item);
+            }
+            return;
+        }
+
+        $node = $doc->createElement($key);
+        foreach ($value as $childKey => $childValue) {
+            qb_xml_append_value($doc, $node, (string)$childKey, $childValue);
+        }
+        $parent->appendChild($node);
+        return;
+    }
+
+    $node = $doc->createElement($key);
+    $textValue = is_bool($value) ? ($value ? 'true' : 'false') : (string)$value;
+    $node->appendChild($doc->createTextNode($textValue));
+    $parent->appendChild($node);
+}
+
+function qb_questionnaire_to_fhir_xml(array $resource): string
+{
+    $resourceType = isset($resource['resourceType']) ? (string)$resource['resourceType'] : 'Questionnaire';
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    $doc->formatOutput = true;
+    $root = $doc->createElement($resourceType);
+    $doc->appendChild($root);
+
+    foreach ($resource as $key => $value) {
+        if ($key === 'resourceType') {
+            continue;
+        }
+        qb_xml_append_value($doc, $root, (string)$key, $value);
+    }
+
+    return $doc->saveXML() ?: '';
+}
+
 function qb_questionnaire_items_to_fhir_items(array $items): array
 {
     $fhirItems = [];
@@ -424,6 +490,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'id' => (int)$option['id'],
             'questionnaire_item_id' => $itemId,
             'value' => $option['value'],
+            'is_correct' => !empty($option['is_correct']),
             'order_index' => (int)$option['order_index'],
         ];
     }
@@ -444,6 +511,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'weight_percent' => (int)$item['weight_percent'],
             'allow_multiple' => (bool)$item['allow_multiple'],
             'is_required' => (bool)($item['is_required'] ?? false),
+            'requires_correct' => (bool)($item['requires_correct'] ?? false),
             'options' => $optionsByItem[(int)$item['id']] ?? [],
             'is_active' => (bool)($item['is_active'] ?? true),
             'has_responses' => !empty($itemResponseCounts[$qid][$item['linkId']] ?? null),
@@ -538,10 +606,11 @@ if ($action === 'export') {
     }
 
     $resource = qb_questionnaire_to_fhir_resource($match);
-    $filename = 'questionnaire-' . $qid . '.json';
-    header('Content-Type: application/fhir+json');
+    $xml = qb_questionnaire_to_fhir_xml($resource);
+    $filename = 'questionnaire-' . $qid . '.xml';
+    header('Content-Type: application/fhir+xml');
     header('Content-Disposition: attachment; filename=' . $filename);
-    echo json_encode($resource, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    echo $xml;
     exit;
 }
 
@@ -561,7 +630,7 @@ if ($action === 'upgrade') {
         $itemStmt = $pdo->prepare('SELECT * FROM questionnaire_item WHERE questionnaire_id=? ORDER BY order_index, id');
         $optionStmt = $pdo->prepare('SELECT * FROM questionnaire_item_option WHERE questionnaire_item_id=? ORDER BY order_index, id');
         $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET weight_percent=? WHERE id=?');
-        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, order_index) VALUES (?, ?, ?)');
+        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
 
         $itemStmt->execute([$targetId]);
         $items = $itemStmt->fetchAll();
@@ -599,7 +668,7 @@ if ($action === 'upgrade') {
                 if (!$existingOptions) {
                     $order = 1;
                     foreach (LIKERT_DEFAULT_OPTIONS as $label) {
-                        $insertOptionStmt->execute([(int)$row['id'], $label, $order]);
+                        $insertOptionStmt->execute([(int)$row['id'], $label, 0, $order]);
                         $order += 1;
                         $optionInserts += 1;
                     }
@@ -722,19 +791,29 @@ if ($action === 'save' || $action === 'publish') {
         $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index, is_active) VALUES (?, ?, ?, ?, ?)');
         $updateSectionStmt = $pdo->prepare('UPDATE questionnaire_section SET title=?, description=?, order_index=?, is_active=? WHERE id=?');
 
-        $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, is_active=? WHERE id=?');
-        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, order_index) VALUES (?, ?, ?)');
-        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, order_index=? WHERE id=?');
+        $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, requires_correct, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, requires_correct=?, is_active=? WHERE id=?');
+        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
+        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, is_correct=?, order_index=? WHERE id=?');
         $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
         $deleteWorkFunctionStmt = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE questionnaire_id=?');
 
-        $saveOptions = function (int $itemId, $optionsInput) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
+        $saveOptions = function (int $itemId, $optionsInput, bool $isSingleChoice, bool $requiresCorrect) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
             $existing = $optionsMap[$itemId] ?? [];
             if (!is_array($optionsInput)) {
                 $optionsInput = [];
             }
             $seen = [];
+            $correctAssigned = false;
+            $hasExplicitCorrect = false;
+            if ($isSingleChoice && $requiresCorrect) {
+                foreach ($optionsInput as $optionData) {
+                    if (is_array($optionData) && !empty($optionData['is_correct'])) {
+                        $hasExplicitCorrect = true;
+                        break;
+                    }
+                }
+            }
             $order = 1;
             foreach ($optionsInput as $optionData) {
                 if (!is_array($optionData)) {
@@ -744,12 +823,26 @@ if ($action === 'save' || $action === 'publish') {
                 if ($value === '') {
                     continue;
                 }
+                $isCorrect = !empty($optionData['is_correct']);
+                if ($isSingleChoice && $requiresCorrect) {
+                    if (!$hasExplicitCorrect && !$correctAssigned) {
+                        $isCorrect = true;
+                    }
+                    if ($isCorrect && $correctAssigned) {
+                        $isCorrect = false;
+                    }
+                    if ($isCorrect) {
+                        $correctAssigned = true;
+                    }
+                } elseif ($isSingleChoice && !$requiresCorrect) {
+                    $isCorrect = false;
+                }
                 $optionClientId = $optionData['clientId'] ?? null;
                 $optionId = isset($optionData['id']) ? (int)$optionData['id'] : null;
                 if ($optionId && isset($existing[$optionId])) {
-                    $updateOptionStmt->execute([$value, $order, $optionId]);
+                    $updateOptionStmt->execute([$value, $isCorrect ? 1 : 0, $order, $optionId]);
                 } else {
-                    $insertOptionStmt->execute([$itemId, $value, $order]);
+                    $insertOptionStmt->execute([$itemId, $value, $isCorrect ? 1 : 0, $order]);
                     $optionId = (int)$pdo->lastInsertId();
                     if ($optionClientId) {
                         $idMap['options'][$optionClientId] = $optionId;
@@ -782,7 +875,7 @@ if ($action === 'save' || $action === 'publish') {
             if (!in_array($status, ['draft', 'published', 'inactive'], true)) {
                 $status = 'draft';
             }
-            if ($action === 'publish' && $status !== 'inactive') {
+            if ($action === 'publish' && $status === 'draft') {
                 $status = 'published';
             }
 
@@ -857,23 +950,27 @@ if ($action === 'save' || $action === 'publish') {
                     $text = trim((string)($itemData['text'] ?? ''));
                     $type = $itemData['type'] ?? 'text';
                     if (!in_array($type, ['likert', 'text', 'textarea', 'boolean', 'choice'], true)) {
-                        $type = 'likert';
+                        $type = 'choice';
                     }
                     $weight = isset($itemData['weight_percent']) ? (int)$itemData['weight_percent'] : 0;
                     $allowMultiple = !empty($itemData['allow_multiple']);
                     $isRequired = !empty($itemData['is_required']);
+                    $requiresCorrect = !empty($itemData['requires_correct']);
                     if ($type !== 'choice') {
                         $allowMultiple = false;
+                    }
+                    if ($type !== 'choice' || $allowMultiple) {
+                        $requiresCorrect = false;
                     }
                     $itemActive = array_key_exists('is_active', $itemData) ? !empty($itemData['is_active']) : true;
 
                     if ($itemId && isset($existingItems[$itemId])) {
-                        $updateItemStmt->execute([$sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
+                        $updateItemStmt->execute([$sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
                         $existingItems[$itemId]['section_id'] = $sectionId;
                         $existingItems[$itemId]['linkId'] = $linkId;
                         $existingItems[$itemId]['is_active'] = $itemActive ? 1 : 0;
                     } else {
-                        $insertItemStmt->execute([$qid, $sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $itemActive ? 1 : 0]);
+                        $insertItemStmt->execute([$qid, $sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0]);
                         $itemId = (int)$pdo->lastInsertId();
                         if ($itemClientId) {
                             $idMap['items'][$itemClientId] = $itemId;
@@ -889,7 +986,8 @@ if ($action === 'save' || $action === 'publish') {
                     if (!in_array($type, ['choice', 'likert'], true)) {
                         $optionsInput = [];
                     }
-                    $saveOptions($itemId, $optionsInput);
+                    $isSingleChoice = ($type === 'choice') && empty($allowMultiple);
+                    $saveOptions($itemId, $optionsInput, $isSingleChoice, $requiresCorrect);
                     $itemSeen[] = $itemId;
                     $itemOrder++;
                 }
@@ -911,23 +1009,27 @@ if ($action === 'save' || $action === 'publish') {
                 $text = trim((string)($itemData['text'] ?? ''));
                 $type = $itemData['type'] ?? 'text';
                 if (!in_array($type, ['likert', 'text', 'textarea', 'boolean', 'choice'], true)) {
-                    $type = 'likert';
+                    $type = 'choice';
                 }
                 $weight = isset($itemData['weight_percent']) ? (int)$itemData['weight_percent'] : 0;
                 $allowMultiple = !empty($itemData['allow_multiple']);
                 $isRequired = !empty($itemData['is_required']);
+                $requiresCorrect = !empty($itemData['requires_correct']);
                 if ($type !== 'choice') {
                     $allowMultiple = false;
+                }
+                if ($type !== 'choice' || $allowMultiple) {
+                    $requiresCorrect = false;
                 }
                 $itemActive = array_key_exists('is_active', $itemData) ? !empty($itemData['is_active']) : true;
 
                 if ($itemId && isset($existingItems[$itemId])) {
-                    $updateItemStmt->execute([null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
+                    $updateItemStmt->execute([null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
                     $existingItems[$itemId]['section_id'] = null;
                     $existingItems[$itemId]['linkId'] = $linkId;
                     $existingItems[$itemId]['is_active'] = $itemActive ? 1 : 0;
                 } else {
-                    $insertItemStmt->execute([$qid, null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $itemActive ? 1 : 0]);
+                    $insertItemStmt->execute([$qid, null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0]);
                     $itemId = (int)$pdo->lastInsertId();
                     if ($itemClientId) {
                         $idMap['items'][$itemClientId] = $itemId;
@@ -943,7 +1045,8 @@ if ($action === 'save' || $action === 'publish') {
                 if (!in_array($type, ['choice', 'likert'], true)) {
                     $optionsInput = [];
                 }
-                $saveOptions($itemId, $optionsInput);
+                $isSingleChoice = ($type === 'choice') && empty($allowMultiple);
+                $saveOptions($itemId, $optionsInput, $isSingleChoice, $requiresCorrect);
                 $itemSeen[] = $itemId;
                 $rootOrder++;
             }
@@ -1078,8 +1181,7 @@ if ($action === 'save' || $action === 'publish') {
 }
 
 $msg = $_SESSION['questionnaire_import_flash'] ?? '';
-$importErrors = $_SESSION['questionnaire_import_errors'] ?? [];
-$verification = $_SESSION['questionnaire_import_verification'] ?? null;
+$importPopup = $_SESSION['questionnaire_import_popup'] ?? null;
 $recentImportId = null;
 if (isset($_SESSION['questionnaire_import_focus'])) {
     $candidate = (int)$_SESSION['questionnaire_import_focus'];
@@ -1087,55 +1189,115 @@ if (isset($_SESSION['questionnaire_import_focus'])) {
         $recentImportId = $candidate;
     }
 }
-unset(
-    $_SESSION['questionnaire_import_flash'],
-    $_SESSION['questionnaire_import_focus'],
-    $_SESSION['questionnaire_import_errors'],
-    $_SESSION['questionnaire_import_verification']
-);
-if (isset($_POST['import']) || isset($_POST['verify'])) {
+unset($_SESSION['questionnaire_import_flash'], $_SESSION['questionnaire_import_focus'], $_SESSION['questionnaire_import_popup']);
+if (isset($_POST['import'])) {
     csrf_check();
     $recentImportId = null;
-    $action = isset($_POST['verify']) ? 'verify' : 'import';
-    $file = $_FILES['file'] ?? null;
-    if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && !empty($file['tmp_name'])) {
-        $raw = file_get_contents($file['tmp_name']);
-        $parsed = qb_import_parse_payload((string)$raw);
-        $data = $parsed['data'];
-        $importErrors = $parsed['errors'];
+    $parseErrors = [];
+    $importDetails = [];
+    $importStatus = 'error';
+    $importTitle = t($t, 'import_log_title', 'Import log');
+    $importFilename = $_FILES['file']['name'] ?? '';
+    if ($importFilename) {
+        $importDetails[] = 'File: ' . $importFilename;
+    }
+    if (!empty($_FILES['file']['tmp_name'])) {
+        $raw = file_get_contents($_FILES['file']['tmp_name']);
+        $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
+            if ($xml !== false) {
+                $rootName = $xml->getName();
+                $json = json_encode($xml);
+                $data = json_decode($json, true);
+                if (is_array($data) && $rootName && !isset($data['resourceType'])) {
+                    $data['resourceType'] = $rootName;
+                }
+            } else {
+                $xmlErrors = libxml_get_errors();
+                if ($xmlErrors) {
+                    $messages = array_map(static function ($err) {
+                        return trim($err->message) . ' on line ' . $err->line;
+                    }, $xmlErrors);
+                    error_log('Questionnaire import XML parse errors: ' . implode(' | ', $messages));
+                    $parseErrors = array_slice($messages, 0, 3);
+                    $importDetails[] = 'XML parse errors: ' . implode(' | ', $parseErrors) . '.';
+                } else {
+                    error_log('Questionnaire import XML parse failed with no libxml errors.');
+                    $parseErrors = ['XML parsing failed with no additional error details.'];
+                    $importDetails[] = $parseErrors[0];
+                }
+                libxml_clear_errors();
+            }
+            libxml_use_internal_errors(false);
+        }
         if ($data) {
-            $qs = qb_import_extract_questionnaires($data);
+            $qs = [];
+            $bundleResourceTypes = [];
+            if (($data['resourceType'] ?? '') === 'Bundle') {
+                foreach ($data['entry'] ?? [] as $entry) {
+                    $entryResourceType = $entry['resource']['resourceType'] ?? null;
+                    if ($entryResourceType) {
+                        $bundleResourceTypes[] = $entryResourceType;
+                    }
+                    if ($entryResourceType === 'Questionnaire') {
+                        $qs[] = $entry['resource'];
+                    }
+                }
+            } elseif (($data['resourceType'] ?? '') === 'Questionnaire') {
+                $qs[] = $data;
+            }
 
             if ($qs) {
-                if ($action === 'verify') {
-                    $summary = [];
+                $startedTransaction = false;
+                $importedQuestionnaires = 0;
+                $importedSections = 0;
+                $importedItems = 0;
+                $importedOptions = 0;
+                try {
+                    if (!$pdo->inTransaction()) {
+                        $pdo->beginTransaction();
+                        $startedTransaction = true;
+                    }
+
+                    $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
+                    $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+
                     foreach ($qs as $resource) {
                         if (!is_array($resource)) {
                             continue;
                         }
-                        $counts = qb_import_summarize_questionnaire($resource);
-                        $summary[] = [
-                            'title' => qb_import_normalize_string($resource['title'] ?? null, QB_IMPORT_MAX_QUESTIONNAIRE_TITLE, 'FHIR Questionnaire'),
-                            'sections' => $counts['sections'],
-                            'items' => $counts['items'],
-                        ];
-                    }
-                    $verification = [
-                        'status' => 'ok',
-                        'summary' => $summary,
-                        'errors' => [],
-                    ];
-                    $msg = t($t, 'qb_verify_complete', 'Verification complete. Review the details below before importing.');
-                } else {
-                    $startedTransaction = false;
-                    try {
-                        if (!$pdo->inTransaction()) {
-                            $pdo->beginTransaction();
-                            $startedTransaction = true;
+                        $description = qb_import_normalize_nullable_string($resource['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
+                        $rawStatus = strtolower((string)($resource['status'] ?? ''));
+                        switch ($rawStatus) {
+                            case 'draft':
+                                $status = 'draft';
+                                break;
+                            case 'retired':
+                            case 'inactive':
+                                $status = 'inactive';
+                                break;
+                            case 'active':
+                                $status = 'published';
+                                break;
+                            default:
+                                $status = 'published';
+                                break;
+                        }
+                        $insertQuestionnaireStmt->execute([$title, $description, $status]);
+                        $qid = (int)$pdo->lastInsertId();
+                        $recentImportId = $qid;
+                        $importedQuestionnaires++;
+
+                        foreach ($availableWorkFunctions as $wf) {
+                            $insertWorkFunctionStmt->execute([$qid, $wf]);
                         }
 
-                        $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description) VALUES (?, ?)');
-                        $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+                        $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index) VALUES (?, ?, ?, ?)');
+                        $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required) VALUES (?,?,?,?,?,?,?,?,?)');
+                        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?,?,?,?)');
 
                         foreach ($qs as $resource) {
                             $title = qb_import_normalize_string($resource['title'] ?? null, QB_IMPORT_MAX_QUESTIONNAIRE_TITLE, 'FHIR Questionnaire');
@@ -1174,20 +1336,51 @@ if (isset($_POST['import']) || isset($_POST['verify'])) {
                                     default:
                                         return 'text';
                                 }
-                            };
+                                $expected++;
+                            }
+                            return $value;
+                        };
 
-                            $isTruthy = static function ($value): bool {
-                                if (is_array($value)) {
-                                    if (isset($value['@attributes']['value'])) {
-                                        $value = $value['@attributes']['value'];
-                                    } elseif (isset($value['value'])) {
-                                        $value = $value['value'];
-                                    } else {
-                                        $value = reset($value);
-                                    }
+                        $mapType = static function ($type) {
+                            $type = strtolower((string)$type);
+                            switch ($type) {
+                                case 'boolean':
+                                    return 'boolean';
+                                case 'likert':
+                                case 'scale':
+                                    return 'likert';
+                                case 'choice':
+                                    return 'choice';
+                                case 'text':
+                                    return 'text';
+                                case 'textarea':
+                                    return 'textarea';
+                                default:
+                                    return 'text';
+                            }
+                        };
+
+                        $isTruthy = static function ($value): bool {
+                            if (is_array($value)) {
+                                if (isset($value['@attributes']['value'])) {
+                                    $value = $value['@attributes']['value'];
+                                } elseif (isset($value['value'])) {
+                                    $value = $value['value'];
+                                } else {
+                                    $value = reset($value);
                                 }
-                                if (is_string($value)) {
-                                    $value = trim($value);
+                            }
+                            if (is_string($value)) {
+                                $value = trim($value);
+                            }
+                            return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                        };
+
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, &$importedSections, &$importedItems, &$importedOptions) {
+                            $items = $toList($items);
+                            foreach ($items as $it) {
+                                if (!is_array($it)) {
+                                    continue;
                                 }
                                 return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                             };
@@ -1198,24 +1391,13 @@ if (isset($_POST['import']) || isset($_POST['verify'])) {
                                     if (!is_array($it)) {
                                         continue;
                                     }
-                                    $children = $it['item'] ?? [];
-                                    $childList = qb_import_to_list($children);
-                                    $type = strtolower($it['type'] ?? '');
-                                    $hasChildren = !empty($childList);
-
-                                    if ($hasChildren || $type === 'group') {
-                                        $sectionTitle = qb_import_normalize_string($it['text'] ?? null, QB_IMPORT_MAX_SECTION_TITLE, $it['linkId'] ?? ('Section ' . $sectionOrder));
-                                        if ($sectionTitle === '') {
-                                            $sectionTitle = 'Section ' . $sectionOrder;
-                                        }
-                                        $sectionDescription = qb_import_normalize_nullable_string($it['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
-                                        $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
-                                        $newSectionId = (int)$pdo->lastInsertId();
-                                        $sectionOrder++;
-                                        if ($hasChildren) {
-                                            $processItems($childList, $newSectionId);
-                                        }
-                                        continue;
+                                    $sectionDescription = qb_import_normalize_nullable_string($it['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
+                                    $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
+                                    $newSectionId = (int)$pdo->lastInsertId();
+                                    $sectionOrder++;
+                                    $importedSections++;
+                                    if ($hasChildren) {
+                                        $processItems($childList, $newSectionId);
                                     }
 
                                     if ($type === 'display') {
@@ -1223,50 +1405,58 @@ if (isset($_POST['import']) || isset($_POST['verify'])) {
                                         continue;
                                     }
 
-                                    $linkId = qb_import_normalize_string($it['linkId'] ?? null, QB_IMPORT_MAX_LINK_ID, 'i' . $itemOrder);
-                                    if ($linkId === '') {
-                                        $linkId = 'i' . $itemOrder;
+                                $linkId = qb_import_normalize_string($it['linkId'] ?? null, QB_IMPORT_MAX_LINK_ID, 'i' . $itemOrder);
+                                if ($linkId === '') {
+                                    $linkId = 'i' . $itemOrder;
+                                }
+                                $text = qb_import_normalize_string($it['text'] ?? null, QB_IMPORT_MAX_ITEM_TEXT, $linkId);
+                                if ($text === '') {
+                                    $text = $linkId;
+                                }
+                                $allowMultiple = isset($it['repeats']) ? $isTruthy($it['repeats']) : false;
+                                $dbType = $mapType($type);
+                                $itemOrderIndex = $itemOrder;
+                                $insertItemStmt->execute([
+                                    $qid,
+                                    $sectionId,
+                                    $linkId,
+                                    $text,
+                                    $dbType,
+                                    $itemOrderIndex,
+                                    0,
+                                    $dbType === 'choice' && $allowMultiple ? 1 : 0,
+                                    $isTruthy($it['required'] ?? false) ? 1 : 0,
+                                ]);
+                                $itemId = (int)$pdo->lastInsertId();
+                                $importedItems++;
+                                if ($dbType === 'choice' || $dbType === 'likert') {
+                                    $options = $toList($it['answerOption'] ?? []);
+                                    $optionOrder = 1;
+                                    foreach ($options as $option) {
+                                        if (!is_array($option)) {
+                                            continue;
+                                        }
+                                        $value = null;
+                                        if (isset($option['valueString'])) {
+                                            $value = $option['valueString'];
+                                        } elseif (isset($option['valueCoding']['display'])) {
+                                            $value = $option['valueCoding']['display'];
+                                        } elseif (isset($option['valueCoding']['code'])) {
+                                            $value = $option['valueCoding']['code'];
+                                        }
+                                        $normalizedValue = qb_import_normalize_string($value, QB_IMPORT_MAX_OPTION_VALUE);
+                                        if ($normalizedValue === '') {
+                                            continue;
+                                        }
+                                        $insertOptionStmt->execute([$itemId, $normalizedValue, 0, $optionOrder]);
+                                        $optionOrder++;
+                                        $importedOptions++;
                                     }
-                                    $text = qb_import_normalize_string($it['text'] ?? null, QB_IMPORT_MAX_ITEM_TEXT, $linkId);
-                                    if ($text === '') {
-                                        $text = $linkId;
-                                    }
-                                    $allowMultiple = isset($it['repeats']) ? $isTruthy($it['repeats']) : false;
-                                    $dbType = $mapType($type);
-                                    $itemOrderIndex = $itemOrder;
-                                    $insertItemStmt->execute([
-                                        $qid,
-                                        $sectionId,
-                                        $linkId,
-                                        $text,
-                                        $dbType,
-                                        $itemOrderIndex,
-                                        0,
-                                        $dbType === 'choice' && $allowMultiple ? 1 : 0,
-                                        $isTruthy($it['required'] ?? false) ? 1 : 0,
-                                    ]);
-                                    $itemId = (int)$pdo->lastInsertId();
-                                    if ($dbType === 'choice' || $dbType === 'likert') {
-                                        $options = qb_import_to_list($it['answerOption'] ?? []);
-                                        $optionOrder = 1;
-                                        foreach ($options as $option) {
-                                            if (!is_array($option)) {
-                                                continue;
-                                            }
-                                            $value = null;
-                                            if (isset($option['valueString'])) {
-                                                $value = $option['valueString'];
-                                            } elseif (isset($option['valueCoding']['display'])) {
-                                                $value = $option['valueCoding']['display'];
-                                            } elseif (isset($option['valueCoding']['code'])) {
-                                                $value = $option['valueCoding']['code'];
-                                            }
-                                            $normalizedValue = qb_import_normalize_string($value, QB_IMPORT_MAX_OPTION_VALUE);
-                                            if ($normalizedValue === '') {
-                                                continue;
-                                            }
-                                            $insertOptionStmt->execute([$itemId, $normalizedValue, $optionOrder]);
+                                    if ($dbType === 'likert' && $optionOrder === 1) {
+                                        foreach (LIKERT_DEFAULT_OPTIONS as $label) {
+                                            $insertOptionStmt->execute([$itemId, qb_import_truncate($label, QB_IMPORT_MAX_OPTION_VALUE), 0, $optionOrder]);
                                             $optionOrder++;
+                                            $importedOptions++;
                                         }
                                         if ($dbType === 'likert' && $optionOrder === 1) {
                                             foreach (LIKERT_DEFAULT_OPTIONS as $label) {
@@ -1282,48 +1472,73 @@ if (isset($_POST['import']) || isset($_POST['verify'])) {
                             $processItems($resource['item'] ?? []);
                         }
 
-                        if ($startedTransaction) {
-                            $pdo->commit();
-                        }
-                        $msg = t($t, 'fhir_import_complete', 'FHIR import complete');
-                    } catch (Throwable $e) {
-                        if ($startedTransaction && $pdo->inTransaction()) {
-                            $pdo->rollBack();
-                        }
-                        error_log('FHIR questionnaire import failed: ' . $e->getMessage());
-                        $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
+                    if ($startedTransaction) {
+                        $pdo->commit();
                     }
+                    $summary = sprintf(
+                        'FHIR import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
+                        $importedQuestionnaires,
+                        $importedSections,
+                        $importedItems,
+                        $importedOptions
+                    );
+                    if ($importedItems === 0) {
+                        $summary .= ' No items were imported. Verify that your Questionnaire resources include item definitions.';
+                        $importDetails[] = 'Warning: no items were imported.';
+                    }
+                    $msg = t($t, 'fhir_import_complete', $summary);
+                    $importStatus = 'success';
+                    $importDetails[] = 'Questionnaires imported: ' . $importedQuestionnaires;
+                    $importDetails[] = 'Sections imported: ' . $importedSections;
+                    $importDetails[] = 'Items imported: ' . $importedItems;
+                    $importDetails[] = 'Options imported: ' . $importedOptions;
+                } catch (Throwable $e) {
+                    if ($startedTransaction && $pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    error_log('FHIR questionnaire import failed: ' . $e->getMessage());
+                    $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
+                    $importDetails[] = 'Database error: ' . $e->getMessage();
                 }
             } else {
-                $importErrors[] = t($t, 'no_questionnaires_found', 'No questionnaires found in the import file.');
+                $resourceType = $data['resourceType'] ?? 'unknown';
+                $detail = 'No questionnaires found in the import file.';
+                if ($resourceType === 'Bundle') {
+                    $uniqueTypes = array_values(array_unique($bundleResourceTypes));
+                    if ($uniqueTypes) {
+                        $detail .= ' Bundle contained: ' . implode(', ', $uniqueTypes) . '.';
+                    } else {
+                        $detail .= ' Bundle entries were empty or missing resource types.';
+                    }
+                    $detail .= ' Ensure the Bundle includes Questionnaire resources.';
+                } elseif ($resourceType !== 'unknown') {
+                    $detail .= ' Detected resourceType "' . $resourceType . '". Expected Questionnaire or Bundle.';
+                } else {
+                    $detail .= ' Expected a FHIR Questionnaire or Bundle payload.';
+                }
+                $msg = t($t, 'no_questionnaires_found', $detail);
+                $importDetails[] = $detail;
             }
         } else {
-            $importErrors[] = t($t, 'invalid_file', 'Invalid file');
-        }
-    } else {
-        $uploadError = $file['error'] ?? UPLOAD_ERR_NO_FILE;
-        if ($uploadError !== UPLOAD_ERR_NO_FILE) {
-            $importErrors[] = 'Upload failed with error code ' . $uploadError . '.';
-        } else {
-            $importErrors[] = t($t, 'no_file_uploaded', 'No file uploaded');
-        }
-    }
-
-    if ($action === 'verify') {
-        if (!$verification) {
-            $verification = [
-                'status' => 'error',
-                'summary' => [],
-                'errors' => $importErrors,
-            ];
+            $detail = 'Invalid file. Upload a FHIR Questionnaire XML or JSON file.';
+            if ($parseErrors) {
+                $detail .= ' XML parse errors: ' . implode(' | ', $parseErrors) . '.';
+            }
+            $msg = t($t, 'invalid_file', $detail);
+            $importDetails[] = $detail;
         }
         $_SESSION['questionnaire_import_verification'] = $verification;
     } else {
-        $msg = $msg ?: ($importErrors ? t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.') : '');
-        $_SESSION['questionnaire_import_errors'] = $importErrors;
-        $_SESSION['questionnaire_import_flash'] = $msg;
+        $msg = t($t, 'no_file_uploaded', 'No file uploaded');
+        $importDetails[] = 'No file uploaded.';
     }
-
+    $_SESSION['questionnaire_import_flash'] = $msg;
+    $_SESSION['questionnaire_import_popup'] = [
+        'title' => $importTitle,
+        'status' => $importStatus,
+        'message' => $msg,
+        'details' => $importDetails,
+    ];
     if ($recentImportId) {
         $_SESSION['questionnaire_import_focus'] = $recentImportId;
     }
@@ -1363,15 +1578,34 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
   <?php if ($msg): ?>
     <div class="md-alert"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div>
   <?php endif; ?>
-  <?php if ($importErrors): ?>
-    <div class="md-alert">
-      <strong><?=t($t,'import_errors','Import errors')?></strong>
-      <ul>
-        <?php foreach ($importErrors as $error): ?>
-          <li><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></li>
-        <?php endforeach; ?>
-      </ul>
+  <?php if ($importPopup): ?>
+    <div class="md-upgrade-popup md-import-popup" role="alertdialog" aria-live="assertive" aria-label="<?=htmlspecialchars($importPopup['title'] ?? t($t, 'import_log_title', 'Import log'), ENT_QUOTES, 'UTF-8')?>">
+      <div class="md-upgrade-popup__backdrop"></div>
+      <div class="md-upgrade-popup__dialog">
+        <div class="md-upgrade-popup__header">
+          <span class="md-upgrade-popup__title"><?=htmlspecialchars($importPopup['title'] ?? t($t, 'import_log_title', 'Import log'), ENT_QUOTES, 'UTF-8')?></span>
+          <button type="button" class="md-upgrade-popup__close" data-import-popup-close aria-label="<?=htmlspecialchars(t($t, 'close', 'Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+        </div>
+        <p class="md-upgrade-popup__message"><?=htmlspecialchars((string)($importPopup['message'] ?? ''), ENT_QUOTES, 'UTF-8')?></p>
+        <?php if (!empty($importPopup['details']) && is_array($importPopup['details'])): ?>
+          <ul class="md-import-popup__list">
+            <?php foreach ($importPopup['details'] as $detail): ?>
+              <li><?=htmlspecialchars((string)$detail, ENT_QUOTES, 'UTF-8')?></li>
+            <?php endforeach; ?>
+          </ul>
+        <?php endif; ?>
+      </div>
     </div>
+    <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
+      document.addEventListener('click', (event) => {
+        if (event.target.closest('[data-import-popup-close]') || event.target.classList.contains('md-upgrade-popup__backdrop')) {
+          const popup = event.target.closest('.md-import-popup');
+          if (popup) {
+            popup.remove();
+          }
+        }
+      });
+    </script>
   <?php endif; ?>
   <div class="qb-start-grid">
     <div class="md-card md-elev-2 qb-start-card">
@@ -1408,8 +1642,7 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
         <input type="hidden" name="csrf" value="<?=csrf_token()?>">
         <div class="qb-import-inline">
-          <label class="md-field"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
-          <button class="md-button md-elev-2" name="verify"><?=t($t,'verify','Verify file')?></button>
+          <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
           <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
         </div>
         <div class="qb-start-actions">
@@ -1500,6 +1733,9 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       </div>
     </div>
   </div>
+  <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
+    <?=t($t,'save','Save Changes')?>
+  </button>
 </section>
 <?php if ($recentImportId): ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_INITIAL_ACTIVE_ID = <?=json_encode($recentImportId, JSON_THROW_ON_ERROR)?>;</script>

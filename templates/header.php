@@ -1,5 +1,7 @@
 <?php
-require_once __DIR__ . '/../config.php';
+if (!defined('APP_BOOTSTRAPPED')) {
+    require_once __DIR__ . '/../config.php';
+}
 require_once __DIR__ . '/../lib/help.php';
 
 $locale = ensure_locale();
@@ -60,9 +62,27 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     $aria = $isActiveNav(...$keys) ? ' aria-current="page"' : '';
     return sprintf('class="%s"%s', $class, $aria);
 };
+$localeFlags = [
+    'en' => '🇬🇧',
+    'fr' => '🇫🇷',
+    'am' => '🇪🇹',
+];
+$localeFlagIcons = [
+    'en' => 'assets/images/flags/flag-en.svg',
+    'fr' => 'assets/images/flags/flag-fr.svg',
+    'am' => 'assets/images/flags/flag-am.svg',
+];
+$currentLocale = $locale ?? $defaultLocale;
+$localeCount = count($availableLocales);
+$localeIndex = $localeCount > 0 ? array_search($currentLocale, $availableLocales, true) : false;
+$nextLocale = $localeCount > 0
+    ? $availableLocales[(($localeIndex === false ? 0 : $localeIndex) + 1) % $localeCount]
+    : $currentLocale;
+$currentLocaleFlag = $localeFlags[$currentLocale] ?? '🌐';
+$currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
 ?>
 <?php if ($brandStyle !== ''): ?>
-<style id="md-brand-style">:root { <?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?>; }</style>
+<style id="md-brand-style"><?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?></style>
 <?php endif; ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   window.APP_DEFAULT_LOCALE = <?=json_encode($defaultLocale, JSON_THROW_ON_ERROR)?>;
@@ -84,46 +104,28 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     <img src="<?=$logoPathSmall?>" alt="<?=$siteLogoAlt?>" class="md-appbar-logo" loading="lazy">
     <span><?=$siteTitle?></span>
   </div>
-  <nav class="md-appbar-actions">
-    <button
-      type="button"
-      class="md-appbar-button"
-      id="appbar-install-btn"
-      hidden
-      aria-hidden="true"
+  <div class="md-appbar-actions">
+    <a
+      href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
+      class="md-appbar-link md-appbar-language"
+      aria-label="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
     >
-      <?=htmlspecialchars(t($t, 'install_app', 'Install App'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <button
-      type="button"
-      class="md-status-indicator"
-      data-status-indicator
-      data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
-      data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
-      role="switch"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-checked="true"
-      data-status="online"
-      title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-    >
-      <span class="md-status-dot" aria-hidden="true"></span>
-      <span class="md-status-label"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
-    </button>
-    <button type="button" class="md-appbar-button" id="appbar-reload-btn">
-      <?=htmlspecialchars(t($t, 'reload_app', 'Reload App'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <button type="button" class="md-appbar-button" data-help-toggle aria-haspopup="dialog" aria-expanded="false">
-      <?=htmlspecialchars(t($t, 'system_help', 'Help & tips'), ENT_QUOTES, 'UTF-8')?>
-    </button>
-    <div class="md-lang-switch">
-      <?php foreach ($availableLocales as $loc): ?>
-        <a href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8')?>" class="<?=($locale === $loc) ? 'active' : ''?>"><?=strtoupper($loc)?></a>
-      <?php endforeach; ?>
-    </div>
-    <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></a>
-    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link"><?=t($t, 'logout', 'Logout')?></a>
-  </nav>
+      <?php if ($currentLocaleFlagIcon): ?>
+        <img
+          src="<?=htmlspecialchars(url_for($currentLocaleFlagIcon), ENT_QUOTES, 'UTF-8')?>"
+          alt=""
+          class="md-appbar-flag"
+          aria-hidden="true"
+        >
+      <?php else: ?>
+        <span aria-hidden="true"><?=$currentLocaleFlag?></span>
+      <?php endif; ?>
+    </a>
+    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
+      <?=t($t, 'logout', 'Logout')?>
+    </a>
+  </div>
 </header>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {
@@ -374,7 +376,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     </li>
     <?php if (in_array($role, ['admin', 'supervisor'], true)): ?>
       <?php
-      $teamNavKeys = ['team.pending_accounts', 'team.assignments', 'team.analytics'];
+      $teamNavKeys = ['team.pending_accounts', 'team.analytics'];
       if ($reviewEnabled) {
           array_unshift($teamNavKeys, 'team.review_queue');
       }
@@ -409,27 +411,6 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
           </li>
-          <?php if ($role === 'admin'): ?>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/users.php') . '#questionnaire-assignments', ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.assignments','admin.users')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'assign_questionnaires', 'Assign Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'assign_questionnaires_summary', 'Send questionnaires to the right people in seconds.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <?php else: ?>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/questionnaire_assignments.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.assignments')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'assign_questionnaires', 'Assign Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'assign_questionnaires_summary', 'Send questionnaires to the right people in seconds.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <?php endif; ?>
           <li>
             <a href="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.analytics')?>>
               <span class="md-topnav-link-content">
@@ -443,30 +424,24 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
       </li>
     <?php endif; ?>
     <?php if ($role === 'admin'): ?>
-      <?php $adminActive = $isActiveNav('admin.dashboard', 'admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.export', 'admin.branding', 'admin.settings'); ?>
+      <?php
+      $adminActive = $isActiveNav('admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.branding');
+      $systemActive = $isActiveNav('admin.dashboard', 'admin.export', 'admin.settings');
+      ?>
       <li class="md-topnav-item<?=$adminActive ? ' is-active' : ''?>" data-topnav-item>
         <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'admin_navigation', 'Administration')?></span>
-            <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Configure the system and manage advanced tools.')?></span>
+            <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Manage users, questionnaires, and branding.')?></span>
           </span>
           <span class="md-topnav-chevron" aria-hidden="true"></span>
         </button>
         <ul class="md-topnav-submenu">
           <li>
-            <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Check system health, updates, and alerts.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <li>
             <a href="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.users')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_users', 'Manage Users')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'manage_users_summary', 'Create, update, or deactivate user accounts.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'manage_users_summary', 'Invite, edit, or deactivate accounts and roles.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -475,7 +450,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <a href="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.manage_questionnaires')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_questionnaires', 'Manage Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'manage_questionnaires_summary', 'Build and organize available questionnaires.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'manage_questionnaires_summary', 'Build, organize, and publish assessment questionnaires.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -484,16 +459,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.work_function_defaults')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'work_function_defaults_title', 'Work Function Defaults')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'work_function_defaults_summary', 'Choose default forms for each work function.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download responses for record keeping or analysis.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'work_function_defaults_summary', 'Set default work function options for new assessments.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -502,7 +468,36 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <a href="<?=htmlspecialchars(url_for('admin/branding.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.branding')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Update colors, logos, and landing content.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
+              </span>
+              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="md-topnav-item<?=$systemActive ? ' is-active' : ''?>" data-topnav-item>
+        <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+          <span class="md-topnav-label">
+            <span class="md-topnav-title"><?=t($t, 'system_navigation', 'System')?></span>
+            <span class="md-topnav-desc"><?=t($t, 'system_navigation_summary', 'Configure authentication, exports, and platform upgrades.')?></span>
+          </span>
+          <span class="md-topnav-chevron" aria-hidden="true"></span>
+        </button>
+        <ul class="md-topnav-submenu">
+          <li>
+            <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
+              <span class="md-topnav-link-content">
+                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
+              </span>
+              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+            </a>
+          </li>
+          <li>
+            <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
+              <span class="md-topnav-link-content">
+                <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download assessment data for reporting or analysis.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -511,7 +506,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <a href="<?=htmlspecialchars(url_for('admin/settings.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.settings')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'settings', 'Settings')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'settings_summary', 'Adjust global preferences and integrations.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'settings_summary', 'Adjust platform settings and integrations.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -520,7 +515,7 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
             <a href="<?=htmlspecialchars(url_for('swagger.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link md-topnav-link--external" target="_blank" rel="noopener">
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t,'api_documentation','API Documentation')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'api_documentation_summary', 'Open the developer reference in a new tab.')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'api_documentation_summary', 'Browse the interactive API reference.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">↗</span>
             </a>
@@ -528,6 +523,62 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
         </ul>
       </li>
     <?php endif; ?>
+    <li class="md-topnav-item" data-topnav-item>
+      <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+        <span class="md-topnav-label">
+          <span class="md-topnav-title"><?=t($t, 'account_tools', 'Account & Tools')?></span>
+          <span class="md-topnav-desc"><?=t($t, 'account_tools_summary', 'Quick actions, profile, and preferences.')?></span>
+        </span>
+        <span class="md-topnav-chevron" aria-hidden="true"></span>
+      </button>
+      <ul class="md-topnav-submenu">
+        <li>
+          <button
+            type="button"
+            class="md-topnav-link"
+            id="appbar-install-btn"
+            hidden
+            aria-hidden="true"
+          >
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'install_app', 'Install App'), ENT_QUOTES, 'UTF-8')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'install_app_summary', 'Add this app to your device for quick access.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">↓</span>
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="md-topnav-link"
+            data-status-indicator
+            data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
+            data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
+            role="switch"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-checked="true"
+            data-status="online"
+            title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
+          >
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=t($t, 'connectivity_status', 'Connectivity')?></span>
+              <span class="md-topnav-link-desc md-status-label"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
+            </span>
+            <span class="md-topnav-link-icon md-status-dot" aria-hidden="true"></span>
+          </button>
+        </li>
+        <li>
+          <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
+            <span class="md-topnav-link-content">
+              <span class="md-topnav-link-title"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></span>
+              <span class="md-topnav-link-desc"><?=t($t, 'profile_summary', 'Update your profile details and settings.')?></span>
+            </span>
+            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+          </a>
+        </li>
+      </ul>
+    </li>
   </ul>
 </nav>
 <div class="md-topnav-backdrop" data-topnav-backdrop aria-hidden="true" hidden></div>
@@ -547,4 +598,3 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
   </div>
 </div>
 <main class="md-main">
-

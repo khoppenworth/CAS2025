@@ -127,11 +127,12 @@ CREATE TABLE questionnaire_item (
   section_id INT NULL,
   linkId VARCHAR(64) NOT NULL,
   text VARCHAR(500) NOT NULL,
-  type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'likert',
+  type ENUM('likert','text','textarea','boolean','choice') NOT NULL DEFAULT 'choice',
   order_index INT NOT NULL DEFAULT 0,
   weight_percent INT NOT NULL DEFAULT 0,
   allow_multiple TINYINT(1) NOT NULL DEFAULT 0,
   is_required TINYINT(1) NOT NULL DEFAULT 0,
+  requires_correct TINYINT(1) NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE,
   FOREIGN KEY (section_id) REFERENCES questionnaire_section(id) ON DELETE SET NULL
@@ -141,6 +142,7 @@ CREATE TABLE questionnaire_item_option (
   id INT AUTO_INCREMENT PRIMARY KEY,
   questionnaire_item_id INT NOT NULL,
   value VARCHAR(500) NOT NULL,
+  is_correct TINYINT(1) NOT NULL DEFAULT 0,
   order_index INT NOT NULL DEFAULT 0,
   FOREIGN KEY (questionnaire_item_id) REFERENCES questionnaire_item(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -381,7 +383,11 @@ INSERT INTO performance_period (label, period_start, period_end) VALUES
 ('2024 H1', '2024-01-01', '2024-06-30'),
 ('2024 H2', '2024-07-01', '2024-12-31'),
 ('2025 H1', '2025-01-01', '2025-06-30'),
-('2025 H2', '2025-07-01', '2025-12-31');
+('2025 H2', '2025-07-01', '2025-12-31'),
+('2026 H1', '2026-01-01', '2026-06-30'),
+('2026 H2', '2026-07-01', '2026-12-31'),
+('2027 H1', '2027-01-01', '2027-06-30'),
+('2027 H2', '2027-07-01', '2027-12-31');
 
 INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, min_score, max_score) VALUES
 ('FIN-101', 'Financial Management Fundamentals', 'https://moodle.example.com/course/fin101', 'finance', 0, 79),

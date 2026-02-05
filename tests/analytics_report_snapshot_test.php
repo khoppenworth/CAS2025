@@ -14,7 +14,7 @@ $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE questionnaire (id INTEGER PRIMARY KEY, title TEXT, status TEXT)');
 $pdo->exec('CREATE TABLE questionnaire_section (id INTEGER PRIMARY KEY, questionnaire_id INT, title TEXT, order_index INT, is_active INT DEFAULT 1)');
 $pdo->exec('CREATE TABLE questionnaire_item (id INTEGER PRIMARY KEY, questionnaire_id INT, section_id INT, linkId TEXT, type TEXT, allow_multiple INT, weight_percent REAL, order_index INT, is_active INT)');
-$pdo->exec('CREATE TABLE questionnaire_item_option (id INTEGER PRIMARY KEY, questionnaire_item_id INT, value TEXT, order_index INT)');
+$pdo->exec('CREATE TABLE questionnaire_item_option (id INTEGER PRIMARY KEY, questionnaire_item_id INT, value TEXT, is_correct INT DEFAULT 0, order_index INT)');
 $pdo->exec('CREATE TABLE questionnaire_response (id INTEGER PRIMARY KEY, user_id INT, questionnaire_id INT, performance_period_id INT, status TEXT, score REAL, created_at TEXT, reviewed_at TEXT)');
 $pdo->exec('CREATE TABLE questionnaire_response_item (id INTEGER PRIMARY KEY, response_id INT, linkId TEXT, answer TEXT)');
 $pdo->exec('CREATE TABLE performance_period (id INTEGER PRIMARY KEY, label TEXT, period_start TEXT)');

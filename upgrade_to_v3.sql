@@ -149,7 +149,13 @@ ALTER TABLE questionnaire_item
   ADD COLUMN IF NOT EXISTS is_required TINYINT(1) NOT NULL DEFAULT 0 AFTER allow_multiple;
 
 ALTER TABLE questionnaire_item
-  ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER is_required;
+  ADD COLUMN IF NOT EXISTS requires_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER is_required;
+
+ALTER TABLE questionnaire_item
+  ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER requires_correct;
+
+ALTER TABLE questionnaire_item_option
+  ADD COLUMN IF NOT EXISTS is_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER value;
 
 UPDATE questionnaire
 SET status = 'draft'

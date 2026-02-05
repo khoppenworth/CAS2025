@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (defined('APP_WORK_FUNCTIONS_LOADED')) {
+    return;
+}
+define('APP_WORK_FUNCTIONS_LOADED', true);
+
 /**
  * Retrieve the built-in (code-level) work function definition list.
  *
@@ -33,32 +38,37 @@ function built_in_work_function_definitions(): array
 function ensure_work_function_catalog(PDO $pdo): void
 {
     $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
-    if ($driver === 'sqlite') {
-        $pdo->exec(
-            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
-            . 'slug TEXT NOT NULL PRIMARY KEY, '
-            . 'label TEXT NOT NULL, '
-            . 'sort_order INTEGER NOT NULL DEFAULT 0, '
-            . 'archived_at TEXT NULL, '
-            . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
-            . ')'
-        );
-        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
-    } else {
-        $pdo->exec(
-            'CREATE TABLE IF NOT EXISTS work_function_catalog ('
-            . 'slug VARCHAR(100) NOT NULL PRIMARY KEY, '
-            . 'label VARCHAR(255) NOT NULL, '
-            . 'sort_order INT NOT NULL DEFAULT 0, '
-            . 'archived_at DATETIME NULL, '
-            . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
-            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-        );
-        try {
-            $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
-        } catch (Throwable $e) {
-            // Ignore duplicate index errors.
+    try {
+        if ($driver === 'sqlite') {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+                . 'slug TEXT NOT NULL PRIMARY KEY, '
+                . 'label TEXT NOT NULL, '
+                . 'sort_order INTEGER NOT NULL DEFAULT 0, '
+                . 'archived_at TEXT NULL, '
+                . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
+                . ')'
+            );
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+        } else {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS work_function_catalog ('
+                . 'slug VARCHAR(100) NOT NULL PRIMARY KEY, '
+                . 'label VARCHAR(255) NOT NULL, '
+                . 'sort_order INT NOT NULL DEFAULT 0, '
+                . 'archived_at DATETIME NULL, '
+                . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            );
+            try {
+                $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
+            } catch (Throwable $e) {
+                // Ignore duplicate index errors.
+            }
         }
+    } catch (PDOException $e) {
+        error_log('ensure_work_function_catalog schema failed: ' . $e->getMessage());
+        return;
     }
 
     $count = 0;
@@ -69,22 +79,81 @@ function ensure_work_function_catalog(PDO $pdo): void
         }
     } catch (PDOException $e) {
         error_log('ensure_work_function_catalog count failed: ' . $e->getMessage());
+        return;
     }
 
     if ($count === 0) {
         $defaults = built_in_work_function_definitions();
         $sortOrder = 1;
-        $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
-        foreach ($defaults as $slug => $label) {
-            try {
-                $insert->execute([$slug, $label, $sortOrder]);
-                $sortOrder++;
-            } catch (PDOException $e) {
-                error_log('ensure_work_function_catalog insert failed: ' . $e->getMessage());
+        try {
+            $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
+            foreach ($defaults as $slug => $label) {
+                try {
+                    $insert->execute([$slug, $label, $sortOrder]);
+                    $sortOrder++;
+                } catch (PDOException $e) {
+                    error_log('ensure_work_function_catalog insert failed: ' . $e->getMessage());
+                }
             }
+        } catch (PDOException $e) {
+            error_log('ensure_work_function_catalog prepare failed: ' . $e->getMessage());
         }
     }
 }
+
+/*
+if (!function_exists('ensure_questionnaire_work_function_schema')) {
+    function ensure_questionnaire_work_function_schema(PDO $pdo): void
+    {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
+                questionnaire_id INT NOT NULL,
+                work_function VARCHAR(191) NOT NULL,
+                PRIMARY KEY (questionnaire_id, work_function)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $columnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_work_function');
+            $columns = [];
+            if ($columnsStmt) {
+                while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $columns[$column['Field']] = $column;
+                }
+            }
+
+            if (!isset($columns['work_function'])) {
+                $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(191) NOT NULL AFTER questionnaire_id');
+            } else {
+                $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
+                $needsUpdate = true;
+                if (str_contains($type, 'varchar')) {
+                    $length = 0;
+                    if (preg_match('/varchar\\((\\d+)\\)/i', $type, $matches)) {
+                        $length = (int)$matches[1];
+                    }
+                    $needsUpdate = $length < 1 || $length < 191;
+                }
+                if ($needsUpdate) {
+                    $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(191) NOT NULL');
+                }
+            }
+
+            $primaryIndex = $pdo->query("SHOW INDEX FROM questionnaire_work_function WHERE Key_name = 'PRIMARY'");
+            $hasPrimary = $primaryIndex && $primaryIndex->fetch(PDO::FETCH_ASSOC);
+            if (!$hasPrimary) {
+                $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
+            }
+
+            // Preserve any administrator-defined questionnaire assignments without
+            // seeding defaults on every request. The previous behaviour inserted
+            // every questionnaire/work function combination which overwrote custom
+            // selections made through the admin portal. By limiting this helper to
+            // structural concerns we ensure saved assignments remain intact.
+        } catch (PDOException $e) {
+            error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
+        }
+    }
+}
+*/
 
 /**
  * Fetch the active work function definitions from the catalog.
@@ -340,55 +409,55 @@ function canonical(string $value, ?array $definitions = null): string
     return canonical_work_function_key($value, $definitions);
 }
 
+if (!function_exists('canonical_work_function')) {
+    function canonical_work_function(string $value, ?array $definitions = null): string
+    {
+        return canonical_work_function_key($value, $definitions);
+    }
+}
+
 /**
  * @return array<string,string>
  */
-function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
-{
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
+if (!function_exists('work_function_choices')) {
+    function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
+    {
+        $definitions = work_function_definitions($pdo, $forceRefresh);
+        $choices = $definitions;
 
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
-    $definitions = work_function_definitions($pdo, $forceRefresh);
-    $choices = $definitions;
-    $sources = [];
-
-    try {
-        $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function <> "" ORDER BY work_function');
-        if ($stmt) {
-            $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+        $sources = [];
+        try {
+            $stmt = $pdo->query('SELECT DISTINCT work_function FROM questionnaire_work_function WHERE work_function IS NOT NULL AND work_function <> ""');
+            if ($stmt) {
+                $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (PDOException $e) {
+            error_log('work_function_choices (questionnaire_work_function): ' . $e->getMessage());
         }
-    } catch (PDOException $e) {
-        error_log('work_function_choices (questionnaire_work_function): ' . $e->getMessage());
-    }
 
-    try {
-        $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> '' ORDER BY work_function");
-        if ($stmt) {
-            $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+        try {
+            $stmt = $pdo->query("SELECT DISTINCT work_function FROM users WHERE work_function IS NOT NULL AND work_function <> ''");
+            if ($stmt) {
+                $sources = array_merge($sources, $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (PDOException $e) {
+            error_log('work_function_choices (users): ' . $e->getMessage());
         }
-    } catch (PDOException $e) {
-        error_log('work_function_choices (users): ' . $e->getMessage());
-    }
 
-    foreach ($sources as $rawValue) {
-        $key = canonical_work_function_key((string)$rawValue, $definitions);
-        if ($key === '') {
-            continue;
+        foreach ($sources as $rawValue) {
+            $key = canonical_work_function_key((string)$rawValue, $definitions);
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($choices[$key])) {
+                $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', $key));
+            }
         }
-        if (!isset($choices[$key])) {
-            $choices[$key] = $definitions[$key] ?? ucwords(str_replace('_', ' ', (string)$key));
-        }
+
+        uasort($choices, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
+
+        return $choices;
     }
-
-    uasort($choices, static fn ($a, $b) => strcasecmp((string)$a, (string)$b));
-
-    $cache[$cacheKey] = $choices;
-
-    return $choices;
 }
 
 /**
@@ -396,13 +465,6 @@ function work_function_choices(PDO $pdo, bool $forceRefresh = false): array
  */
 function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
-
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
     $assignments = [];
     $definitions = work_function_definitions($pdo, $forceRefresh);
 
@@ -415,10 +477,7 @@ function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
                 if ($questionnaireId <= 0 || $workFunction === '') {
                     continue;
                 }
-                if (!isset($assignments[$workFunction])) {
-                    $assignments[$workFunction] = [];
-                }
-                $assignments[$workFunction][] = $questionnaireId;
+                $assignments[$workFunction][$questionnaireId] = $questionnaireId;
             }
         }
     } catch (PDOException $e) {
@@ -426,21 +485,12 @@ function work_function_assignments(PDO $pdo, bool $forceRefresh = false): array
     }
 
     foreach ($assignments as $workFunction => $ids) {
-        $filtered = [];
-        foreach ($ids as $id) {
-            $id = (int)$id;
-            if ($id > 0) {
-                $filtered[$id] = $id;
-            }
-        }
-        $list = array_values($filtered);
+        $list = array_values($ids);
         sort($list, SORT_NUMERIC);
         $assignments[$workFunction] = $list;
     }
 
     ksort($assignments);
-
-    $cache[$cacheKey] = $assignments;
 
     return $assignments;
 }
@@ -467,29 +517,20 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
         if ($canonical === '' || !isset($allowedWorkFunctionSet[$canonical])) {
             continue;
         }
-
         if (!is_array($ids)) {
             continue;
         }
-
         foreach ($ids as $id) {
             $id = (int)$id;
             if ($id <= 0 || !isset($allowedQuestionnaireSet[$id])) {
                 continue;
-            }
-            if (!isset($normalized[$canonical])) {
-                $normalized[$canonical] = [];
             }
             $normalized[$canonical][$id] = $id;
         }
     }
 
     foreach ($allowedWorkFunctions as $workFunction) {
-        if (!isset($normalized[$workFunction])) {
-            $normalized[$workFunction] = [];
-            continue;
-        }
-        $values = array_values($normalized[$workFunction]);
+        $values = array_values($normalized[$workFunction] ?? []);
         sort($values, SORT_NUMERIC);
         $normalized[$workFunction] = $values;
     }
@@ -509,8 +550,8 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
     $pdo->beginTransaction();
     try {
         $pdo->exec('DELETE FROM questionnaire_work_function');
+        $definitions = work_function_definitions($pdo);
         if ($assignments !== []) {
-            $definitions = work_function_definitions($pdo);
             $insert = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
             foreach ($assignments as $workFunction => $questionnaireIds) {
                 $workFunction = canonical_work_function_key((string)$workFunction, $definitions);
@@ -531,10 +572,6 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
         $pdo->rollBack();
         throw $e;
     }
-
-    work_function_assignments($pdo, true);
-    work_function_choices($pdo, true);
-    available_work_functions($pdo, true);
 }
 
 /**
@@ -542,13 +579,6 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
  */
 function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = spl_object_id($pdo);
-
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
-
     $definitions = work_function_definitions($pdo, $forceRefresh);
     $choices = work_function_choices($pdo, $forceRefresh);
     $assignments = work_function_assignments($pdo, $forceRefresh);
@@ -572,9 +602,7 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
         $labels[$canonical] = ucwords(str_replace('_', ' ', $canonical));
     }
 
-    uasort($labels, static fn ($a, $b) => strcasecmp((string)$a, (string)$b));
-
-    $cache[$cacheKey] = $labels;
+    uasort($labels, static fn($a, $b) => strcasecmp((string)$a, (string)$b));
 
     return $labels;
 }
@@ -582,22 +610,26 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 /**
  * Resolve the display label for a work function key.
  */
-function work_function_label(PDO $pdo, string $workFunction): string
-{
-    $definitions = work_function_definitions($pdo);
-    $canonical = canonical_work_function_key($workFunction, $definitions);
-    if ($canonical === '') {
-        return '';
-    }
+/*
+if (!function_exists('work_function_label')) {
+    function work_function_label(PDO $pdo, string $workFunction): string
+    {
+        $definitions = work_function_definitions($pdo);
+        $canonical = canonical_work_function_key($workFunction, $definitions);
+        if ($canonical === '') {
+            return '';
+        }
 
-    $options = available_work_functions($pdo);
-    if (isset($options[$canonical])) {
-        return (string) $options[$canonical];
-    }
+        $options = available_work_functions($pdo);
+        if (isset($options[$canonical])) {
+            return (string) $options[$canonical];
+        }
 
-    if (isset($definitions[$canonical])) {
-        return (string) $definitions[$canonical];
-    }
+        if (isset($definitions[$canonical])) {
+            return (string) $definitions[$canonical];
+        }
 
-    return ucwords(str_replace('_', ' ', $canonical));
+        return ucwords(str_replace('_', ' ', $canonical));
+    }
 }
+*/
