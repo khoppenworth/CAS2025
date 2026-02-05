@@ -424,25 +424,19 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
       </li>
     <?php endif; ?>
     <?php if ($role === 'admin'): ?>
-      <?php $adminActive = $isActiveNav('admin.dashboard', 'admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.export', 'admin.branding', 'admin.settings'); ?>
+      <?php
+      $adminActive = $isActiveNav('admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.branding');
+      $systemActive = $isActiveNav('admin.dashboard', 'admin.export', 'admin.settings');
+      ?>
       <li class="md-topnav-item<?=$adminActive ? ' is-active' : ''?>" data-topnav-item>
         <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'admin_navigation', 'Administration')?></span>
-            <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Manage system configuration, users, and data exports.')?></span>
+            <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Manage users, questionnaires, and branding.')?></span>
           </span>
           <span class="md-topnav-chevron" aria-hidden="true"></span>
         </button>
         <ul class="md-topnav-submenu">
-          <li>
-            <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
-              <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
-              </span>
-              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-            </a>
-          </li>
           <li>
             <a href="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.users')?>>
               <span class="md-topnav-link-content">
@@ -471,19 +465,39 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
             </a>
           </li>
           <li>
-            <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
+            <a href="<?=htmlspecialchars(url_for('admin/branding.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.branding')?>>
               <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download assessment data for reporting or analysis.')?></span>
+                <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
+              </span>
+              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="md-topnav-item<?=$systemActive ? ' is-active' : ''?>" data-topnav-item>
+        <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+          <span class="md-topnav-label">
+            <span class="md-topnav-title"><?=t($t, 'system_navigation', 'System')?></span>
+            <span class="md-topnav-desc"><?=t($t, 'system_navigation_summary', 'Configure authentication, exports, and platform upgrades.')?></span>
+          </span>
+          <span class="md-topnav-chevron" aria-hidden="true"></span>
+        </button>
+        <ul class="md-topnav-submenu">
+          <li>
+            <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
+              <span class="md-topnav-link-content">
+                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
           </li>
           <li>
-            <a href="<?=htmlspecialchars(url_for('admin/branding.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.branding')?>>
+            <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
               <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
+                <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download assessment data for reporting or analysis.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
