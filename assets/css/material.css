@@ -347,9 +347,9 @@ body.md-bg {
 }
 
 .md-alert {
-  background: var(--app-warning-soft));
-  border-left: 4px solid var(--app-warning));
-  color: var(--md-muted);
+  background: var(--status-warning-soft);
+  border-left: 4px solid var(--app-primary-dark);
+  color: var(--app-primary-dark);
   padding: 12px 16px;
   border-radius: 12px;
   margin: 12px 0;
