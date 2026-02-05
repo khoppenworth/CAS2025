@@ -513,7 +513,17 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
     $normalized = [];
 
     foreach ($input as $workFunction => $ids) {
-        $canonical = canonical_work_function_key((string)$workFunction);
+        $rawWorkFunction = trim((string)$workFunction);
+        if ($rawWorkFunction === '') {
+            continue;
+        }
+
+        if (isset($allowedWorkFunctionSet[$rawWorkFunction])) {
+            $canonical = $rawWorkFunction;
+        } else {
+            $canonical = canonical_work_function_key($rawWorkFunction);
+        }
+
         if ($canonical === '' || !isset($allowedWorkFunctionSet[$canonical])) {
             continue;
         }
