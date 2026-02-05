@@ -371,6 +371,26 @@ const Builder = (() => {
     render();
   }
 
+  function normalizeStatusValue(value) {
+    const normalized = String(value || '').toLowerCase();
+    return STATUS_OPTIONS.includes(normalized) ? normalized : 'draft';
+  }
+
+  function syncActiveQuestionnaireMetaFromDom() {
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) return;
+    const card = document.querySelector(`.qb-card[data-q="${active.clientId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    const descriptionInput = card.querySelector('[data-role="q-description"]');
+    const statusInput = card.querySelector('[data-role="q-status"]');
+
+    if (titleInput) active.title = titleInput.value;
+    if (descriptionInput) active.description = descriptionInput.value;
+    if (statusInput) active.status = normalizeStatusValue(statusInput.value);
+  }
+
   function addQuestionnaire() {
     const next = normalizeQuestionnaire({
       title: 'Untitled Questionnaire',
@@ -441,6 +461,43 @@ const Builder = (() => {
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     bindSortables();
+    bindQuestionnaireMetaHandlers(active);
+  }
+
+  function bindQuestionnaireMetaHandlers(questionnaire) {
+    if (!questionnaire) return;
+    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    const descriptionInput = card.querySelector('[data-role="q-description"]');
+    const statusInput = card.querySelector('[data-role="q-status"]');
+
+    const handleTitle = () => {
+      questionnaire.title = titleInput.value;
+      markDirty();
+      renderTabs();
+      renderSelector();
+      renderSectionNav();
+    };
+    titleInput?.addEventListener('input', handleTitle);
+    titleInput?.addEventListener('change', handleTitle);
+
+    const handleDescription = () => {
+      questionnaire.description = descriptionInput.value;
+      markDirty();
+    };
+    descriptionInput?.addEventListener('input', handleDescription);
+    descriptionInput?.addEventListener('change', handleDescription);
+
+    const handleStatus = () => {
+      questionnaire.status = normalizeStatusValue(statusInput.value);
+      markDirty();
+      renderTabs();
+      renderSelector();
+    };
+    statusInput?.addEventListener('input', handleStatus);
+    statusInput?.addEventListener('change', handleStatus);
   }
 
   function focusActiveQuestionnaire() {
@@ -750,12 +807,13 @@ const Builder = (() => {
         questionnaire.title = event.target.value;
         renderTabs();
         renderSelector();
+        renderSectionNav();
         break;
       case 'q-description':
         questionnaire.description = event.target.value;
         break;
       case 'q-status':
-        questionnaire.status = event.target.value;
+        questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
         renderSelector();
         break;
@@ -1173,7 +1231,7 @@ const Builder = (() => {
 
   function labelForQuestionnaire(q) {
     const label = q.title?.trim() || 'Untitled Questionnaire';
-    const suffix = q.status === 'published' ? ' (Published)' : q.status === 'inactive' ? ' (Inactive)' : '';
+    const suffix = ` (${formatStatusLabel(q.status)})`;
     return `${label}${suffix}`;
   }
 
@@ -1204,7 +1262,7 @@ const Builder = (() => {
       });
     }
 
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       Sortable.create(container, {
         animation: 150,
         handle: '.qb-item-main',
@@ -1228,7 +1286,7 @@ const Builder = (() => {
   function reorderItems() {
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
     if (!active) return;
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       const sectionId = container.getAttribute('data-section');
       const list = sectionId
         ? active.sections.find((s) => s.clientId === sectionId)?.items
@@ -1241,6 +1299,7 @@ const Builder = (() => {
 
   function saveAll(publish = false) {
     if (state.saving) return;
+    syncActiveQuestionnaireMetaFromDom();
     state.saving = true;
     toggleSaveButtons();
     renderMessage(publish ? 'Publishing…' : 'Saving…');
@@ -1292,7 +1351,7 @@ const Builder = (() => {
       clientId: questionnaire.clientId,
       title: questionnaire.title,
       description: questionnaire.description,
-      status: questionnaire.status,
+      status: normalizeStatusValue(questionnaire.status),
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };

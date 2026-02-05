@@ -1536,7 +1536,6 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
         <div class="qb-toolbar">
           <div class="qb-toolbar-actions">
             <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
-            <button class="md-button md-elev-2" id="qb-save" disabled><?=t($t,'save','Save Changes')?></button>
             <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
           </div>
         </div>
