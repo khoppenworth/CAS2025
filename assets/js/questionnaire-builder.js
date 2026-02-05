@@ -431,7 +431,13 @@ const Builder = (() => {
   function renderSelector() {
     const select = document.querySelector(selectors.selector);
     if (!select) return;
-    const options = state.questionnaires
+    const options = [...state.questionnaires]
+      .sort((a, b) =>
+        labelForQuestionnaire(a).localeCompare(labelForQuestionnaire(b), undefined, {
+          sensitivity: 'base',
+          numeric: true,
+        })
+      )
       .map((q) => `<option value="${q.clientId}">${escapeHtml(labelForQuestionnaire(q))}</option>`)
       .join('');
     select.innerHTML = options;
