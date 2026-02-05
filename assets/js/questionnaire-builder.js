@@ -1228,7 +1228,7 @@ const Builder = (() => {
 
   function labelForQuestionnaire(q) {
     const label = q.title?.trim() || 'Untitled Questionnaire';
-    const suffix = q.status === 'published' ? ' (Published)' : q.status === 'inactive' ? ' (Inactive)' : '';
+    const suffix = ` (${formatStatusLabel(q.status)})`;
     return `${label}${suffix}`;
   }
 
