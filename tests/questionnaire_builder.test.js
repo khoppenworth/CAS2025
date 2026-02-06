@@ -164,14 +164,19 @@ class FakeDocument {
   };
 
   let savedPayload = null;
+  let fetchCount = 0;
   const fetch = async (url, opts = {}) => {
     const u = String(url);
     if (u.includes('action=fetch')) {
+      fetchCount += 1;
+      const payloadQuestionnaires = fetchCount > 1
+        ? [{ ...window.QB_BOOTSTRAP[0], clientId: 'server-client-id-changed' }]
+        : window.QB_BOOTSTRAP;
       return {
         json: async () => ({
           status: 'ok',
           csrf: 'csrf-next',
-          questionnaires: window.QB_BOOTSTRAP,
+          questionnaires: payloadQuestionnaires,
         }),
       };
     }
@@ -216,6 +221,9 @@ class FakeDocument {
   if (!q) throw new Error('missing questionnaire in payload');
   if (q.title !== 'New title') throw new Error(`expected title to persist, got ${q.title}`);
   if (q.status !== 'inactive') throw new Error(`expected status to persist, got ${q.status}`);
+  if (document.card?.qid !== 'q-1') {
+    throw new Error(`expected active questionnaire client id to stay stable after refetch, got ${document.card?.qid}`);
+  }
 
   const source = fs.readFileSync('assets/js/questionnaire-builder.js', 'utf8');
   if (!source.includes("[data-role=\"items\"], [data-role=\"root-items\"]")) {
