@@ -557,6 +557,9 @@ button,
   flex: 0 0 var(--app-button-height);
   width: var(--app-button-height);
   height: var(--app-button-height);
+  min-width: var(--app-button-height);
+  min-height: var(--app-button-height);
+  flex: 0 0 var(--app-button-height);
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   font-size: 1.1rem;
@@ -575,10 +578,11 @@ button,
   height: 100%;
   min-width: 100%;
   min-height: 100%;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: block;
   object-fit: cover;
-  object-position: center;
+  transform: none;
 }
 
 .md-lang-switch a {
