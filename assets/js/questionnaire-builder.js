@@ -371,6 +371,105 @@ const Builder = (() => {
     render();
   }
 
+  function normalizeStatusValue(value) {
+    const normalized = String(value || '').toLowerCase();
+    return STATUS_OPTIONS.includes(normalized) ? normalized : 'draft';
+  }
+
+  function syncActiveQuestionnaireMetaFromDom() {
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) return;
+    const card = document.querySelector(`.qb-card[data-q="${active.clientId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    const descriptionInput = card.querySelector('[data-role="q-description"]');
+    const statusInput = card.querySelector('[data-role="q-status"]');
+
+    if (titleInput) active.title = titleInput.value;
+    if (descriptionInput) active.description = descriptionInput.value;
+    if (statusInput) active.status = normalizeStatusValue(statusInput.value);
+  }
+
+  function hydrateActiveQuestionnaireFromDom() {
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) return;
+    const card = document.querySelector(`.qb-card[data-q="${active.clientId}"]`);
+    if (!card) return;
+
+    syncActiveQuestionnaireMetaFromDom();
+
+    const existingSections = new Map((active.sections || []).map((section) => [section.clientId, section]));
+    const existingRootItems = new Map((active.items || []).map((item) => [item.clientId, item]));
+
+    const parseOptions = (itemNode, existingItem) => {
+      const optionRows = Array.from(itemNode.querySelectorAll('.qb-option[data-option]'));
+      const existingOptions = new Map(((existingItem && existingItem.options) || []).map((opt) => [opt.clientId, opt]));
+      return optionRows.map((row) => {
+        const optionClientId = row.getAttribute('data-option') || uuid('o');
+        const valueInput = row.querySelector('[data-role="option-value"]');
+        const correctInput = row.querySelector('[data-role="option-correct"]');
+        const existing = existingOptions.get(optionClientId) || {};
+        return {
+          id: existing.id ?? null,
+          clientId: optionClientId,
+          value: valueInput ? valueInput.value : '',
+          is_correct: Boolean(correctInput && correctInput.checked),
+        };
+      });
+    };
+
+    const parseItems = (nodes, existingItems) => {
+      const existingMap = new Map((existingItems || []).map((item) => [item.clientId, item]));
+      return Array.from(nodes).map((itemNode) => {
+        const itemClientId = itemNode.getAttribute('data-item') || uuid('i');
+        const existing = existingMap.get(itemClientId) || {};
+        const typeInput = itemNode.querySelector('[data-role="item-type"]');
+        const typeValue = typeInput ? String(typeInput.value || '').toLowerCase() : (existing.type || 'choice');
+        const type = QUESTION_TYPES.includes(typeValue) ? typeValue : 'choice';
+        const allowMultipleInput = itemNode.querySelector('[data-role="item-multi"]');
+        const allowMultiple = type === 'choice' && Boolean(allowMultipleInput && allowMultipleInput.checked);
+        const requiresCorrectInput = itemNode.querySelector('[data-role="item-requires-correct"]');
+        const options = ['choice', 'likert'].includes(type) ? parseOptions(itemNode, existing) : [];
+        const parsed = {
+          id: existing.id ?? null,
+          clientId: itemClientId,
+          linkId: itemNode.querySelector('[data-role="item-link"]')?.value || '',
+          text: itemNode.querySelector('[data-role="item-text"]')?.value || '',
+          type,
+          options,
+          weight_percent: Number(itemNode.querySelector('[data-role="item-weight"]')?.value || 0),
+          allow_multiple: allowMultiple,
+          is_required: Boolean(itemNode.querySelector('[data-role="item-required"]')?.checked),
+          is_active: Boolean(itemNode.querySelector('[data-role="item-active"]')?.checked ?? existing.is_active ?? true),
+          hasResponses: Boolean(existing.hasResponses),
+          requires_correct: type === 'choice' && !allowMultiple && Boolean(requiresCorrectInput && requiresCorrectInput.checked),
+        };
+        ensureSingleChoiceCorrect(parsed);
+        return parsed;
+      });
+    };
+
+    const sectionNodes = Array.from(card.querySelectorAll('.qb-section[data-section]'));
+    active.sections = sectionNodes.map((sectionNode) => {
+      const sectionClientId = sectionNode.getAttribute('data-section') || uuid('s');
+      const existingSection = existingSections.get(sectionClientId) || {};
+      const sectionItems = parseItems(sectionNode.querySelectorAll('.qb-items [data-item]'), existingSection.items || []);
+      return {
+        id: existingSection.id ?? null,
+        clientId: sectionClientId,
+        title: sectionNode.querySelector('[data-role="section-title"]')?.value || '',
+        description: sectionNode.querySelector('[data-role="section-description"]')?.value || '',
+        is_active: Boolean(sectionNode.querySelector('[data-role="section-active"]')?.checked ?? existingSection.is_active ?? true),
+        items: sectionItems,
+        hasResponses: Boolean(existingSection.hasResponses),
+      };
+    });
+
+    const rootItemNodes = card.querySelectorAll('.qb-root-items [data-item]');
+    active.items = parseItems(rootItemNodes, Array.from(existingRootItems.values()));
+  }
+
   function addQuestionnaire() {
     const next = normalizeQuestionnaire({
       title: 'Untitled Questionnaire',
@@ -441,6 +540,43 @@ const Builder = (() => {
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     bindSortables();
+    bindQuestionnaireMetaHandlers(active);
+  }
+
+  function bindQuestionnaireMetaHandlers(questionnaire) {
+    if (!questionnaire) return;
+    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    const descriptionInput = card.querySelector('[data-role="q-description"]');
+    const statusInput = card.querySelector('[data-role="q-status"]');
+
+    const handleTitle = () => {
+      questionnaire.title = titleInput.value;
+      markDirty();
+      renderTabs();
+      renderSelector();
+      renderSectionNav();
+    };
+    titleInput?.addEventListener('input', handleTitle);
+    titleInput?.addEventListener('change', handleTitle);
+
+    const handleDescription = () => {
+      questionnaire.description = descriptionInput.value;
+      markDirty();
+    };
+    descriptionInput?.addEventListener('input', handleDescription);
+    descriptionInput?.addEventListener('change', handleDescription);
+
+    const handleStatus = () => {
+      questionnaire.status = normalizeStatusValue(statusInput.value);
+      markDirty();
+      renderTabs();
+      renderSelector();
+    };
+    statusInput?.addEventListener('input', handleStatus);
+    statusInput?.addEventListener('change', handleStatus);
   }
 
   function focusActiveQuestionnaire() {
@@ -750,12 +886,13 @@ const Builder = (() => {
         questionnaire.title = event.target.value;
         renderTabs();
         renderSelector();
+        renderSectionNav();
         break;
       case 'q-description':
         questionnaire.description = event.target.value;
         break;
       case 'q-status':
-        questionnaire.status = event.target.value;
+        questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
         renderSelector();
         break;
@@ -1173,7 +1310,7 @@ const Builder = (() => {
 
   function labelForQuestionnaire(q) {
     const label = q.title?.trim() || 'Untitled Questionnaire';
-    const suffix = q.status === 'published' ? ' (Published)' : q.status === 'inactive' ? ' (Inactive)' : '';
+    const suffix = ` (${formatStatusLabel(q.status)})`;
     return `${label}${suffix}`;
   }
 
@@ -1204,7 +1341,7 @@ const Builder = (() => {
       });
     }
 
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       Sortable.create(container, {
         animation: 150,
         handle: '.qb-item-main',
@@ -1228,7 +1365,7 @@ const Builder = (() => {
   function reorderItems() {
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
     if (!active) return;
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       const sectionId = container.getAttribute('data-section');
       const list = sectionId
         ? active.sections.find((s) => s.clientId === sectionId)?.items
@@ -1241,6 +1378,7 @@ const Builder = (() => {
 
   function saveAll(publish = false) {
     if (state.saving) return;
+    hydrateActiveQuestionnaireFromDom();
     state.saving = true;
     toggleSaveButtons();
     renderMessage(publish ? 'Publishing…' : 'Saving…');
@@ -1292,7 +1430,7 @@ const Builder = (() => {
       clientId: questionnaire.clientId,
       title: questionnaire.title,
       description: questionnaire.description,
-      status: questionnaire.status,
+      status: normalizeStatusValue(questionnaire.status),
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
