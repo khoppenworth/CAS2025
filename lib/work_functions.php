@@ -630,7 +630,6 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 /**
  * Resolve the display label for a work function key.
  */
-/*
 if (!function_exists('work_function_label')) {
     function work_function_label(PDO $pdo, string $workFunction): string
     {
@@ -652,4 +651,4 @@ if (!function_exists('work_function_label')) {
         return ucwords(str_replace('_', ' ', $canonical));
     }
 }
-*/
+
