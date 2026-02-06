@@ -1028,18 +1028,19 @@ const Builder = (() => {
     const items = collectItems(questionnaire);
     const scorable = items.filter((item) => isScorable(item.type));
     const singleChoiceItems = scorable.filter((item) => item.type === 'choice' && !item.allow_multiple);
+    const singleChoiceWithCorrectItems = singleChoiceItems.filter((item) => item.requires_correct);
     const likertItems = scorable.filter((item) => item.type === 'likert');
     const manualTotal = scorable.reduce((sum, item) => sum + (Number(item.weight_percent) || 0), 0);
     let effectiveTotal = manualTotal;
     let weightedCount = scorable.filter((item) => Number(item.weight_percent) > 0).length;
 
-    if (singleChoiceItems.length > 0) {
-      const autoWeight = 100 / singleChoiceItems.length;
-      effectiveTotal = singleChoiceItems.reduce((sum, item) => {
+    if (singleChoiceWithCorrectItems.length > 0) {
+      const autoWeight = 100 / singleChoiceWithCorrectItems.length;
+      effectiveTotal = singleChoiceWithCorrectItems.reduce((sum, item) => {
         const explicit = Number(item.weight_percent) || 0;
         return sum + (explicit > 0 ? explicit : autoWeight);
       }, 0);
-      weightedCount = singleChoiceItems.length;
+      weightedCount = singleChoiceWithCorrectItems.length;
     } else if (likertItems.length > 0) {
       const autoWeight = 100 / likertItems.length;
       effectiveTotal = likertItems.reduce((sum, item) => {
@@ -1054,7 +1055,8 @@ const Builder = (() => {
       effectiveTotal,
       scorableCount: scorable.length,
       weightedCount,
-      hasSingleChoice: singleChoiceItems.length > 0,
+      hasSingleChoice: singleChoiceWithCorrectItems.length > 0,
+      singleChoiceWithCorrectCount: singleChoiceWithCorrectItems.length,
       hasLikert: likertItems.length > 0,
       canNormalize: manualTotal > 0 && manualTotal !== 100,
       canDistribute: scorable.length > 0,
@@ -1076,7 +1078,11 @@ const Builder = (() => {
     const actions = [
       { role: 'normalize-weights', label: STRINGS.normalizeWeights, enabled: summary.canNormalize },
       { role: 'even-weights', label: STRINGS.evenWeights, enabled: summary.canDistribute },
-      { role: 'single-choice-weights', label: 'Auto-weight single-choice', enabled: summary.scorableCount > 0 },
+      {
+        role: 'single-choice-weights',
+        label: 'Auto-weight single-choice with correct answer',
+        enabled: summary.singleChoiceWithCorrectCount > 0,
+      },
       { role: 'clear-weights', label: STRINGS.clearWeights, enabled: summary.canClear },
     ]
       .map(
@@ -1128,8 +1134,7 @@ const Builder = (() => {
 
   function autoWeightSingleChoice(questionnaire) {
     const items = collectItems(questionnaire);
-    const singleChoiceItems = items.filter((item) => item.type === 'choice' && !item.allow_multiple);
-    const targetItems = singleChoiceItems.length > 0 ? singleChoiceItems : items.filter((item) => item.type === 'likert');
+    const targetItems = items.filter((item) => item.type === 'choice' && !item.allow_multiple && item.requires_correct);
     if (targetItems.length === 0) return renderMessage(STRINGS.evenNoop);
     const weight = (100 / targetItems.length).toFixed(2);
     targetItems.forEach((item) => {
