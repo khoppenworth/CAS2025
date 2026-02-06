@@ -431,7 +431,13 @@ const Builder = (() => {
   function renderSelector() {
     const select = document.querySelector(selectors.selector);
     if (!select) return;
-    const options = state.questionnaires
+    const options = [...state.questionnaires]
+      .sort((a, b) =>
+        labelForQuestionnaire(a).localeCompare(labelForQuestionnaire(b), undefined, {
+          sensitivity: 'base',
+          numeric: true,
+        })
+      )
       .map((q) => `<option value="${q.clientId}">${escapeHtml(labelForQuestionnaire(q))}</option>`)
       .join('');
     select.innerHTML = options;
@@ -461,6 +467,37 @@ const Builder = (() => {
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     bindSortables();
+    bindQuestionnaireMetaHandlers(active);
+  }
+
+  function bindQuestionnaireMetaHandlers(questionnaire) {
+    if (!questionnaire) return;
+    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('[data-role="q-title"]');
+    const descriptionInput = card.querySelector('[data-role="q-description"]');
+    const statusInput = card.querySelector('[data-role="q-status"]');
+
+    titleInput?.addEventListener('input', () => {
+      questionnaire.title = titleInput.value;
+      markDirty();
+      renderTabs();
+      renderSelector();
+      renderSectionNav();
+    });
+
+    descriptionInput?.addEventListener('input', () => {
+      questionnaire.description = descriptionInput.value;
+      markDirty();
+    });
+
+    statusInput?.addEventListener('change', () => {
+      questionnaire.status = normalizeStatusValue(statusInput.value);
+      markDirty();
+      renderTabs();
+      renderSelector();
+    });
   }
 
   function focusActiveQuestionnaire() {
@@ -773,8 +810,6 @@ const Builder = (() => {
         renderSectionNav();
         break;
       case 'q-description':
-        questionnaire.description = event.target.value;
-        break;
       case 'q-status':
         questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
@@ -1199,7 +1234,7 @@ const Builder = (() => {
 
   function labelForQuestionnaire(q) {
     const label = q.title?.trim() || 'Untitled Questionnaire';
-    const suffix = q.status === 'published' ? ' (Published)' : q.status === 'inactive' ? ' (Inactive)' : '';
+    const suffix = ` (${formatStatusLabel(q.status)})`;
     return `${label}${suffix}`;
   }
 
@@ -1230,7 +1265,7 @@ const Builder = (() => {
       });
     }
 
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       Sortable.create(container, {
         animation: 150,
         handle: '.qb-item-main',
@@ -1254,7 +1289,7 @@ const Builder = (() => {
   function reorderItems() {
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
     if (!active) return;
-    document.querySelectorAll('[data-role="items"]').forEach((container) => {
+    document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       const sectionId = container.getAttribute('data-section');
       const list = sectionId
         ? active.sections.find((s) => s.clientId === sectionId)?.items

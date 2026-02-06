@@ -157,4 +157,20 @@ if (work_function_label($pdo, '') !== '') {
     exit(1);
 }
 
+
+$normalizedCustom = normalize_work_function_assignments(
+    [
+        'Rapid Response Team' => [1],
+    ],
+    ['rapid_response_team'],
+    [1, 2]
+);
+
+if ($normalizedCustom !== [
+    'rapid_response_team' => [1],
+]) {
+    fwrite(STDERR, "Normalization should accept catalog slugs generated from labels.\n");
+    exit(1);
+}
+
 echo "Work function assignment tests passed.\n";

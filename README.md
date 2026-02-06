@@ -186,6 +186,8 @@ while keeping at least English or French active. To add a language:
 - `init.sql` – bootstrap schema.
 - `migration.sql` – incremental changes when upgrading existing databases.
 - `dummy_data.sql` – optional demo users and responses. Remove with `dummy_data_cleanup.sql` if needed.
+- `scripts/purge_questionnaires_and_submissions.php --yes` – removes all questionnaires and linked submissions.
+- `scripts/seed_dummy_data_from_questionnaires.php` – creates dummy users/responses based on existing questionnaires.
 
 ### Data Export
 

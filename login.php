@@ -208,7 +208,7 @@ render_login:
                 <input type="password" name="password" autocomplete="current-password" required>
               </label>
               <div class="md-form-actions md-form-actions--center md-login-actions">
-                <button class="md-button md-primary md-elev-2" type="submit">
+                <button class="md-button md-elev-1 md-sso-btn google" type="submit">
                   <?= t($t, 'sign_in', 'Sign In') ?>
                 </button>
               </div>
@@ -230,13 +230,6 @@ render_login:
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
-
-          <p class="md-help-note login-panel__note">
-            <?= htmlspecialchars(t($t, 'admin_login_hint', 'Administrators can sign in using the dedicated admin login page.'), ENT_QUOTES, 'UTF-8') ?>
-            <a class="md-login-footer-link" href="<?= htmlspecialchars(url_for('admin/login.php'), ENT_QUOTES, 'UTF-8') ?>">
-              <?= htmlspecialchars(t($t, 'admin_login_link', 'Go to admin login'), ENT_QUOTES, 'UTF-8') ?>
-            </a>
-          </p>
         </section>
 
         <div class="login-panel__footer">
@@ -252,15 +245,6 @@ render_login:
               <span class="md-login-footer-value"><?= $contact ?></span>
             </div>
           <?php endif; ?>
-          <div class="md-login-recovery">
-            <span class="md-login-footer-label"><?= t($t, 'system_recovery_label', 'System recovery') ?></span>
-            <span class="md-login-footer-value">
-              <a class="md-login-footer-link" href="<?= htmlspecialchars(asset_url('docs/upgrade-recovery.html'), ENT_QUOTES, 'UTF-8') ?>">
-                <?= t($t, 'system_recovery_link', 'Revert to previous release') ?>
-              </a>
-            </span>
-            <p class="md-login-footer-hint"><?= t($t, 'system_recovery_hint', 'Follow the recovery guide to restore the latest working backup when an upgrade fails.') ?></p>
-          </div>
           <div>
             <span class="md-login-footer-label"><?= $languageLabel ?></span>
             <nav class="md-login-footer-value md-login-footer-locale lang-switch" aria-label="<?= $languageLabel ?>">
