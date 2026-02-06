@@ -556,8 +556,13 @@ button,
   padding: 0;
   width: var(--app-button-height);
   height: var(--app-button-height);
+  min-width: var(--app-button-height);
+  min-height: var(--app-button-height);
+  flex: 0 0 var(--app-button-height);
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   font-size: 1.1rem;
+  line-height: 0;
   background: var(--app-on-primary-subtle);
   overflow: hidden;
 }
@@ -567,12 +572,16 @@ button,
   background: var(--app-on-primary-soft);
 }
 
-.md-appbar-link.md-appbar-language .md-appbar-flag {
+.md-appbar-link.md-appbar-language .md-appbar-language-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  display: block;
-  object-fit: cover;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .md-lang-switch a {
