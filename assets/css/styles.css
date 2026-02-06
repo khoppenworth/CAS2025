@@ -554,6 +554,7 @@ button,
 
 .md-appbar-link.md-appbar-language {
   padding: 0;
+  flex: 0 0 var(--app-button-height);
   width: var(--app-button-height);
   height: var(--app-button-height);
   min-width: var(--app-button-height);
