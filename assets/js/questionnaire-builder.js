@@ -308,8 +308,20 @@ const Builder = (() => {
         if (state.dirty) {
           return;
         }
+        const previousClientIdById = new Map(
+          state.questionnaires
+            .filter((q) => Number.isInteger(Number(q.id)) && Number(q.id) > 0)
+            .map((q) => [String(q.id), q.clientId])
+        );
         state.questionnaires = Array.isArray(payload.questionnaires)
-          ? payload.questionnaires.map((q) => normalizeQuestionnaire(q))
+          ? payload.questionnaires.map((q) => {
+            const normalized = normalizeQuestionnaire(q);
+            const key = normalized.id ? String(normalized.id) : null;
+            if (key && previousClientIdById.has(key)) {
+              normalized.clientId = previousClientIdById.get(key);
+            }
+            return normalized;
+          })
           : [];
         ensureActive();
         state.dirty = false;
