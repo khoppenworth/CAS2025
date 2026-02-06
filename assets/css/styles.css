@@ -554,8 +554,10 @@ button,
 
 .md-appbar-link.md-appbar-language {
   padding: 0;
+  flex: 0 0 var(--app-button-height);
   width: var(--app-button-height);
   height: var(--app-button-height);
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   font-size: 1.1rem;
   line-height: 0;
@@ -576,7 +578,7 @@ button,
   border-radius: 50%;
   display: block;
   object-fit: cover;
-  transform: scale(1.04);
+  object-position: center;
 }
 
 .md-lang-switch a {
