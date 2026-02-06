@@ -557,7 +557,13 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
  */
 function save_work_function_assignments(PDO $pdo, array $assignments): void
 {
-    $pdo->beginTransaction();
+    $transactionStarted = false;
+    try {
+        $transactionStarted = $pdo->beginTransaction();
+    } catch (Throwable $e) {
+        $transactionStarted = false;
+    }
+
     try {
         $pdo->exec('DELETE FROM questionnaire_work_function');
         $definitions = work_function_definitions($pdo);
@@ -577,9 +583,13 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
                 }
             }
         }
-        $pdo->commit();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->commit();
+        }
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }
