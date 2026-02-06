@@ -101,11 +101,20 @@ function ensure_work_function_catalog(PDO $pdo): void
     }
 }
 
-/*
 if (!function_exists('ensure_questionnaire_work_function_schema')) {
     function ensure_questionnaire_work_function_schema(PDO $pdo): void
     {
+        $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
         try {
+            if ($driver === 'sqlite') {
+                $pdo->exec('CREATE TABLE IF NOT EXISTS questionnaire_work_function ('
+                    . 'questionnaire_id INTEGER NOT NULL, '
+                    . 'work_function TEXT NOT NULL, '
+                    . 'PRIMARY KEY (questionnaire_id, work_function)'
+                    . ')');
+                return;
+            }
+
             $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
                 questionnaire_id INT NOT NULL,
                 work_function VARCHAR(191) NOT NULL,
@@ -127,7 +136,7 @@ if (!function_exists('ensure_questionnaire_work_function_schema')) {
                 $needsUpdate = true;
                 if (str_contains($type, 'varchar')) {
                     $length = 0;
-                    if (preg_match('/varchar\\((\\d+)\\)/i', $type, $matches)) {
+                    if (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
                         $length = (int)$matches[1];
                     }
                     $needsUpdate = $length < 1 || $length < 191;
@@ -142,18 +151,12 @@ if (!function_exists('ensure_questionnaire_work_function_schema')) {
             if (!$hasPrimary) {
                 $pdo->exec('ALTER TABLE questionnaire_work_function ADD PRIMARY KEY (questionnaire_id, work_function)');
             }
-
-            // Preserve any administrator-defined questionnaire assignments without
-            // seeding defaults on every request. The previous behaviour inserted
-            // every questionnaire/work function combination which overwrote custom
-            // selections made through the admin portal. By limiting this helper to
-            // structural concerns we ensure saved assignments remain intact.
         } catch (PDOException $e) {
             error_log('ensure_questionnaire_work_function_schema: ' . $e->getMessage());
         }
     }
 }
-*/
+
 
 /**
  * Fetch the active work function definitions from the catalog.
@@ -557,7 +560,13 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
  */
 function save_work_function_assignments(PDO $pdo, array $assignments): void
 {
-    $pdo->beginTransaction();
+    $transactionStarted = false;
+    try {
+        $transactionStarted = $pdo->beginTransaction();
+    } catch (Throwable $e) {
+        $transactionStarted = false;
+    }
+
     try {
         $pdo->exec('DELETE FROM questionnaire_work_function');
         $definitions = work_function_definitions($pdo);
@@ -577,9 +586,13 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
                 }
             }
         }
-        $pdo->commit();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->commit();
+        }
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }
@@ -620,7 +633,6 @@ function available_work_functions(PDO $pdo, bool $forceRefresh = false): array
 /**
  * Resolve the display label for a work function key.
  */
-/*
 if (!function_exists('work_function_label')) {
     function work_function_label(PDO $pdo, string $workFunction): string
     {
@@ -642,4 +654,4 @@ if (!function_exists('work_function_label')) {
         return ucwords(str_replace('_', ' ', $canonical));
     }
 }
-*/
+

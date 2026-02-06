@@ -51,12 +51,21 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             ];
         }
 
-        $itemsStmt = $pdo->prepare(
-            "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, " .
-            "COALESCE(weight_percent,0) AS weight_percent FROM questionnaire_item " .
-            "WHERE questionnaire_id IN ($placeholder) ORDER BY questionnaire_id, order_index, id"
-        );
-        $itemsStmt->execute($qidList);
+        try {
+            $itemsStmt = $pdo->prepare(
+                "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, requires_correct, " .
+                "COALESCE(weight_percent,0) AS weight_percent FROM questionnaire_item " .
+                "WHERE questionnaire_id IN ($placeholder) ORDER BY questionnaire_id, order_index, id"
+            );
+            $itemsStmt->execute($qidList);
+        } catch (PDOException $e) {
+            $itemsStmt = $pdo->prepare(
+                "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, " .
+                "COALESCE(weight_percent,0) AS weight_percent FROM questionnaire_item " .
+                "WHERE questionnaire_id IN ($placeholder) ORDER BY questionnaire_id, order_index, id"
+            );
+            $itemsStmt->execute($qidList);
+        }
     } else {
         $itemsStmt = $pdo->prepare('SELECT 1 WHERE 0');
         $itemsStmt->execute();
@@ -72,6 +81,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             'linkId' => (string)$row['linkId'],
             'type' => (string)$row['type'],
             'allow_multiple' => (bool)$row['allow_multiple'],
+            'requires_correct' => (bool)($row['requires_correct'] ?? false),
             'weight_percent' => (float)$row['weight_percent'],
         ];
     }
@@ -185,6 +195,15 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
         }
         if ($type === 'choice') {
             if (empty($item['allow_multiple'])) {
+                $requiresCorrect = !empty($item['requires_correct']);
+                if (!$requiresCorrect) {
+                    foreach ($answerSet as $entry) {
+                        if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
+                            return $weight;
+                        }
+                    }
+                    return 0.0;
+                }
                 $correct = $correctByItem[(int)($item['id'] ?? 0)] ?? null;
                 if ($correct === null || $correct === '') {
                     return 0.0;
