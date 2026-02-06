@@ -1069,13 +1069,13 @@ const Builder = (() => {
     let effectiveTotal = manualTotal;
     let weightedCount = scorable.filter((item) => Number(item.weight_percent) > 0).length;
 
-    if (singleChoiceItems.length > 0) {
-      const autoWeight = 100 / singleChoiceItems.length;
-      effectiveTotal = singleChoiceItems.reduce((sum, item) => {
+    if (singleChoiceWithCorrectItems.length > 0) {
+      const autoWeight = 100 / singleChoiceWithCorrectItems.length;
+      effectiveTotal = singleChoiceWithCorrectItems.reduce((sum, item) => {
         const explicit = Number(item.weight_percent) || 0;
         return sum + (explicit > 0 ? explicit : autoWeight);
       }, 0);
-      weightedCount = singleChoiceItems.length;
+      weightedCount = singleChoiceWithCorrectItems.length;
     } else if (likertItems.length > 0) {
       const autoWeight = 100 / likertItems.length;
       effectiveTotal = likertItems.reduce((sum, item) => {
@@ -1090,7 +1090,7 @@ const Builder = (() => {
       effectiveTotal,
       scorableCount: scorable.length,
       weightedCount,
-      hasSingleChoice: singleChoiceItems.length > 0,
+      hasSingleChoice: singleChoiceWithCorrectItems.length > 0,
       singleChoiceWithCorrectCount: singleChoiceWithCorrectItems.length,
       hasLikert: likertItems.length > 0,
       canNormalize: manualTotal > 0 && manualTotal !== 100,
