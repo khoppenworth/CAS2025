@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Fetch items with weights
-            $itemsStmt = $pdo->prepare('SELECT id, linkId, type, allow_multiple, weight_percent, is_required FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC');
+            $itemsStmt = $pdo->prepare('SELECT id, linkId, type, allow_multiple, weight_percent, is_required, requires_correct FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC');
             $itemsStmt->execute([$qid]);
             $items = $itemsStmt->fetchAll();
 
@@ -192,6 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } elseif ($type === 'choice') {
                     $allowMultiple = !empty($it['allow_multiple']);
+                    $requiresCorrect = !$allowMultiple && !empty($it['requires_correct']);
                     $raw = $_POST[$name] ?? ($allowMultiple ? [] : '');
                     $selected = $allowMultiple ? (array)$raw : [$raw];
                     $values = array_values(array_filter(array_map(static function ($val) {
@@ -215,7 +216,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$allowMultiple && $values) {
                         $correctValue = $optionMap[(int)$it['id']]['correct'] ?? null;
                         $selectedValue = (string)($values[0] ?? '');
-                        if ($correctValue !== null && $selectedValue !== '' && $selectedValue === $correctValue) {
+                        if ($requiresCorrect && $correctValue !== null && $selectedValue !== '' && $selectedValue === $correctValue) {
+                            $achievedPoints = $effectiveWeight;
+                        }
+                        if (!$requiresCorrect && $selectedValue !== '') {
                             $achievedPoints = $effectiveWeight;
                         }
                     }
