@@ -753,7 +753,7 @@ if ($action === 'save' || $action === 'publish') {
             if (!in_array($status, ['draft', 'published', 'inactive'], true)) {
                 $status = 'draft';
             }
-            if ($action === 'publish' && $status === 'draft') {
+            if ($action === 'publish') {
                 $status = 'published';
             }
 

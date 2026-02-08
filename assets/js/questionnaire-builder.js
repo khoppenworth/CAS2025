@@ -133,9 +133,7 @@ const Builder = (() => {
       clientId: raw.clientId || uuid('q'),
       title: raw.title || 'Untitled Questionnaire',
       description: raw.description || '',
-      status: STATUS_OPTIONS.includes(String(raw.status || '').toLowerCase())
-        ? String(raw.status).toLowerCase()
-        : 'draft',
+      status: normalizeStatusValue(raw.status),
       sections,
       items,
       work_functions: Array.isArray(raw.work_functions) ? [...raw.work_functions] : undefined,
@@ -396,7 +394,7 @@ const Builder = (() => {
   }
 
   function normalizeStatusValue(value) {
-    const normalized = String(value || '').toLowerCase();
+    const normalized = String(value || '').trim().toLowerCase();
     return STATUS_OPTIONS.includes(normalized) ? normalized : 'draft';
   }
 
