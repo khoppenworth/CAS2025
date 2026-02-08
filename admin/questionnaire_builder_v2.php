@@ -41,6 +41,13 @@ $qbStrings = [
     'published' => t($t, 'published', 'Questionnaire published'),
     'error' => t($t, 'error', 'Something went wrong.'),
     'responsesLocked' => t($t, 'responses_locked', 'Responses exist; only activation can change.'),
+    'invalidStatus' => t($t, 'qb_v2_invalid_status', 'Published questionnaires cannot return to Draft. Use Inactive instead.'),
+    'modalTitle' => t($t, 'qb_v2_modal_title', 'Published questionnaire'),
+    'modalBody' => t($t, 'qb_v2_modal_body', 'To make changes, create a new draft version. The published questionnaire will remain unchanged.'),
+    'modalConfirm' => t($t, 'qb_v2_modal_confirm', 'Clone & edit draft'),
+    'modalCancel' => t($t, 'qb_v2_modal_cancel', 'Cancel'),
+    'clone' => t($t, 'qb_v2_clone', 'Clone questionnaire'),
+    'versionLabel' => t($t, 'qb_v2_version', 'Version'),
 ];
 ?>
 <!doctype html>
@@ -68,6 +75,7 @@ $qbStrings = [
       </div>
       <div class="qb2-actions">
         <button class="md-button md-outline" data-qb2-add><?=htmlspecialchars($qbStrings['addQuestionnaire'], ENT_QUOTES, 'UTF-8')?></button>
+        <button class="md-button md-outline" data-qb2-clone><?=htmlspecialchars($qbStrings['clone'], ENT_QUOTES, 'UTF-8')?></button>
         <button class="md-button md-primary" data-qb2-save><?=htmlspecialchars($qbStrings['save'], ENT_QUOTES, 'UTF-8')?></button>
         <button class="md-button md-secondary" data-qb2-publish><?=htmlspecialchars($qbStrings['publish'], ENT_QUOTES, 'UTF-8')?></button>
       </div>
@@ -86,6 +94,17 @@ $qbStrings = [
     </div>
   </div>
 </section>
+<div class="qb2-modal" data-qb2-modal hidden>
+  <div class="qb2-modal__backdrop" data-qb2-modal-close></div>
+  <div class="qb2-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="qb2-modal-title">
+    <h3 id="qb2-modal-title"></h3>
+    <p data-qb2-modal-body></p>
+    <div class="qb2-modal__actions">
+      <button type="button" class="md-button md-outline" data-qb2-modal-cancel></button>
+      <button type="button" class="md-button md-primary" data-qb2-modal-confirm></button>
+    </div>
+  </div>
+</div>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   window.QB2_STRINGS = <?=json_encode($qbStrings, JSON_THROW_ON_ERROR)?>;
   window.QB2_WORK_FUNCTIONS = <?=json_encode(array_keys($workFunctionChoices), JSON_THROW_ON_ERROR)?>;

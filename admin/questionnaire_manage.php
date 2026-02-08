@@ -755,6 +755,11 @@ if ($action === 'save' || $action === 'publish') {
             }
             if ($action === 'publish') {
                 $status = 'published';
+            } elseif ($qid && isset($questionnaireMap[$qid])) {
+                $existingStatus = strtolower((string)($questionnaireMap[$qid]['status'] ?? 'draft'));
+                if ($existingStatus === 'published' && $status === 'draft') {
+                    $status = 'inactive';
+                }
             }
 
             if ($qid && isset($questionnaireMap[$qid])) {

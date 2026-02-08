@@ -10,8 +10,15 @@ const BuilderV2 = (() => {
     placeholder: '[data-qb2-placeholder]',
     message: '[data-qb2-message]',
     addBtn: '[data-qb2-add]',
+    cloneBtn: '[data-qb2-clone]',
     saveBtn: '[data-qb2-save]',
     publishBtn: '[data-qb2-publish]',
+    modal: '[data-qb2-modal]',
+    modalTitle: '#qb2-modal-title',
+    modalBody: '[data-qb2-modal-body]',
+    modalConfirm: '[data-qb2-modal-confirm]',
+    modalCancel: '[data-qb2-modal-cancel]',
+    modalClose: '[data-qb2-modal-close]',
   };
 
   const state = {
@@ -20,6 +27,7 @@ const BuilderV2 = (() => {
     dirty: false,
     saving: false,
     csrf: '',
+    modalAction: null,
   };
 
   const baseMeta = document.querySelector('meta[name="app-base-url"]');
@@ -111,10 +119,133 @@ const BuilderV2 = (() => {
       title: raw.title || 'Untitled Questionnaire',
       description: raw.description || '',
       status: normalizeStatusValue(raw.status),
+      version: Number.isFinite(Number(raw.version)) ? Number(raw.version) : 1,
       sections,
       items,
       hasResponses: toBoolean(raw.has_responses),
     };
+  }
+
+  function cloneQuestionnaire(source) {
+    const cloneOptions = (opts) =>
+      opts.map((opt) => ({
+        ...opt,
+        id: null,
+        clientId: uuid('o'),
+      }));
+
+    const cloneItems = (items) =>
+      items.map((item) => ({
+        ...item,
+        id: null,
+        clientId: uuid('i'),
+        options: cloneOptions(item.options || []),
+      }));
+
+    const cloneSections = (sections) =>
+      sections.map((section) => ({
+        ...section,
+        id: null,
+        clientId: uuid('s'),
+        items: cloneItems(section.items || []),
+      }));
+
+    return {
+      ...source,
+      id: null,
+      clientId: uuid('q'),
+      title: source.title ? `${source.title} (Copy)` : 'Untitled Questionnaire (Copy)',
+      status: 'draft',
+      version: (source.version || 1) + 1,
+      sections: cloneSections(source.sections || []),
+      items: cloneItems(source.items || []),
+    };
+  }
+
+  function showModal({ title, body, onConfirm, onCancel }) {
+    const modal = document.querySelector(selectors.modal);
+    if (!modal) return;
+    const titleEl = modal.querySelector(selectors.modalTitle);
+    const bodyEl = modal.querySelector(selectors.modalBody);
+    const confirmBtn = modal.querySelector(selectors.modalConfirm);
+    const cancelBtn = modal.querySelector(selectors.modalCancel);
+
+    if (titleEl) titleEl.textContent = title || '';
+    if (bodyEl) bodyEl.textContent = body || '';
+    if (confirmBtn) confirmBtn.textContent = STRINGS.modalConfirm || 'Clone & edit draft';
+    if (cancelBtn) cancelBtn.textContent = STRINGS.modalCancel || 'Cancel';
+
+    state.modalAction = { onConfirm, onCancel };
+    modal.hidden = false;
+  }
+
+  function closeModal() {
+    const modal = document.querySelector(selectors.modal);
+    if (modal) modal.hidden = true;
+    state.modalAction = null;
+  }
+
+  function confirmModal() {
+    if (state.modalAction?.onConfirm) state.modalAction.onConfirm();
+    closeModal();
+  }
+
+  function cancelModal() {
+    if (state.modalAction?.onCancel) state.modalAction.onCancel();
+    closeModal();
+  }
+
+  function resetFieldToValue(target, value) {
+    if (!target) return;
+    if (target.type === 'checkbox' || target.type === 'radio') {
+      target.checked = Boolean(value);
+    } else {
+      target.value = value ?? '';
+    }
+  }
+
+  function guardPublishedEdit(active, target, applyChange, revertValue) {
+    if (normalizeStatusValue(active.status) !== 'published') {
+      applyChange();
+      return true;
+    }
+    showModal({
+      title: STRINGS.modalTitle || 'Published questionnaire',
+      body: STRINGS.modalBody || 'To make changes, create a new draft version. The published questionnaire will remain unchanged.',
+      onConfirm: () => {
+        const clone = cloneQuestionnaire(active);
+        state.questionnaires.unshift(clone);
+        state.activeId = clone.clientId;
+        applyChange(clone);
+        markDirty();
+        render();
+      },
+      onCancel: () => resetFieldToValue(target, revertValue),
+    });
+    return false;
+  }
+
+  function guardPublishedAction(active, action, revertFn) {
+    if (normalizeStatusValue(active.status) !== 'published') {
+      action();
+      return true;
+    }
+    showModal({
+      title: STRINGS.modalTitle || 'Published questionnaire',
+      body: STRINGS.modalBody || 'To make changes, create a new draft version. The published questionnaire will remain unchanged.',
+      onConfirm: () => {
+        const clone = cloneQuestionnaire(active);
+        state.questionnaires.unshift(clone);
+        state.activeId = clone.clientId;
+        action(clone);
+        markDirty();
+        render();
+      },
+      onCancel: () => {
+        if (typeof revertFn === 'function') revertFn();
+      },
+    });
+    return false;
   }
 
   function setMessage(text, stateValue = '') {
@@ -292,6 +423,10 @@ const BuilderV2 = (() => {
             ${STATUS_OPTIONS.map((status) => `<option value="${status}" ${status === normalizeStatusValue(active.status) ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}
           </select>
         </label>
+        <div class="md-field">
+          <span>${escapeHtml(STRINGS.versionLabel || 'Version')}</span>
+          <div class="qb2-muted">${escapeHtml(String(active.version || 1))}</div>
+        </div>
       </div>
       <label class="md-field">
         <span>${escapeHtml(STRINGS.questionnaireDescription || 'Description')}</span>
@@ -438,12 +573,48 @@ const BuilderV2 = (() => {
     const target = event.target;
     if (target.matches('[data-qb2-field]')) {
       const field = target.dataset.qb2Field;
-      if (field === 'title') active.title = target.value;
-      if (field === 'description') active.description = target.value;
-      if (field === 'status') active.status = normalizeStatusValue(target.value);
-      markDirty();
-      renderNav();
-      return;
+      if (field === 'title') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          (q = active) => {
+            q.title = target.value;
+          },
+          active.title
+        );
+        if (applied) {
+          markDirty();
+          renderNav();
+        }
+        return;
+      }
+      if (field === 'description') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          (q = active) => {
+            q.description = target.value;
+          },
+          active.description
+        );
+        if (applied) {
+          markDirty();
+          renderNav();
+        }
+        return;
+      }
+      if (field === 'status') {
+        const nextStatus = normalizeStatusValue(target.value);
+        if (normalizeStatusValue(active.status) === 'published' && nextStatus === 'draft') {
+          window.alert(STRINGS.invalidStatus || 'Published questionnaires cannot return to Draft. Use Inactive instead.');
+          active.status = 'inactive';
+        } else {
+          active.status = nextStatus;
+        }
+        markDirty();
+        renderNav();
+        return;
+      }
     }
 
     const sectionEl = target.closest('[data-qb2-section]');
@@ -453,10 +624,42 @@ const BuilderV2 = (() => {
       const section = active.sections.find((s) => s.clientId === sectionEl.dataset.qb2Section);
       if (!section) return;
       const field = target.dataset.qb2SectionField;
-      if (field === 'title') section.title = target.value;
-      if (field === 'description') section.description = target.value;
-      if (field === 'is_active') section.is_active = target.checked;
-      markDirty();
+      if (field === 'title') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            section.title = target.value;
+          },
+          section.title
+        );
+        if (applied) markDirty();
+        return;
+      }
+      if (field === 'description') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            section.description = target.value;
+          },
+          section.description
+        );
+        if (applied) markDirty();
+        return;
+      }
+      if (field === 'is_active') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            section.is_active = target.checked;
+          },
+          section.is_active
+        );
+        if (applied) markDirty();
+        return;
+      }
       return;
     }
 
@@ -469,34 +672,104 @@ const BuilderV2 = (() => {
       const item = list.find((i) => i.clientId === itemEl.dataset.qb2Item);
       if (!item) return;
       const field = target.dataset.qb2ItemField;
-      if (field === 'linkId') item.linkId = target.value;
-      if (field === 'text') item.text = target.value;
-      if (field === 'type') {
-        item.type = QUESTION_TYPES.includes(target.value) ? target.value : 'choice';
-        if (item.type !== 'choice') {
-          item.allow_multiple = false;
-          item.requires_correct = false;
-        }
-        if (['choice', 'likert'].includes(item.type) && item.options.length === 0) {
-          item.options.push(normalizeOption({ value: '' }));
-        }
-        render();
+      if (field === 'linkId') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.linkId = target.value;
+          },
+          item.linkId
+        );
+        if (applied) markDirty();
+        return;
       }
-      if (field === 'is_required') item.is_required = target.checked;
-      if (field === 'is_active') item.is_active = target.checked;
+      if (field === 'text') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.text = target.value;
+          },
+          item.text
+        );
+        if (applied) markDirty();
+        return;
+      }
+      if (field === 'type') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.type = QUESTION_TYPES.includes(target.value) ? target.value : 'choice';
+            if (item.type !== 'choice') {
+              item.allow_multiple = false;
+              item.requires_correct = false;
+            }
+            if (['choice', 'likert'].includes(item.type) && item.options.length === 0) {
+              item.options.push(normalizeOption({ value: '' }));
+            }
+            render();
+          },
+          item.type
+        );
+        if (applied) markDirty();
+        return;
+      }
+      if (field === 'is_required') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.is_required = target.checked;
+          },
+          item.is_required
+        );
+        if (applied) markDirty();
+        return;
+      }
+      if (field === 'is_active') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.is_active = target.checked;
+          },
+          item.is_active
+        );
+        if (applied) markDirty();
+        return;
+      }
       if (field === 'allow_multiple') {
-        item.allow_multiple = target.checked;
-        if (item.allow_multiple) item.requires_correct = false;
-        render();
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.allow_multiple = target.checked;
+            if (item.allow_multiple) item.requires_correct = false;
+            render();
+          },
+          item.allow_multiple
+        );
+        if (applied) markDirty();
+        return;
       }
       if (field === 'requires_correct') {
-        item.requires_correct = target.checked;
-        if (!item.requires_correct) {
-          item.options.forEach((opt) => (opt.is_correct = false));
-        }
-        render();
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.requires_correct = target.checked;
+            if (!item.requires_correct) {
+              item.options.forEach((opt) => (opt.is_correct = false));
+            }
+            render();
+          },
+          item.requires_correct
+        );
+        if (applied) markDirty();
+        return;
       }
-      markDirty();
       return;
     }
 
@@ -513,12 +786,31 @@ const BuilderV2 = (() => {
       const option = item.options.find((opt) => opt.clientId === optionEl.dataset.qb2Option);
       if (!option) return;
       const field = target.dataset.qb2OptionField;
-      if (field === 'value') option.value = target.value;
-      if (field === 'is_correct') {
-        item.options.forEach((opt) => (opt.is_correct = opt.clientId === option.clientId));
-        render();
+      if (field === 'value') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            option.value = target.value;
+          },
+          option.value
+        );
+        if (applied) markDirty();
+        return;
       }
-      markDirty();
+      if (field === 'is_correct') {
+        const applied = guardPublishedEdit(
+          active,
+          target,
+          () => {
+            item.options.forEach((opt) => (opt.is_correct = opt.clientId === option.clientId));
+            render();
+          },
+          option.is_correct
+        );
+        if (applied) markDirty();
+        return;
+      }
     }
   }
 
@@ -527,11 +819,11 @@ const BuilderV2 = (() => {
     if (!active) return;
 
     if (event.target.matches('[data-qb2-add-section]')) {
-      addSection(active);
+      guardPublishedAction(active, (q = active) => addSection(q));
       return;
     }
     if (event.target.matches('[data-qb2-add-root-item]')) {
-      addItem(active.items);
+      guardPublishedAction(active, (q = active) => addItem(q.items));
       return;
     }
 
@@ -540,11 +832,14 @@ const BuilderV2 = (() => {
       const section = active.sections.find((s) => s.clientId === sectionEl.dataset.qb2Section);
       if (!section) return;
       if (event.target.matches('[data-qb2-add-item]')) {
-        addItem(section.items);
+        guardPublishedAction(active, (q = active) => {
+          const sectionRef = q.sections.find((s) => s.clientId === section.clientId);
+          if (sectionRef) addItem(sectionRef.items);
+        });
         return;
       }
       if (event.target.matches('[data-qb2-remove-section]')) {
-        removeByClientId(active.sections, section.clientId);
+        guardPublishedAction(active, (q = active) => removeByClientId(q.sections, section.clientId));
         return;
       }
     }
@@ -557,20 +852,35 @@ const BuilderV2 = (() => {
         : active.items;
       if (!list) return;
       if (event.target.matches('[data-qb2-remove-item]')) {
-        removeByClientId(list, itemEl.dataset.qb2Item);
+        guardPublishedAction(active, (q = active) => {
+          const listRef = sectionId
+            ? q.sections.find((s) => s.clientId === sectionId)?.items
+            : q.items;
+          if (listRef) removeByClientId(listRef, itemEl.dataset.qb2Item);
+        });
         return;
       }
       if (event.target.matches('[data-qb2-add-option]')) {
-        const item = list.find((i) => i.clientId === itemEl.dataset.qb2Item);
-        if (item) addOption(item);
+        guardPublishedAction(active, (q = active) => {
+          const listRef = sectionId
+            ? q.sections.find((s) => s.clientId === sectionId)?.items
+            : q.items;
+          const itemRef = listRef?.find((i) => i.clientId === itemEl.dataset.qb2Item);
+          if (itemRef) addOption(itemRef);
+        });
         return;
       }
       if (event.target.matches('[data-qb2-remove-option]')) {
         const optionEl = event.target.closest('[data-qb2-option]');
         if (!optionEl) return;
-        const item = list.find((i) => i.clientId === itemEl.dataset.qb2Item);
-        if (!item) return;
-        removeByClientId(item.options, optionEl.dataset.qb2Option);
+        guardPublishedAction(active, (q = active) => {
+          const listRef = sectionId
+            ? q.sections.find((s) => s.clientId === sectionId)?.items
+            : q.items;
+          const itemRef = listRef?.find((i) => i.clientId === itemEl.dataset.qb2Item);
+          if (!itemRef) return;
+          removeByClientId(itemRef.options, optionEl.dataset.qb2Option);
+        });
       }
     }
   }
@@ -592,6 +902,7 @@ const BuilderV2 = (() => {
         'X-CSRF-Token': state.csrf,
       },
       credentials: 'same-origin',
+      cache: 'no-store',
       body: JSON.stringify(payload),
     })
       .then((resp) => resp.json())
@@ -613,11 +924,12 @@ const BuilderV2 = (() => {
   }
 
   function fetchData() {
-    return fetch(withBase(`/admin/questionnaire_manage.php?action=fetch&csrf=${encodeURIComponent(state.csrf)}`), {
+    return fetch(withBase(`/admin/questionnaire_manage.php?action=fetch&csrf=${encodeURIComponent(state.csrf)}&_ts=${Date.now()}`), {
       headers: {
         'X-CSRF-Token': state.csrf,
       },
       credentials: 'same-origin',
+      cache: 'no-store',
     })
       .then((resp) => resp.json())
       .then((payload) => {
@@ -643,8 +955,23 @@ const BuilderV2 = (() => {
     document.querySelector(selectors.editor)?.addEventListener('change', handleEditorInput);
     document.querySelector(selectors.editor)?.addEventListener('click', handleEditorClick);
     document.querySelector(selectors.addBtn)?.addEventListener('click', addQuestionnaire);
+    document.querySelector(selectors.cloneBtn)?.addEventListener('click', () => {
+      const active = state.questionnaires.find((q) => q.clientId === state.activeId);
+      if (!active) return;
+      const clone = cloneQuestionnaire(active);
+      state.questionnaires.unshift(clone);
+      state.activeId = clone.clientId;
+      markDirty();
+      render();
+    });
     document.querySelector(selectors.saveBtn)?.addEventListener('click', () => saveAll(false));
     document.querySelector(selectors.publishBtn)?.addEventListener('click', () => saveAll(true));
+    document.querySelector(selectors.modalConfirm)?.addEventListener('click', confirmModal);
+    document.querySelector(selectors.modalCancel)?.addEventListener('click', cancelModal);
+    document.querySelector(selectors.modalClose)?.addEventListener('click', cancelModal);
+    document.querySelector(selectors.modal)?.addEventListener('click', (event) => {
+      if (event.target.matches(selectors.modalClose)) cancelModal();
+    });
   }
 
   function init() {
