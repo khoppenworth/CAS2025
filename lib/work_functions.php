@@ -513,7 +513,17 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
     $normalized = [];
 
     foreach ($input as $workFunction => $ids) {
-        $canonical = canonical_work_function_key((string)$workFunction);
+        $rawWorkFunction = trim((string)$workFunction);
+        if ($rawWorkFunction === '') {
+            continue;
+        }
+
+        if (isset($allowedWorkFunctionSet[$rawWorkFunction])) {
+            $canonical = $rawWorkFunction;
+        } else {
+            $canonical = canonical_work_function_key($rawWorkFunction);
+        }
+
         if ($canonical === '' || !isset($allowedWorkFunctionSet[$canonical])) {
             continue;
         }
@@ -547,7 +557,13 @@ function normalize_work_function_assignments(array $input, array $allowedWorkFun
  */
 function save_work_function_assignments(PDO $pdo, array $assignments): void
 {
-    $pdo->beginTransaction();
+    $transactionStarted = false;
+    try {
+        $transactionStarted = $pdo->beginTransaction();
+    } catch (Throwable $e) {
+        $transactionStarted = false;
+    }
+
     try {
         $pdo->exec('DELETE FROM questionnaire_work_function');
         $definitions = work_function_definitions($pdo);
@@ -567,9 +583,13 @@ function save_work_function_assignments(PDO $pdo, array $assignments): void
                 }
             }
         }
-        $pdo->commit();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->commit();
+        }
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($transactionStarted && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }
