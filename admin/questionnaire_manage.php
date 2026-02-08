@@ -69,6 +69,22 @@ $qbStrings = [
     'evenNoop' => t($t, 'qb_scoring_even_noop', 'Add scorable questions before splitting weights.'),
     'clearSuccess' => t($t, 'qb_scoring_clear_success', 'Cleared all question weights.'),
     'clearNoop' => t($t, 'qb_scoring_clear_noop', 'No weights to clear.'),
+    'deleteQuestionnaireLabel' => t($t, 'qb_delete_questionnaire', 'Delete questionnaire'),
+    'deleteQuestionnaireConfirm' => t(
+        $t,
+        'qb_delete_questionnaire_confirm',
+        'Delete "%s"? This cannot be undone.'
+    ),
+    'deleteQuestionnaireBlocked' => t(
+        $t,
+        'qb_delete_questionnaire_blocked',
+        'Questionnaires with submissions cannot be deleted.'
+    ),
+    'deleteQuestionnaireSuccess' => t(
+        $t,
+        'qb_delete_questionnaire_success',
+        'Questionnaire removed. Save to apply the changes.'
+    ),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
