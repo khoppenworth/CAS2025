@@ -1,15 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="English">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="United Kingdom flag">
   <defs>
-    <clipPath id="circle">
+    <clipPath id="en-circle-clip">
       <circle cx="32" cy="32" r="32" />
     </clipPath>
   </defs>
-  <g clip-path="url(#circle)">
+  <g clip-path="url(#en-circle-clip)">
     <rect width="64" height="64" fill="#012169" />
-    <path d="M0 0 L0 8 L56 64 L64 64 L64 56 L8 0 Z" fill="#FFFFFF" />
-    <path d="M64 0 L56 0 L0 56 L0 64 L8 64 L64 8 Z" fill="#FFFFFF" />
-    <path d="M0 0 L0 5 L59 64 L64 64 L64 59 L5 0 Z" fill="#C8102E" />
-    <path d="M64 0 L59 0 L0 59 L0 64 L5 64 L64 5 Z" fill="#C8102E" />
+    <path d="M0 0V8L56 64H64V56L8 0Z" fill="#FFFFFF" />
+    <path d="M64 0H56L0 56V64H8L64 8Z" fill="#FFFFFF" />
+    <path d="M0 0V5L59 64H64V59L5 0Z" fill="#C8102E" />
+    <path d="M64 0H59L0 59V64H5L64 5Z" fill="#C8102E" />
     <rect x="0" y="26" width="64" height="12" fill="#FFFFFF" />
     <rect x="26" y="0" width="12" height="64" fill="#FFFFFF" />
     <rect x="0" y="29" width="64" height="6" fill="#C8102E" />
