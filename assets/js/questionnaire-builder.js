@@ -109,6 +109,18 @@ const Builder = (() => {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  function toBoolean(value, fallback = false) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+      if (['0', 'false', 'no', 'n', 'off', ''].includes(normalized)) return false;
+    }
+    if (value === null || value === undefined) return fallback;
+    return Boolean(value);
+  }
+
   function normalizeQuestionnaire(raw) {
     const sections = Array.isArray(raw.sections)
       ? raw.sections.map((section) => normalizeSection(section))
@@ -121,13 +133,11 @@ const Builder = (() => {
       clientId: raw.clientId || uuid('q'),
       title: raw.title || 'Untitled Questionnaire',
       description: raw.description || '',
-      status: STATUS_OPTIONS.includes(String(raw.status || '').toLowerCase())
-        ? String(raw.status).toLowerCase()
-        : 'draft',
+      status: normalizeStatusValue(raw.status),
       sections,
       items,
       work_functions: Array.isArray(raw.work_functions) ? [...raw.work_functions] : undefined,
-      hasResponses: Boolean(raw.has_responses),
+      hasResponses: toBoolean(raw.has_responses),
     };
   }
 
@@ -140,9 +150,9 @@ const Builder = (() => {
       clientId: section.clientId || uuid('s'),
       title: section.title || '',
       description: section.description || '',
-      is_active: section.is_active !== false,
+      is_active: toBoolean(section.is_active, true),
       items,
-      hasResponses: Boolean(section.has_responses),
+      hasResponses: toBoolean(section.has_responses),
     };
   }
 
@@ -153,9 +163,9 @@ const Builder = (() => {
     const type = QUESTION_TYPES.includes(String(item.type || '').toLowerCase())
       ? String(item.type).toLowerCase()
       : 'choice';
-    const allowMultiple = type === 'choice' && Boolean(item.allow_multiple);
+    const allowMultiple = type === 'choice' && toBoolean(item.allow_multiple);
     const requiresCorrect =
-      type === 'choice' && !allowMultiple ? Boolean(item.requires_correct) : false;
+      type === 'choice' && !allowMultiple ? toBoolean(item.requires_correct) : false;
     const normalized = {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
@@ -167,9 +177,9 @@ const Builder = (() => {
         ? Number(item.weight_percent)
         : 0,
       allow_multiple: allowMultiple,
-      is_required: Boolean(item.is_required),
-      is_active: item.is_active !== false,
-      hasResponses: Boolean(item.has_responses),
+      is_required: toBoolean(item.is_required),
+      is_active: toBoolean(item.is_active, true),
+      hasResponses: toBoolean(item.has_responses),
       requires_correct: requiresCorrect,
     };
     ensureSingleChoiceCorrect(normalized);
@@ -181,7 +191,7 @@ const Builder = (() => {
       id: option.id ?? null,
       clientId: option.clientId || uuid('o'),
       value: option.value || '',
-      is_correct: Boolean(option.is_correct),
+      is_correct: toBoolean(option.is_correct),
     };
   }
 
@@ -372,7 +382,7 @@ const Builder = (() => {
   }
 
   function normalizeStatusValue(value) {
-    const normalized = String(value || '').toLowerCase();
+    const normalized = String(value || '').trim().toLowerCase();
     return STATUS_OPTIONS.includes(normalized) ? normalized : 'draft';
   }
 
@@ -804,6 +814,8 @@ const Builder = (() => {
         renderSectionNav();
         break;
       case 'q-description':
+        questionnaire.description = event.target.value;
+        break;
       case 'q-status':
         questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
