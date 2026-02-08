@@ -26,6 +26,8 @@ const Builder = (() => {
     floatingSaveButton: '#qb-save-floating',
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
+    deleteButton: '#qb-delete-questionnaire',
+    destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
     message: '#qb-message',
     selector: '#qb-selector',
@@ -83,6 +85,13 @@ const Builder = (() => {
     evenNoop: 'Add scorable questions before splitting weights.',
     clearSuccess: 'Cleared all question weights.',
     clearNoop: 'No weights to clear.',
+    deleteQuestionnaireLabel: 'Delete questionnaire',
+    deleteQuestionnaireConfirm: 'Delete "%s"? This cannot be undone.',
+    deleteQuestionnaireBlocked: 'Questionnaires with submissions cannot be deleted.',
+    deleteQuestionnaireSuccess: 'Questionnaire removed. Save to apply the changes.',
+    deleteQuestionnaireDestroyLabel: 'Delete questionnaire + responses',
+    deleteQuestionnaireDestroyConfirm: 'Delete "%s" and all submissions? This is irreversible and will permanently remove all response data.',
+    deleteQuestionnaireDestroySuccess: 'Questionnaire and responses deleted.',
   };
 
   const state = {
@@ -245,6 +254,8 @@ const Builder = (() => {
     const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     const exportBtns = document.querySelectorAll(selectors.exportButton);
+    const deleteBtn = document.querySelector(selectors.deleteButton);
+    const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
@@ -259,6 +270,14 @@ const Builder = (() => {
     floatingSaveBtn?.addEventListener('click', () => saveAll(false));
     publishBtn?.addEventListener('click', () => saveAll(true));
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
+    deleteBtn?.addEventListener('click', () => {
+      const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      removeQuestionnaire(active);
+    });
+    destroyBtn?.addEventListener('click', () => {
+      const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      destroyQuestionnaire(active);
+    });
     openBtn?.addEventListener('click', () => {
       const key = selector?.value;
       if (!key) return;
@@ -507,6 +526,77 @@ const Builder = (() => {
     render();
   }
 
+  function removeQuestionnaire(questionnaire) {
+    if (!questionnaire) return;
+    if (questionnaire.hasResponses) {
+      renderMessage(STRINGS.deleteQuestionnaireBlocked, 'warning');
+      return;
+    }
+    const label = labelForQuestionnaire(questionnaire);
+    const confirmText = STRINGS.deleteQuestionnaireConfirm.replace('%s', label);
+    if (!window.confirm(confirmText)) return;
+    dropQuestionnaireFromState(questionnaire, { markDirty: true });
+    renderMessage(STRINGS.deleteQuestionnaireSuccess, 'success');
+  }
+
+  function destroyQuestionnaire(questionnaire) {
+    if (!questionnaire) return;
+    const label = labelForQuestionnaire(questionnaire);
+    const confirmText = STRINGS.deleteQuestionnaireDestroyConfirm.replace('%s', label);
+    if (!window.confirm(confirmText)) return;
+    if (!questionnaire.id) {
+      dropQuestionnaireFromState(questionnaire, { markDirty: true });
+      renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+      return;
+    }
+
+    state.saving = true;
+    toggleSaveButtons();
+    renderMessage('Deleting questionnaire and responses…');
+
+    fetch(withBase('/admin/questionnaire_manage.php?action=destroy'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': state.csrf,
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        csrf: state.csrf,
+        questionnaire_id: questionnaire.id,
+      }),
+    })
+      .then((resp) => resp.json())
+      .then((data) => {
+        if (data?.status !== 'ok') throw new Error(data?.message || 'Failed to delete questionnaire');
+        state.csrf = data.csrf || state.csrf;
+        dropQuestionnaireFromState(questionnaire, { markDirty: false });
+        renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+      })
+      .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
+      .finally(() => {
+        state.saving = false;
+        toggleSaveButtons();
+      });
+  }
+
+  function dropQuestionnaireFromState(questionnaire, { markDirty = false } = {}) {
+    const index = state.questionnaires.findIndex((q) => q.clientId === questionnaire.clientId);
+    if (index === -1) return;
+    state.questionnaires.splice(index, 1);
+    if (state.activeKey === questionnaire.clientId) {
+      state.activeKey = state.questionnaires[0]?.clientId || null;
+      state.navActiveKey = 'root';
+      if (state.activeKey) {
+        rememberSet(STORAGE_KEYS.active, state.activeKey);
+      }
+    }
+    if (markDirty) {
+      markDirty();
+    }
+    render();
+  }
+
   function markDirty() {
     state.dirty = true;
     const saveBtn = document.querySelector(selectors.saveButton);
@@ -522,6 +612,8 @@ const Builder = (() => {
     renderTabs();
     renderQuestionnaires();
     renderSectionNav();
+    renderDeleteButton();
+    renderDestroyButton();
     toggleSaveButtons();
     if (pendingImportFocus) {
       pendingImportFocus = false;
@@ -579,6 +671,7 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
+    const deleteButton = card.querySelector('[data-role="remove-questionnaire"]');
 
     const handleTitle = () => {
       questionnaire.title = titleInput.value;
@@ -605,6 +698,34 @@ const Builder = (() => {
     };
     statusInput?.addEventListener('input', handleStatus);
     statusInput?.addEventListener('change', handleStatus);
+    deleteButton?.addEventListener('click', () => removeQuestionnaire(questionnaire));
+  }
+
+  function renderDeleteButton() {
+    const button = document.querySelector(selectors.deleteButton);
+    if (!button) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      button.disabled = true;
+      button.title = STRINGS.deleteQuestionnaireLabel;
+      return;
+    }
+    const blocked = active.hasResponses;
+    button.disabled = blocked;
+    button.title = blocked ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
+  }
+
+  function renderDestroyButton() {
+    const button = document.querySelector(selectors.destroyButton);
+    if (!button) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      button.disabled = true;
+      button.title = STRINGS.deleteQuestionnaireDestroyLabel;
+      return;
+    }
+    button.disabled = false;
+    button.title = STRINGS.deleteQuestionnaireDestroyLabel;
   }
 
   function focusActiveQuestionnaire() {
@@ -620,6 +741,8 @@ const Builder = (() => {
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
     const scoring = renderScoringSummary(questionnaire);
+    const deleteDisabled = questionnaire.hasResponses;
+    const deleteTitle = deleteDisabled ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
 
     return `
       <div class="qb-card" data-q="${questionnaire.clientId}">
@@ -639,6 +762,12 @@ const Builder = (() => {
                 .map((status) => `<option value="${status}" ${status === questionnaire.status ? 'selected' : ''}>${formatStatusLabel(status)}</option>`)
                 .join('')}
             </select>
+          </div>
+          <div class="qb-field qb-actions">
+            <label class="md-visually-hidden">${escapeHtml(STRINGS.deleteQuestionnaireLabel)}</label>
+            <button type="button" class="md-button md-outline qb-danger" data-role="remove-questionnaire" ${deleteDisabled ? 'disabled' : ''} title="${escapeAttr(deleteTitle)}">
+              ${escapeHtml(STRINGS.deleteQuestionnaireLabel)}
+            </button>
           </div>
         </div>
         <div class="qb-body">
