@@ -385,53 +385,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'The work function selections could not be processed. Please try again.'
             );
         }
-        $validWorkFunctions = array_flip($workFunctionKeys);
-        $validQuestionnaires = array_flip(array_keys($questionnaireMap));
-        $normalized = [];
-        foreach ($input as $workFunction => $ids) {
-            $canonical = $canonicalize((string)$workFunction);
-            if ($canonical === '' || !isset($validWorkFunctions[$canonical])) {
-                continue;
-            }
-            if (!is_array($ids)) {
-                $ids = [$ids];
-            }
-            $clean = [];
-            foreach ($ids as $id) {
-                $qid = (int)$id;
-                if ($qid > 0 && isset($validQuestionnaires[$qid])) {
-                    $clean[] = $qid;
-                }
-            }
-            $clean = array_values(array_unique($clean));
-            sort($clean, SORT_NUMERIC);
-            $normalized[$canonical] = $clean;
-        }
-        foreach ($workFunctionKeys as $workFunction) {
-            if (!isset($normalized[$workFunction])) {
-                $normalized[$workFunction] = [];
-            }
-        }
-        ksort($normalized);
+        $normalized = normalize_work_function_assignments(
+            $input,
+            $workFunctionKeys,
+            array_map('intval', array_keys($questionnaireMap))
+        );
         $assignmentsByWorkFunction = $normalized;
         if ($errors === []) {
             try {
-                $pdo->beginTransaction();
-                $pdo->exec('DELETE FROM questionnaire_work_function');
-                if ($normalized !== []) {
-                    $insert = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
-                    foreach ($normalized as $workFunction => $questionnaireIds) {
-                        foreach ($questionnaireIds as $questionnaireId) {
-                            $insert->execute([(int)$questionnaireId, $workFunction]);
-                        }
-                    }
-                }
-                $pdo->commit();
+                save_work_function_assignments($pdo, $normalized);
                 $_SESSION[$flashKey] = t($t, 'work_function_defaults_saved', 'Default questionnaire assignments updated.');
                 header('Location: ' . url_for('admin/work_function_defaults.php'));
                 exit;
             } catch (Throwable $e) {
-                $pdo->rollBack();
                 error_log('work_function_defaults save failed: ' . $e->getMessage());
                 $errors[] = t($t, 'work_function_defaults_save_failed', 'Unable to save work function defaults. Please try again.');
             }
