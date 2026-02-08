@@ -69,6 +69,37 @@ $qbStrings = [
     'evenNoop' => t($t, 'qb_scoring_even_noop', 'Add scorable questions before splitting weights.'),
     'clearSuccess' => t($t, 'qb_scoring_clear_success', 'Cleared all question weights.'),
     'clearNoop' => t($t, 'qb_scoring_clear_noop', 'No weights to clear.'),
+    'deleteQuestionnaireLabel' => t($t, 'qb_delete_questionnaire', 'Delete questionnaire'),
+    'deleteQuestionnaireConfirm' => t(
+        $t,
+        'qb_delete_questionnaire_confirm',
+        'Delete "%s"? This cannot be undone.'
+    ),
+    'deleteQuestionnaireBlocked' => t(
+        $t,
+        'qb_delete_questionnaire_blocked',
+        'Questionnaires with submissions cannot be deleted.'
+    ),
+    'deleteQuestionnaireSuccess' => t(
+        $t,
+        'qb_delete_questionnaire_success',
+        'Questionnaire removed. Save to apply the changes.'
+    ),
+    'deleteQuestionnaireDestroyLabel' => t(
+        $t,
+        'qb_delete_questionnaire_destroy',
+        'Delete questionnaire + responses'
+    ),
+    'deleteQuestionnaireDestroyConfirm' => t(
+        $t,
+        'qb_delete_questionnaire_destroy_confirm',
+        'Delete "%s" and all submissions? This is irreversible and will permanently remove all response data.'
+    ),
+    'deleteQuestionnaireDestroySuccess' => t(
+        $t,
+        'qb_delete_questionnaire_destroy_success',
+        'Questionnaire and responses deleted.'
+    ),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
@@ -577,6 +608,62 @@ if ($action === 'upgrade') {
         error_log('questionnaire_manage upgrade failed: ' . $e->getMessage());
         send_json(['status' => 'error', 'message' => 'Unable to update questionnaire'], 500);
     }
+}
+
+if ($action === 'destroy') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        send_json(['status' => 'error', 'message' => 'Method not allowed'], 405);
+    }
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($payload)) {
+        send_json(['status' => 'error', 'message' => 'Invalid payload'], 400);
+    }
+    ensure_csrf($payload);
+    $targetId = isset($payload['questionnaire_id']) ? (int)$payload['questionnaire_id'] : 0;
+    if ($targetId <= 0) {
+        send_json(['status' => 'error', 'message' => 'Invalid questionnaire id'], 400);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT id FROM questionnaire WHERE id=?');
+        $stmt->execute([$targetId]);
+        if (!$stmt->fetchColumn()) {
+            send_json(['status' => 'error', 'message' => 'Questionnaire not found'], 404);
+        }
+
+        $deleteResponseItemsStmt = $pdo->prepare(
+            'DELETE FROM questionnaire_response_item WHERE response_id IN (SELECT id FROM questionnaire_response WHERE questionnaire_id=?)'
+        );
+        $deleteResponsesStmt = $pdo->prepare('DELETE FROM questionnaire_response WHERE questionnaire_id=?');
+        $deleteOptionsStmt = $pdo->prepare(
+            'DELETE FROM questionnaire_item_option WHERE questionnaire_item_id IN (SELECT id FROM questionnaire_item WHERE questionnaire_id=?)'
+        );
+        $deleteItemsStmt = $pdo->prepare('DELETE FROM questionnaire_item WHERE questionnaire_id=?');
+        $deleteSectionsStmt = $pdo->prepare('DELETE FROM questionnaire_section WHERE questionnaire_id=?');
+        $deleteWorkFunctionsStmt = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE questionnaire_id=?');
+        $deleteQuestionnaireStmt = $pdo->prepare('DELETE FROM questionnaire WHERE id=?');
+
+        $deleteResponseItemsStmt->execute([$targetId]);
+        $deleteResponsesStmt->execute([$targetId]);
+        $deleteOptionsStmt->execute([$targetId]);
+        $deleteItemsStmt->execute([$targetId]);
+        $deleteSectionsStmt->execute([$targetId]);
+        $deleteWorkFunctionsStmt->execute([$targetId]);
+        $deleteQuestionnaireStmt->execute([$targetId]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        error_log('questionnaire_manage destroy failed: ' . $e->getMessage());
+        send_json(['status' => 'error', 'message' => 'Failed to delete questionnaire'], 500);
+    }
+
+    send_json([
+        'status' => 'ok',
+        'csrf' => csrf_token(),
+        'message' => 'Questionnaire deleted',
+    ]);
 }
 
 if ($action === 'save' || $action === 'publish') {
@@ -1544,6 +1631,12 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
         <div class="qb-toolbar">
           <div class="qb-toolbar-actions">
             <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
+            <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+              <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+            </button>
+            <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+              <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+            </button>
             <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
           </div>
         </div>
