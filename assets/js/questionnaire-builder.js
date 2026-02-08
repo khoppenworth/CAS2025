@@ -572,6 +572,7 @@ const Builder = (() => {
         state.csrf = data.csrf || state.csrf;
         dropQuestionnaireFromState(questionnaire, { markDirty: false });
         renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+        fetchData({ silent: true });
       })
       .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
       .finally(() => {

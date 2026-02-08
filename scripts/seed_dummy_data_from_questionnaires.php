@@ -26,11 +26,14 @@ $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 function load_questionnaires(PDO $pdo): array
 {
     $stmt = $pdo->query(
-        "SELECT q.id, q.title, q.status, COUNT(qi.id) AS item_count\n" .
+        "SELECT q.id, q.title, q.status,\n" .
+        "COUNT(qi.id) AS item_count,\n" .
+        "SUM(CASE WHEN qi.type = 'likert' THEN 1 ELSE 0 END) AS likert_count,\n" .
+        "SUM(CASE WHEN qi.type = 'choice' AND qi.requires_correct = 1 THEN 1 ELSE 0 END) AS correct_count\n" .
         "FROM questionnaire q\n" .
         "LEFT JOIN questionnaire_item qi ON qi.questionnaire_id = q.id AND qi.is_active = 1\n" .
         "GROUP BY q.id, q.title, q.status\n" .
-        "HAVING item_count > 0\n" .
+        "HAVING item_count > 0 AND likert_count = 0 AND correct_count > 0\n" .
         "ORDER BY FIELD(q.status, 'published', 'draft', 'inactive'), q.id"
     );
 
@@ -95,31 +98,62 @@ function ensure_current_performance_period(PDO $pdo): int
 
 /**
  * @param array<string, mixed> $item
- * @param list<string> $options
- * @return array<int, array<string, mixed>>
+ * @param array<int, array{value: string, is_correct: bool}> $options
+ * @return array{payload: array<int, array<string, mixed>>, correct: bool}
  */
 function build_answer_payload(array $item, array $options): array
 {
     $type = (string)($item['type'] ?? 'text');
     if ($type === 'boolean') {
-        return [['valueBoolean' => (bool)random_int(0, 1)]];
+        return [
+            'payload' => [['valueBoolean' => (bool)random_int(0, 1)]],
+            'correct' => false,
+        ];
     }
     if ($type === 'likert') {
         $score = random_int(3, 5);
-        return [['valueInteger' => $score]];
+        return [
+            'payload' => [['valueInteger' => $score]],
+            'correct' => false,
+        ];
     }
     if ($type === 'choice') {
         if (!$options) {
-            return [['valueString' => 'N/A']];
+            return [
+                'payload' => [['valueString' => 'N/A']],
+                'correct' => false,
+            ];
         }
-        shuffle($options);
         $allowMultiple = (int)($item['allow_multiple'] ?? 0) === 1;
+        $requiresCorrect = (int)($item['requires_correct'] ?? 0) === 1 && !$allowMultiple;
+        $correctOptions = array_values(array_filter($options, static fn(array $opt): bool => $opt['is_correct']));
+        $incorrectOptions = array_values(array_filter($options, static fn(array $opt): bool => !$opt['is_correct']));
+        shuffle($options);
+        if ($requiresCorrect && $correctOptions) {
+            $answerCorrectly = random_int(1, 10) > 2;
+            if ($answerCorrectly || !$incorrectOptions) {
+                return [
+                    'payload' => [['valueString' => $correctOptions[0]['value']]],
+                    'correct' => true,
+                ];
+            }
+            return [
+                'payload' => [['valueString' => $incorrectOptions[0]['value']]],
+                'correct' => false,
+            ];
+        }
         if ($allowMultiple) {
             $take = random_int(1, min(2, count($options)));
             $picked = array_slice($options, 0, $take);
-            return array_map(static fn(string $value): array => ['valueString' => $value], $picked);
+            return [
+                'payload' => array_map(static fn(array $option): array => ['valueString' => $option['value']], $picked),
+                'correct' => false,
+            ];
         }
-        return [['valueString' => $options[0]]];
+        return [
+            'payload' => [['valueString' => $options[0]['value']]],
+            'correct' => false,
+        ];
     }
 
     $sentences = [
@@ -128,7 +162,10 @@ function build_answer_payload(array $item, array $options): array
         'Documented lessons learned and proposed targeted improvements.',
         'Maintained strong compliance while meeting cycle deliverables.',
     ];
-    return [['valueString' => $sentences[array_rand($sentences)]]];
+    return [
+        'payload' => [['valueString' => $sentences[array_rand($sentences)]]],
+        'correct' => false,
+    ];
 }
 
 $questionnaires = load_questionnaires($pdo);
@@ -156,20 +193,26 @@ try {
 
     $periodId = ensure_current_performance_period($pdo);
 
+    $cleanupResponseItems = $pdo->prepare(
+        'DELETE FROM questionnaire_response_item WHERE response_id IN (' .
+        'SELECT id FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")' .
+        ')'
+    );
     $cleanupResponses = $pdo->prepare(
         'DELETE FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
     );
     $cleanupAssignments = $pdo->prepare(
         'DELETE FROM questionnaire_assignment WHERE staff_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
     );
+    $cleanupResponseItems->execute();
     $cleanupResponses->execute();
     $cleanupAssignments->execute();
 
     $itemStmt = $pdo->prepare(
-        'SELECT id, linkId, type, allow_multiple FROM questionnaire_item WHERE questionnaire_id = ? AND is_active = 1 ORDER BY order_index, id'
+        'SELECT id, linkId, type, allow_multiple, requires_correct FROM questionnaire_item WHERE questionnaire_id = ? AND is_active = 1 ORDER BY order_index, id'
     );
     $optionStmt = $pdo->prepare(
-        'SELECT value FROM questionnaire_item_option WHERE questionnaire_item_id = ? ORDER BY order_index, id'
+        'SELECT value, is_correct FROM questionnaire_item_option WHERE questionnaire_item_id = ? ORDER BY order_index, id'
     );
 
     $insertAssignment = $pdo->prepare(
@@ -182,6 +225,7 @@ try {
     $insertResponseItem = $pdo->prepare(
         'INSERT INTO questionnaire_response_item (response_id, linkId, answer) VALUES (?, ?, ?)'
     );
+    $updateScoreStmt = $pdo->prepare('UPDATE questionnaire_response SET score = ? WHERE id = ?');
 
     $responsesCreated = 0;
 
@@ -197,16 +241,18 @@ try {
             $insertAssignment->execute([$staffId, $qid, $supervisorId > 0 ? $supervisorId : null]);
 
             $status = random_int(0, 10) > 2 ? 'submitted' : 'approved';
-            $score = random_int(68, 96);
             $reviewedAt = $status === 'approved' ? date('Y-m-d H:i:s') : null;
             $reviewComment = $status === 'approved' ? 'Reviewed dummy submission for seed data.' : null;
+
+            $correctAnswerTotal = 0;
+            $correctAnswers = 0;
 
             $insertResponse->execute([
                 $staffId,
                 $qid,
                 $periodId,
                 $status,
-                $score,
+                0,
                 $status === 'approved' ? ($supervisorId > 0 ? $supervisorId : null) : null,
                 $reviewedAt,
                 $reviewComment,
@@ -215,14 +261,32 @@ try {
 
             foreach ($items as $item) {
                 $optionStmt->execute([(int)$item['id']]);
-                $options = array_map(static fn(array $row): string => (string)$row['value'], $optionStmt->fetchAll() ?: []);
-                $payload = build_answer_payload($item, $options);
+                $options = array_map(
+                    static fn(array $row): array => [
+                        'value' => (string)$row['value'],
+                        'is_correct' => (bool)($row['is_correct'] ?? false),
+                    ],
+                    $optionStmt->fetchAll() ?: []
+                );
+                $result = build_answer_payload($item, $options);
+                $payload = $result['payload'];
+                $requiresCorrect = (int)($item['requires_correct'] ?? 0) === 1;
+                if ($requiresCorrect) {
+                    $correctAnswerTotal += 1;
+                    if ($result['correct']) {
+                        $correctAnswers += 1;
+                    }
+                }
                 $insertResponseItem->execute([
                     $responseId,
                     (string)$item['linkId'],
                     json_encode($payload),
                 ]);
             }
+            $score = $correctAnswerTotal > 0
+                ? (int)round(($correctAnswers / $correctAnswerTotal) * 100)
+                : random_int(68, 96);
+            $updateScoreStmt->execute([$score, $responseId]);
             $responsesCreated++;
         }
     }
