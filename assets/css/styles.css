@@ -1219,11 +1219,11 @@ body.theme-dark .md-field.md-field--compact select {
 
 .md-user-form-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .md-user-delete-form {
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 .md-user-delete-form .md-user-action-button {
