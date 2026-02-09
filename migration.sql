@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS site_config (
   landing_metric_completion VARCHAR(50) NULL,
   landing_metric_adoption VARCHAR(50) NULL,
   logo_path VARCHAR(255) NULL,
+  landing_background_path VARCHAR(255) NULL,
   footer_org_name VARCHAR(255) NULL,
   footer_org_short VARCHAR(100) NULL,
   footer_website_label VARCHAR(255) NULL,
@@ -265,6 +266,22 @@ SET @sc_landing_metric_adoption_sql = IF(
   'DO 1'
 );
 PREPARE stmt FROM @sc_landing_metric_adoption_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_landing_background_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'landing_background_path'
+);
+SET @sc_landing_background_sql = IF(
+  @sc_landing_background_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN landing_background_path VARCHAR(255) NULL AFTER logo_path',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_landing_background_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
@@ -758,6 +775,7 @@ INSERT IGNORE INTO site_config (
   landing_metric_completion,
   landing_metric_adoption,
   logo_path,
+  landing_background_path,
   footer_org_name,
   footer_org_short,
   footer_website_label,
@@ -797,6 +815,7 @@ INSERT IGNORE INTO site_config (
   4280,
   '12 min',
   '94%',
+  NULL,
   NULL,
   'Ethiopian Pharmaceutical Supply Service',
   'EPSS / EPS',
@@ -864,6 +883,14 @@ WHERE id = 1
   AND logo_path <> ''
   AND logo_path NOT LIKE 'http://%'
   AND logo_path NOT LIKE 'https://%';
+
+UPDATE site_config
+SET landing_background_path = CONCAT('/', TRIM(BOTH '/' FROM landing_background_path))
+WHERE id = 1
+  AND landing_background_path IS NOT NULL
+  AND landing_background_path <> ''
+  AND landing_background_path NOT LIKE 'http://%'
+  AND landing_background_path NOT LIKE 'https://%';
 
 -- Ensure optional users columns exist without relying on unconditional ALTER TABLE statements.
 SET @users_gender_exists = (
