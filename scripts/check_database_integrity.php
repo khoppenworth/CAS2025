@@ -178,6 +178,7 @@ $expectedSchemas = [
         'address' => ['type' => 'varchar', 'null' => 'YES'],
         'contact' => ['type' => 'varchar', 'null' => 'YES'],
         'logo_path' => ['type' => 'varchar', 'null' => 'YES'],
+        'landing_background_path' => ['type' => 'varchar', 'null' => 'YES'],
         'footer_org_name' => ['type' => 'varchar', 'null' => 'YES'],
         'footer_org_short' => ['type' => 'varchar', 'null' => 'YES'],
         'footer_website_label' => ['type' => 'varchar', 'null' => 'YES'],
