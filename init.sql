@@ -27,6 +27,7 @@ CREATE TABLE site_config (
   landing_metric_completion VARCHAR(50) NULL,
   landing_metric_adoption VARCHAR(50) NULL,
   logo_path VARCHAR(255) NULL,
+  landing_background_path VARCHAR(255) NULL,
   footer_org_name VARCHAR(255) NULL,
   footer_org_short VARCHAR(100) NULL,
   footer_website_label VARCHAR(255) NULL,
