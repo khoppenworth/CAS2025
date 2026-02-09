@@ -57,6 +57,15 @@ directory:
 If an upgrade fails, the script automatically restores the previous state using
 the snapshot and database dump before marking the manifest status as `failed`.
 
+## Config migrations
+
+The upgrade utility preserves `config.php` to protect environment-specific
+settings such as database credentials. To ensure new helper functions are still
+available, the upgrade flow injects a `require_once __DIR__ . '/config.migrations.php';`
+include into `config.php` (if it is missing). The `config.migrations.php` file
+is versioned with the application and safely defines forward-compatible helper
+functions only when they do not already exist.
+
 ## Customising preserved paths
 
 Environment-specific files can be shielded from upgrades by passing a
@@ -69,4 +78,3 @@ php scripts/system_upgrade.php --action=upgrade --repo=... --ref=main --preserve
 
 The list always includes `config.php` and the backup directory to prevent them
 from being overwritten or removed.
-

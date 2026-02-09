@@ -1710,5 +1710,10 @@ function contrast_color(string $hex): string
     }
     return tint_color($hex, 0.85);
 }
+
+    $configMigrationPath = __DIR__ . '/config.migrations.php';
+    if (is_readable($configMigrationPath)) {
+        require_once $configMigrationPath;
+    }
 }
 ?>
