@@ -1545,6 +1545,72 @@ body.theme-dark .md-help-bubble::before {
   font-weight: 700;
 }
 
+.md-field--error input,
+.md-field--error select,
+.md-field--error textarea {
+  border-color: var(--app-danger);
+  background: #fff5f5;
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.2);
+}
+
+.md-field--error span {
+  color: var(--app-danger);
+}
+
+.md-required-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.md-required-popup__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.md-required-popup__dialog {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px 24px;
+  max-width: 520px;
+  width: calc(100% - 32px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+  border: 2px solid var(--app-danger);
+}
+
+.md-required-popup__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.md-required-popup__title {
+  font-weight: 600;
+  color: var(--app-danger);
+  font-size: 1.05rem;
+}
+
+.md-required-popup__close {
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--app-danger);
+}
+
+.md-required-popup__body {
+  margin: 0;
+  color: var(--app-muted);
+}
+
 .md-field input:focus,
 .md-field select:focus,
 .md-field textarea:focus {
