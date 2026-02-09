@@ -18,6 +18,7 @@ $contact = htmlspecialchars($cfg['contact'] ?? '', ENT_QUOTES, 'UTF-8');
 $bodyClass = trim(htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8') . ' landing-body');
 $bodyStyle = htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8');
 $brandStyle = site_brand_style($cfg);
+$landingBackgroundUrl = site_landing_background_url($cfg);
 $baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
 $langAttr = htmlspecialchars($locale, ENT_QUOTES, 'UTF-8');
 $loginUrl = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
@@ -32,6 +33,15 @@ $heroSubtitle = $landingText !== ''
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
 $addressLabel = htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8');
 $contactLabel = htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8');
+$landingHeroClass = 'landing-hero';
+$landingHeroStyle = '';
+if ($landingBackgroundUrl !== '') {
+    $landingHeroClass .= ' landing-hero--image';
+    $landingHeroStyle = sprintf(
+        '--landing-hero-image: url("%s");',
+        htmlspecialchars($landingBackgroundUrl, ENT_QUOTES, 'UTF-8')
+    );
+}
 
 $highlightItems = [
     [
@@ -89,7 +99,7 @@ $featureItems = [
 </head>
 <body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>">
   <div class="landing-page">
-    <header class="landing-hero">
+    <header class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
       <div class="landing-hero__content" aria-labelledby="landing-title">
         <div class="landing-brand">
           <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">

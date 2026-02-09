@@ -49,6 +49,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newLogoPath = $currentLogo;
     $logoToDelete = null;
     $newUploadPath = null;
+    $currentLandingBackground = $cfg['landing_background_path'] ?? null;
+    $newLandingBackgroundPath = $currentLandingBackground;
+    $landingBackgroundToDelete = null;
+    $newLandingBackgroundUploadPath = null;
 
     if (isset($_POST['remove_logo']) && $newLogoPath !== null) {
         $logoToDelete = $newLogoPath;
@@ -138,12 +142,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if (isset($_POST['remove_landing_background']) && $newLandingBackgroundPath !== null) {
+        $landingBackgroundToDelete = $newLandingBackgroundPath;
+        $newLandingBackgroundPath = null;
+    }
+
+    $backgroundFile = $_FILES['landing_background'] ?? null;
+    if (is_array($backgroundFile)) {
+        $uploadError = (int)($backgroundFile['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($uploadError !== UPLOAD_ERR_NO_FILE) {
+            if ($uploadError !== UPLOAD_ERR_OK) {
+                $errors[] = match ($uploadError) {
+                    UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => t($t, 'landing_background_upload_error_size', 'The background image exceeds the maximum upload size.'),
+                    UPLOAD_ERR_PARTIAL => t($t, 'landing_background_upload_error_partial', 'The background image upload did not complete. Please try again.'),
+                    UPLOAD_ERR_NO_TMP_DIR => t($t, 'landing_background_upload_error_tmp', 'The server is missing a temporary folder for uploads.'),
+                    UPLOAD_ERR_CANT_WRITE => t($t, 'landing_background_upload_error_write', 'Unable to write the uploaded background image to disk.'),
+                    UPLOAD_ERR_EXTENSION => t($t, 'landing_background_upload_error_extension', 'A PHP extension stopped the background image upload.'),
+                    default => t($t, 'landing_background_upload_error_generic', 'The background image could not be uploaded. Please try again.'),
+                };
+            } else {
+                $tmpPath = $backgroundFile['tmp_name'] ?? '';
+                if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+                    $errors[] = t($t, 'landing_background_upload_error_generic', 'The background image could not be uploaded. Please try again.');
+                } elseif (!ensure_branding_logo_directory()) {
+                    $errors[] = t($t, 'landing_background_upload_error_dir', 'The uploads directory is not writable.');
+                } else {
+                    $allowed = [
+                        'image/png' => 'png',
+                        'image/x-png' => 'png',
+                        'image/jpeg' => 'jpg',
+                        'image/pjpeg' => 'jpg',
+                        'image/jpg' => 'jpg',
+                        'image/gif' => 'gif',
+                        'image/svg+xml' => 'svg',
+                        'image/x-svg+xml' => 'svg',
+                        'image/webp' => 'webp',
+                    ];
+
+                    $detectedMime = detect_mime_type($tmpPath);
+                    $mime = $detectedMime ?? strtolower((string)($backgroundFile['type'] ?? ''));
+                    $extension = $allowed[$mime] ?? null;
+
+                    if ($extension === null) {
+                        $errors[] = t($t, 'landing_background_upload_error_type', 'The background image must be a PNG, JPG, GIF, SVG, or WebP image.');
+                    } else {
+                        if ($extension === 'svg') {
+                            $snippet = file_get_contents($tmpPath, false, null, 0, 4096);
+                            if (
+                                $snippet === false
+                                || stripos($snippet, '<svg') === false
+                                || stripos($snippet, '<?php') !== false
+                                || stripos($snippet, '<script') !== false
+                            ) {
+                                $errors[] = t($t, 'landing_background_upload_error_type', 'The background image must be a PNG, JPG, GIF, SVG, or WebP image.');
+                            }
+                        }
+
+                        $filename = null;
+                        if ($errors === []) {
+                            try {
+                                $filename = bin2hex(random_bytes(16)) . '.' . $extension;
+                            } catch (Throwable $e) {
+                                error_log('branding background random_bytes failed: ' . $e->getMessage());
+                                $errors[] = t($t, 'landing_background_upload_error_generic', 'The background image could not be uploaded. Please try again.');
+                            }
+                        }
+
+                        if ($errors === [] && $filename !== null) {
+                            $relativeDir = branding_logo_relative_dir();
+                            $relativePath = $relativeDir . '/' . $filename;
+                            $destination = base_path($relativePath);
+
+                            if (!move_uploaded_file($tmpPath, $destination)) {
+                                $errors[] = t($t, 'landing_background_upload_error_write', 'Unable to write the uploaded background image to disk.');
+                            } else {
+                                @chmod($destination, 0644);
+                                $newLandingBackgroundUploadPath = $relativePath;
+                                $newLandingBackgroundPath = $relativePath;
+                                if ($currentLandingBackground !== null && $currentLandingBackground !== $relativePath) {
+                                    $landingBackgroundToDelete = $currentLandingBackground;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     $fields = [
         'site_name' => $site_name,
         'landing_text' => $landing_text,
         'address' => $address,
         'contact' => $contact,
         'logo_path' => $newLogoPath,
+        'landing_background_path' => $newLandingBackgroundPath,
         'footer_org_name' => $footer_org_name,
         'footer_org_short' => $footer_org_short,
         'footer_website_label' => $footer_website_label,
@@ -172,11 +265,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($logoToDelete !== null && $logoToDelete !== $newLogoPath) {
                 delete_branding_logo_file($logoToDelete);
             }
+            if ($landingBackgroundToDelete !== null && $landingBackgroundToDelete !== $newLandingBackgroundPath) {
+                delete_landing_background_file($landingBackgroundToDelete);
+            }
             $cfg = get_site_config($pdo);
         } catch (Throwable $e) {
             error_log('branding update failed: ' . $e->getMessage());
             if ($newUploadPath !== null && $newUploadPath !== $currentLogo) {
                 delete_branding_logo_file($newUploadPath);
+            }
+            if ($newLandingBackgroundUploadPath !== null && $newLandingBackgroundUploadPath !== $currentLandingBackground) {
+                delete_landing_background_file($newLandingBackgroundUploadPath);
             }
             $errors[] = t($t, 'branding_save_failed', 'Unable to save branding changes. Please try again.');
         }
@@ -184,8 +283,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newUploadPath !== null && $newUploadPath !== $currentLogo) {
             delete_branding_logo_file($newUploadPath);
         }
+        if ($newLandingBackgroundUploadPath !== null && $newLandingBackgroundUploadPath !== $currentLandingBackground) {
+            delete_landing_background_file($newLandingBackgroundUploadPath);
+        }
         $cfg = array_merge($cfg, $fields);
         $cfg['logo_path'] = $currentLogo;
+        $cfg['landing_background_path'] = $currentLandingBackground;
     }
 }
 ?>
@@ -217,6 +320,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
       <label class="md-field"><span><?=t($t,'site_name','Site Name')?></span><input name="site_name" value="<?=htmlspecialchars($cfg['site_name'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'landing_text','Landing Text')?></span><textarea name="landing_text" rows="3"><?=htmlspecialchars($cfg['landing_text'] ?? '')?></textarea></label>
+      <div class="md-field">
+        <span><?=t($t,'landing_background','Landing Background')?></span>
+        <?php $landingBackgroundPath = site_landing_background_path($cfg); ?>
+        <?php if ($landingBackgroundPath !== null): ?>
+          <div class="branding-logo-preview">
+            <img src="<?=htmlspecialchars(site_landing_background_url($cfg), ENT_QUOTES, 'UTF-8')?>" alt="<?=htmlspecialchars(t($t, 'landing_background_preview', 'Landing background preview'), ENT_QUOTES, 'UTF-8')?>">
+            <div>
+              <p class="md-hint"><?=t($t,'landing_background_preview','Current landing background preview')?></p>
+              <label class="md-control">
+                <input type="checkbox" name="remove_landing_background" value="1">
+                <span><?=t($t,'landing_background_remove_label','Remove landing background')?></span>
+              </label>
+            </div>
+          </div>
+        <?php else: ?>
+          <p class="md-hint"><?=t($t,'landing_background_empty_hint','The landing hero uses a solid color background when no image is set.')?></p>
+        <?php endif; ?>
+        <input type="file" name="landing_background" accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp">
+        <p class="md-hint"><?=t($t,'landing_background_upload_hint','Upload PNG, JPG, GIF, SVG, or WebP files up to 2 MB.')?></p>
+      </div>
       <label class="md-field"><span><?=t($t,'address_label','Address')?></span><input name="address" value="<?=htmlspecialchars($cfg['address'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'contact_label','Contact')?></span><input name="contact" value="<?=htmlspecialchars($cfg['contact'] ?? '')?>"></label>
       <h3 class="md-subhead"><?=t($t,'appearance_settings','Appearance')?></h3>

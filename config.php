@@ -329,6 +329,7 @@ function ensure_site_config_schema(PDO $pdo): void {
         address VARCHAR(255) NULL,
         contact VARCHAR(255) NULL,
         logo_path VARCHAR(255) NULL,
+        landing_background_path VARCHAR(255) NULL,
         footer_org_name VARCHAR(255) NULL,
         footer_org_short VARCHAR(100) NULL,
         footer_website_label VARCHAR(255) NULL,
@@ -356,6 +357,7 @@ function ensure_site_config_schema(PDO $pdo): void {
         'address' => 'ALTER TABLE site_config ADD COLUMN address VARCHAR(255) NULL',
         'contact' => 'ALTER TABLE site_config ADD COLUMN contact VARCHAR(255) NULL',
         'logo_path' => 'ALTER TABLE site_config ADD COLUMN logo_path VARCHAR(255) NULL',
+        'landing_background_path' => 'ALTER TABLE site_config ADD COLUMN landing_background_path VARCHAR(255) NULL',
         'footer_org_name' => 'ALTER TABLE site_config ADD COLUMN footer_org_name VARCHAR(255) NULL',
         'footer_org_short' => 'ALTER TABLE site_config ADD COLUMN footer_org_short VARCHAR(100) NULL',
         'footer_website_label' => 'ALTER TABLE site_config ADD COLUMN footer_website_label VARCHAR(255) NULL',
@@ -491,6 +493,7 @@ function site_config_defaults(): array
         'address' => null,
         'contact' => null,
         'logo_path' => null,
+        'landing_background_path' => null,
         'footer_org_name' => 'Ethiopian Pharmaceutical Supply Service',
         'footer_org_short' => 'EPSS / EPS',
         'footer_website_label' => 'epss.gov.et',
@@ -535,7 +538,7 @@ function get_site_config(PDO $pdo): array
         ensure_site_config_schema($pdo);
         $defaultTemplatesJson = encode_email_templates(default_email_templates());
         $quotedTemplates = $pdo->quote($defaultTemplatesJson);
-        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, logo_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, $quotedTemplates)");
+        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, $quotedTemplates)");
         $cfg = $pdo->query('SELECT * FROM site_config WHERE id=1')->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('get_site_config failed: ' . $e->getMessage());
@@ -545,6 +548,7 @@ function get_site_config(PDO $pdo): array
 
     $merged = array_merge($defaults, $cfg ?: []);
     $merged['logo_path'] = normalize_logo_path($merged['logo_path'] ?? null);
+    $merged['landing_background_path'] = normalize_landing_background_path($merged['landing_background_path'] ?? null);
     $merged['enabled_locales'] = site_enabled_locales($merged);
     $merged['email_templates'] = normalize_email_templates($merged['email_templates'] ?? []);
     remember_available_locales($merged['enabled_locales']);
@@ -600,9 +604,45 @@ function normalize_logo_path($value): ?string
     return $relativeDir . '/' . $filename;
 }
 
+function normalize_landing_background_path($value): ?string
+{
+    if (!is_string($value)) {
+        return null;
+    }
+
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+        return null;
+    }
+
+    $normalized = str_replace('\\', '/', ltrim($trimmed, '/'));
+    $relativeDir = branding_logo_relative_dir();
+    $expectedPrefix = $relativeDir . '/';
+    if (strpos($normalized, $expectedPrefix) !== 0) {
+        return null;
+    }
+
+    $filename = basename($normalized);
+    if ($filename === '' || preg_match('/[^A-Za-z0-9._-]/', $filename)) {
+        return null;
+    }
+
+    return $relativeDir . '/' . $filename;
+}
+
 function branding_logo_full_path(?string $path): ?string
 {
     $normalized = normalize_logo_path($path);
+    if ($normalized === null) {
+        return null;
+    }
+
+    return base_path($normalized);
+}
+
+function landing_background_full_path(?string $path): ?string
+{
+    $normalized = normalize_landing_background_path($path);
     if ($normalized === null) {
         return null;
     }
@@ -625,6 +665,21 @@ function site_logo_path(array $cfg): ?string
     return $normalized;
 }
 
+function site_landing_background_path(array $cfg): ?string
+{
+    $normalized = normalize_landing_background_path($cfg['landing_background_path'] ?? null);
+    if ($normalized === null) {
+        return null;
+    }
+
+    $fullPath = base_path($normalized);
+    if (!is_file($fullPath)) {
+        return null;
+    }
+
+    return $normalized;
+}
+
 function site_logo_url(array $cfg): string
 {
     $path = site_logo_path($cfg);
@@ -633,6 +688,16 @@ function site_logo_url(array $cfg): string
     }
 
     return asset_url('logo.php');
+}
+
+function site_landing_background_url(array $cfg): string
+{
+    $path = site_landing_background_path($cfg);
+    if ($path !== null) {
+        return asset_url($path);
+    }
+
+    return '';
 }
 
 function detect_mime_type(string $path): ?string
@@ -675,6 +740,14 @@ function site_logo_mime(array $cfg): ?string
 function delete_branding_logo_file(?string $path): void
 {
     $fullPath = branding_logo_full_path($path);
+    if ($fullPath !== null && is_file($fullPath)) {
+        @unlink($fullPath);
+    }
+}
+
+function delete_landing_background_file(?string $path): void
+{
+    $fullPath = landing_background_full_path($path);
     if ($fullPath !== null && is_file($fullPath)) {
         @unlink($fullPath);
     }

@@ -48,6 +48,22 @@ body.landing-body {
   align-items: center;
 }
 
+.landing-hero--image {
+  background-image: linear-gradient(
+      130deg,
+      color-mix(in srgb, var(--landing-primary) 45%, rgba(15, 23, 42, 0.8)),
+      rgba(15, 23, 42, 0.72)
+    ),
+    var(--landing-hero-image);
+  background-size: cover;
+  background-position: center;
+}
+
+.landing-hero--image::before,
+.landing-hero--image::after {
+  opacity: 0.2;
+}
+
 .landing-hero::before,
 .landing-hero::after {
   content: "";

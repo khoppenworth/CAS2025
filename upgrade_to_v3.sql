@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS site_config (
   address VARCHAR(255) NULL,
   contact VARCHAR(255) NULL,
   logo_path VARCHAR(255) NULL,
+  landing_background_path VARCHAR(255) NULL,
   footer_org_name VARCHAR(255) NULL,
   footer_org_short VARCHAR(100) NULL,
   footer_website_label VARCHAR(255) NULL,
@@ -49,6 +50,7 @@ ALTER TABLE site_config
   ADD COLUMN IF NOT EXISTS address VARCHAR(255) NULL,
   ADD COLUMN IF NOT EXISTS contact VARCHAR(255) NULL,
   ADD COLUMN IF NOT EXISTS logo_path VARCHAR(255) NULL,
+  ADD COLUMN IF NOT EXISTS landing_background_path VARCHAR(255) NULL,
   ADD COLUMN IF NOT EXISTS footer_org_name VARCHAR(255) NULL,
   ADD COLUMN IF NOT EXISTS footer_org_short VARCHAR(100) NULL,
   ADD COLUMN IF NOT EXISTS footer_website_label VARCHAR(255) NULL,
@@ -83,7 +85,7 @@ ALTER TABLE site_config
   ADD COLUMN IF NOT EXISTS email_templates LONGTEXT NULL;
 
 INSERT INTO site_config (
-  id, site_name, landing_text, address, contact, logo_path,
+  id, site_name, landing_text, address, contact, logo_path, landing_background_path,
   footer_org_name, footer_org_short, footer_website_label, footer_website_url,
   footer_email, footer_phone, footer_hotline_label, footer_hotline_number,
   footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret,
@@ -91,7 +93,7 @@ INSERT INTO site_config (
   color_theme, brand_color, enabled_locales, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password,
   smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, upgrade_repo, review_enabled, email_templates
 ) VALUES (
-  1, 'My Performance', NULL, NULL, NULL, NULL,
+  1, 'My Performance', NULL, NULL, NULL, NULL, NULL,
   'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et',
   'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939',
   'All rights reserved.', 1, 0, NULL, NULL,
