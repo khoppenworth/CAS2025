@@ -212,7 +212,12 @@ const Builder = (() => {
       });
       return;
     }
-    if (!item.options.length) return;
+    if (!item.options.length) {
+      const fallbackOption = normalizeOption({ value: '' });
+      fallbackOption.is_correct = true;
+      item.options.push(fallbackOption);
+      return;
+    }
     const hasCorrect = item.options.some((opt) => opt.is_correct);
     if (!hasCorrect) {
       item.options[0].is_correct = true;
