@@ -320,7 +320,11 @@ const Builder = (() => {
 
     const params = new URLSearchParams({ action: 'fetch', csrf: state.csrf });
     fetch(withBase(`/admin/questionnaire_manage.php?${params.toString()}`), {
-      headers: { 'X-CSRF-Token': state.csrf },
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-Token': state.csrf,
+      },
       credentials: 'same-origin',
     })
       .then((resp) => resp.json())
