@@ -1078,9 +1078,23 @@ const Builder = (() => {
     }
     markDirty();
     if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
-      hydrateActiveQuestionnaireFromDom();
-      render();
+      const itemRow = event.target.closest('[data-item]');
+      rerenderItemRow(questionnaire, itemRow);
     }
+  }
+
+  function rerenderItemRow(questionnaire, itemRow) {
+    if (!itemRow) return;
+    const itemId = itemRow.getAttribute('data-item');
+    if (!itemId) return;
+    const sectionId = itemRow.getAttribute('data-section') || null;
+    const item = findItem(questionnaire, sectionId, itemId);
+    if (!item) return;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = buildItemRow(questionnaire, sectionId, item).trim();
+    const next = wrapper.firstElementChild;
+    if (!next) return;
+    itemRow.replaceWith(next);
   }
 
   function handleListClick(event) {
