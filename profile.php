@@ -176,17 +176,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
         </div>
       <?php endif; ?>
-    <form method="post" class="md-form-grid" action="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>">
+    <div class="md-required-popup" data-required-popup hidden>
+      <div class="md-required-popup__backdrop" data-required-popup-close></div>
+      <div class="md-required-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="required-popup-title">
+        <div class="md-required-popup__header">
+          <div class="md-required-popup__title" id="required-popup-title">
+            <?=t($t,'required_fields_title','Required fields missing')?>
+          </div>
+          <button type="button" class="md-required-popup__close" data-required-popup-close aria-label="<?=htmlspecialchars(t($t,'close','Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+        </div>
+        <p class="md-required-popup__body">
+          <?=t($t,'required_fields_body','Please complete all mandatory fields marked in red before saving your profile.')?>
+        </p>
+      </div>
+    </div>
+    <form method="post" class="md-form-grid" action="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" data-profile-form>
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'full_name','Full Name')?></span>
         <input name="full_name" value="<?=htmlspecialchars($user['full_name'] ?? '')?>" required>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'email','Email')?></span>
         <input name="email" type="email" value="<?=htmlspecialchars($user['email'] ?? '')?>" required>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'gender','Gender')?></span>
         <select name="gender" required>
           <?php $gval = $user['gender'] ?? ''; ?>
@@ -197,11 +211,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <option value="prefer_not_say" <?=$gval==='prefer_not_say'?'selected':''?>><?=t($t,'prefer_not_say','Prefer not to say')?></option>
         </select>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'date_of_birth','Date of Birth')?></span>
         <input type="date" name="date_of_birth" value="<?=htmlspecialchars($user['date_of_birth'] ?? '')?>" required>
       </label>
-      <label class="md-field md-field-inline">
+      <label class="md-field md-field-inline md-field--required">
         <span>
           <?=t($t,'phone','Phone Number')?>
           <?=render_help_icon(t($t,'phone_number_hint','Choose a country code and enter digits only.'))?>
@@ -219,15 +233,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <input type="hidden" name="phone" value="<?=htmlspecialchars($phoneCountryValue . $phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" data-phone-full>
         </div>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'department','Department')?></span>
         <input name="department" value="<?=htmlspecialchars($user['department'] ?? '')?>" required>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'cadre','Cadre')?></span>
         <input name="cadre" value="<?=htmlspecialchars($user['cadre'] ?? '')?>" required>
       </label>
-      <label class="md-field">
+      <label class="md-field md-field--required">
         <span><?=t($t,'work_function','Work Function / Cadre')?></span>
         <select name="work_function" required>
           <?php $wval = $user['work_function'] ?? ''; ?>
@@ -258,4 +272,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </section>
 <?php include __DIR__.'/templates/footer.php'; ?>
 <script type="module" src="<?=asset_url('assets/js/phone-input.js')?>"></script>
+<script>
+  (function () {
+    const form = document.querySelector('[data-profile-form]');
+    const popup = document.querySelector('[data-required-popup]');
+    if (!form || !popup) {
+      return;
+    }
+
+    const closeButtons = popup.querySelectorAll('[data-required-popup-close]');
+    closeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        popup.hidden = true;
+      });
+    });
+
+    const requiredFields = Array.from(form.querySelectorAll('[required]'));
+    const markField = (field, hasError) => {
+      const wrapper = field.closest('.md-field');
+      if (wrapper) {
+        wrapper.classList.toggle('md-field--error', hasError);
+      }
+    };
+
+    const validateField = (field) => {
+      const isSelect = field.tagName === 'SELECT';
+      const value = isSelect ? field.value : field.value.trim();
+      const hasError = value === '';
+      markField(field, hasError);
+      return !hasError;
+    };
+
+    requiredFields.forEach((field) => {
+      field.addEventListener('blur', () => {
+        validateField(field);
+      });
+      field.addEventListener('input', () => {
+        if (field.value.trim() !== '') {
+          markField(field, false);
+        }
+      });
+      field.addEventListener('change', () => {
+        validateField(field);
+      });
+    });
+
+    form.addEventListener('submit', (event) => {
+      let hasError = false;
+      requiredFields.forEach((field) => {
+        if (!validateField(field)) {
+          hasError = true;
+        }
+      });
+      if (hasError) {
+        event.preventDefault();
+        popup.hidden = false;
+      }
+    });
+  })();
+</script>
 </body></html>
