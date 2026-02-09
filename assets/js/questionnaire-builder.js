@@ -1074,6 +1074,7 @@ const Builder = (() => {
     }
     markDirty();
     if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
+      hydrateActiveQuestionnaireFromDom();
       render();
     }
   }
