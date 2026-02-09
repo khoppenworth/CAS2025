@@ -258,6 +258,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (requestURL.pathname.endsWith('/admin/questionnaire_manage.php')) {
+    const action = requestURL.searchParams.get('action');
+    if (action === 'fetch' || action === 'export') {
+      event.respondWith(fetch(request, { cache: 'no-store' }));
+      return;
+    }
+  }
+
   const acceptHeader = request.headers.get('accept') || '';
   if (
     request.mode === 'navigate'
