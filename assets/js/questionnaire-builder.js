@@ -1081,6 +1081,9 @@ const Builder = (() => {
       const itemRow = event.target.closest('[data-item]');
       rerenderItemRow(questionnaire, itemRow);
     }
+    if (['item-type', 'item-multi', 'item-requires-correct', 'item-weight'].includes(role)) {
+      rerenderScoringSummary(questionnaire);
+    }
   }
 
   function rerenderItemRow(questionnaire, itemRow) {
@@ -1095,6 +1098,18 @@ const Builder = (() => {
     const next = wrapper.firstElementChild;
     if (!next) return;
     itemRow.replaceWith(next);
+  }
+
+  function rerenderScoringSummary(questionnaire) {
+    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
+    if (!card) return;
+    const current = card.querySelector('.qb-scoring');
+    if (!current) return;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = renderScoringSummary(questionnaire).trim();
+    const next = wrapper.firstElementChild;
+    if (!next) return;
+    current.replaceWith(next);
   }
 
   function handleListClick(event) {
