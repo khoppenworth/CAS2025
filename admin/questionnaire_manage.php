@@ -1516,9 +1516,6 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
     <div class="md-page-header__content">
       <h1 class="md-page-title" id="qb-page-title" tabindex="-1"><?=t($t,'manage_questionnaires','Manage Questionnaires')?></h1>
       <p class="md-page-subtitle"><?=t($t,'qb_builder_intro','Build and organize questionnaires for upcoming assessments.')?></p>
-      <p class="md-hint">
-        <a href="<?=htmlspecialchars(url_for('admin/questionnaire_builder_v2.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'qb_builder_v2_link', 'Try the new builder preview'), ENT_QUOTES, 'UTF-8')?></a>
-      </p>
     </div>
   </header>
   <?php if ($msg): ?>
