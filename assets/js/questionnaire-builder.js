@@ -495,7 +495,10 @@ const Builder = (() => {
     active.sections = sectionNodes.map((sectionNode) => {
       const sectionClientId = sectionNode.getAttribute('data-section') || uuid('s');
       const existingSection = existingSections.get(sectionClientId) || {};
-      const sectionItems = parseItems(sectionNode.querySelectorAll('.qb-items [data-item]'), existingSection.items || []);
+      const sectionItems = parseItems(
+        sectionNode.querySelectorAll('.qb-items .qb-item[data-item]'),
+        existingSection.items || []
+      );
       return {
         id: existingSection.id ?? null,
         clientId: sectionClientId,
@@ -507,7 +510,7 @@ const Builder = (() => {
       };
     });
 
-    const rootItemNodes = card.querySelectorAll('.qb-root-items [data-item]');
+    const rootItemNodes = card.querySelectorAll('.qb-root-items .qb-item[data-item]');
     active.items = parseItems(rootItemNodes, Array.from(existingRootItems.values()));
   }
 
@@ -1086,7 +1089,6 @@ const Builder = (() => {
     const qid = card.getAttribute('data-q');
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
-
     switch (role) {
       case 'add-section':
         addSection(questionnaire);
