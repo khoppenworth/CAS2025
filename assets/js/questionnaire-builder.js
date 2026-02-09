@@ -26,6 +26,8 @@ const Builder = (() => {
     floatingSaveButton: '#qb-save-floating',
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
+    deleteButton: '#qb-delete-questionnaire',
+    destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
     message: '#qb-message',
     selector: '#qb-selector',
@@ -83,6 +85,13 @@ const Builder = (() => {
     evenNoop: 'Add scorable questions before splitting weights.',
     clearSuccess: 'Cleared all question weights.',
     clearNoop: 'No weights to clear.',
+    deleteQuestionnaireLabel: 'Delete questionnaire',
+    deleteQuestionnaireConfirm: 'Delete "%s"? This cannot be undone.',
+    deleteQuestionnaireBlocked: 'Questionnaires with submissions cannot be deleted.',
+    deleteQuestionnaireSuccess: 'Questionnaire removed. Save to apply the changes.',
+    deleteQuestionnaireDestroyLabel: 'Delete questionnaire + responses',
+    deleteQuestionnaireDestroyConfirm: 'Delete "%s" and all submissions? This is irreversible and will permanently remove all response data.',
+    deleteQuestionnaireDestroySuccess: 'Questionnaire and responses deleted.',
   };
 
   const state = {
@@ -109,6 +118,18 @@ const Builder = (() => {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  function toBoolean(value, fallback = false) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+      if (['0', 'false', 'no', 'n', 'off', ''].includes(normalized)) return false;
+    }
+    if (value === null || value === undefined) return fallback;
+    return Boolean(value);
+  }
+
   function normalizeQuestionnaire(raw) {
     const sections = Array.isArray(raw.sections)
       ? raw.sections.map((section) => normalizeSection(section))
@@ -121,13 +142,11 @@ const Builder = (() => {
       clientId: raw.clientId || uuid('q'),
       title: raw.title || 'Untitled Questionnaire',
       description: raw.description || '',
-      status: STATUS_OPTIONS.includes(String(raw.status || '').toLowerCase())
-        ? String(raw.status).toLowerCase()
-        : 'draft',
+      status: normalizeStatusValue(raw.status),
       sections,
       items,
       work_functions: Array.isArray(raw.work_functions) ? [...raw.work_functions] : undefined,
-      hasResponses: Boolean(raw.has_responses),
+      hasResponses: toBoolean(raw.has_responses),
     };
   }
 
@@ -140,9 +159,9 @@ const Builder = (() => {
       clientId: section.clientId || uuid('s'),
       title: section.title || '',
       description: section.description || '',
-      is_active: section.is_active !== false,
+      is_active: toBoolean(section.is_active, true),
       items,
-      hasResponses: Boolean(section.has_responses),
+      hasResponses: toBoolean(section.has_responses),
     };
   }
 
@@ -153,9 +172,9 @@ const Builder = (() => {
     const type = QUESTION_TYPES.includes(String(item.type || '').toLowerCase())
       ? String(item.type).toLowerCase()
       : 'choice';
-    const allowMultiple = type === 'choice' && Boolean(item.allow_multiple);
+    const allowMultiple = type === 'choice' && toBoolean(item.allow_multiple);
     const requiresCorrect =
-      type === 'choice' && !allowMultiple ? Boolean(item.requires_correct) : false;
+      type === 'choice' && !allowMultiple ? toBoolean(item.requires_correct) : false;
     const normalized = {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
@@ -167,9 +186,9 @@ const Builder = (() => {
         ? Number(item.weight_percent)
         : 0,
       allow_multiple: allowMultiple,
-      is_required: Boolean(item.is_required),
-      is_active: item.is_active !== false,
-      hasResponses: Boolean(item.has_responses),
+      is_required: toBoolean(item.is_required),
+      is_active: toBoolean(item.is_active, true),
+      hasResponses: toBoolean(item.has_responses),
       requires_correct: requiresCorrect,
     };
     ensureSingleChoiceCorrect(normalized);
@@ -181,7 +200,7 @@ const Builder = (() => {
       id: option.id ?? null,
       clientId: option.clientId || uuid('o'),
       value: option.value || '',
-      is_correct: Boolean(option.is_correct),
+      is_correct: toBoolean(option.is_correct),
     };
   }
 
@@ -193,7 +212,12 @@ const Builder = (() => {
       });
       return;
     }
-    if (!item.options.length) return;
+    if (!item.options.length) {
+      const fallbackOption = normalizeOption({ value: '' });
+      fallbackOption.is_correct = true;
+      item.options.push(fallbackOption);
+      return;
+    }
     const hasCorrect = item.options.some((opt) => opt.is_correct);
     if (!hasCorrect) {
       item.options[0].is_correct = true;
@@ -235,6 +259,8 @@ const Builder = (() => {
     const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     const exportBtns = document.querySelectorAll(selectors.exportButton);
+    const deleteBtn = document.querySelector(selectors.deleteButton);
+    const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
@@ -249,6 +275,14 @@ const Builder = (() => {
     floatingSaveBtn?.addEventListener('click', () => saveAll(false));
     publishBtn?.addEventListener('click', () => saveAll(true));
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
+    deleteBtn?.addEventListener('click', () => {
+      const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      removeQuestionnaire(active);
+    });
+    destroyBtn?.addEventListener('click', () => {
+      const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      destroyQuestionnaire(active);
+    });
     openBtn?.addEventListener('click', () => {
       const key = selector?.value;
       if (!key) return;
@@ -286,7 +320,11 @@ const Builder = (() => {
 
     const params = new URLSearchParams({ action: 'fetch', csrf: state.csrf });
     fetch(withBase(`/admin/questionnaire_manage.php?${params.toString()}`), {
-      headers: { 'X-CSRF-Token': state.csrf },
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-Token': state.csrf,
+      },
       credentials: 'same-origin',
     })
       .then((resp) => resp.json())
@@ -296,8 +334,20 @@ const Builder = (() => {
         if (state.dirty) {
           return;
         }
+        const previousClientIdById = new Map(
+          state.questionnaires
+            .filter((q) => Number.isInteger(Number(q.id)) && Number(q.id) > 0)
+            .map((q) => [String(q.id), q.clientId])
+        );
         state.questionnaires = Array.isArray(payload.questionnaires)
-          ? payload.questionnaires.map((q) => normalizeQuestionnaire(q))
+          ? payload.questionnaires.map((q) => {
+            const normalized = normalizeQuestionnaire(q);
+            const key = normalized.id ? String(normalized.id) : null;
+            if (key && previousClientIdById.has(key)) {
+              normalized.clientId = previousClientIdById.get(key);
+            }
+            return normalized;
+          })
           : [];
         ensureActive();
         state.dirty = false;
@@ -372,7 +422,7 @@ const Builder = (() => {
   }
 
   function normalizeStatusValue(value) {
-    const normalized = String(value || '').toLowerCase();
+    const normalized = String(value || '').trim().toLowerCase();
     return STATUS_OPTIONS.includes(normalized) ? normalized : 'draft';
   }
 
@@ -454,7 +504,10 @@ const Builder = (() => {
     active.sections = sectionNodes.map((sectionNode) => {
       const sectionClientId = sectionNode.getAttribute('data-section') || uuid('s');
       const existingSection = existingSections.get(sectionClientId) || {};
-      const sectionItems = parseItems(sectionNode.querySelectorAll('.qb-items [data-item]'), existingSection.items || []);
+      const sectionItems = parseItems(
+        sectionNode.querySelectorAll('.qb-items .qb-item[data-item]'),
+        existingSection.items || []
+      );
       return {
         id: existingSection.id ?? null,
         clientId: sectionClientId,
@@ -466,7 +519,7 @@ const Builder = (() => {
       };
     });
 
-    const rootItemNodes = card.querySelectorAll('.qb-root-items [data-item]');
+    const rootItemNodes = card.querySelectorAll('.qb-root-items .qb-item[data-item]');
     active.items = parseItems(rootItemNodes, Array.from(existingRootItems.values()));
   }
 
@@ -485,6 +538,78 @@ const Builder = (() => {
     render();
   }
 
+  function removeQuestionnaire(questionnaire) {
+    if (!questionnaire) return;
+    if (questionnaire.hasResponses) {
+      renderMessage(STRINGS.deleteQuestionnaireBlocked, 'warning');
+      return;
+    }
+    const label = labelForQuestionnaire(questionnaire);
+    const confirmText = STRINGS.deleteQuestionnaireConfirm.replace('%s', label);
+    if (!window.confirm(confirmText)) return;
+    dropQuestionnaireFromState(questionnaire, { markDirty: true });
+    renderMessage(STRINGS.deleteQuestionnaireSuccess, 'success');
+  }
+
+  function destroyQuestionnaire(questionnaire) {
+    if (!questionnaire) return;
+    const label = labelForQuestionnaire(questionnaire);
+    const confirmText = STRINGS.deleteQuestionnaireDestroyConfirm.replace('%s', label);
+    if (!window.confirm(confirmText)) return;
+    if (!questionnaire.id) {
+      dropQuestionnaireFromState(questionnaire, { markDirty: true });
+      renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+      return;
+    }
+
+    state.saving = true;
+    toggleSaveButtons();
+    renderMessage('Deleting questionnaire and responses…');
+
+    fetch(withBase('/admin/questionnaire_manage.php?action=destroy'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': state.csrf,
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        csrf: state.csrf,
+        questionnaire_id: questionnaire.id,
+      }),
+    })
+      .then((resp) => resp.json())
+      .then((data) => {
+        if (data?.status !== 'ok') throw new Error(data?.message || 'Failed to delete questionnaire');
+        state.csrf = data.csrf || state.csrf;
+        dropQuestionnaireFromState(questionnaire, { markDirty: false });
+        renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+        fetchData({ silent: true });
+      })
+      .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
+      .finally(() => {
+        state.saving = false;
+        toggleSaveButtons();
+      });
+  }
+
+  function dropQuestionnaireFromState(questionnaire, { markDirty = false } = {}) {
+    const index = state.questionnaires.findIndex((q) => q.clientId === questionnaire.clientId);
+    if (index === -1) return;
+    state.questionnaires.splice(index, 1);
+    if (state.activeKey === questionnaire.clientId) {
+      state.activeKey = state.questionnaires[0]?.clientId || null;
+      state.navActiveKey = 'root';
+      if (state.activeKey) {
+        rememberSet(STORAGE_KEYS.active, state.activeKey);
+      }
+    }
+    if (markDirty) {
+      markDirty();
+    }
+    render();
+  }
+
   function markDirty() {
     state.dirty = true;
     const saveBtn = document.querySelector(selectors.saveButton);
@@ -500,6 +625,8 @@ const Builder = (() => {
     renderTabs();
     renderQuestionnaires();
     renderSectionNav();
+    renderDeleteButton();
+    renderDestroyButton();
     toggleSaveButtons();
     if (pendingImportFocus) {
       pendingImportFocus = false;
@@ -557,6 +684,7 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
+    const deleteButton = card.querySelector('[data-role="remove-questionnaire"]');
 
     const handleTitle = () => {
       questionnaire.title = titleInput.value;
@@ -583,6 +711,34 @@ const Builder = (() => {
     };
     statusInput?.addEventListener('input', handleStatus);
     statusInput?.addEventListener('change', handleStatus);
+    deleteButton?.addEventListener('click', () => removeQuestionnaire(questionnaire));
+  }
+
+  function renderDeleteButton() {
+    const button = document.querySelector(selectors.deleteButton);
+    if (!button) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      button.disabled = true;
+      button.title = STRINGS.deleteQuestionnaireLabel;
+      return;
+    }
+    const blocked = active.hasResponses;
+    button.disabled = blocked;
+    button.title = blocked ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
+  }
+
+  function renderDestroyButton() {
+    const button = document.querySelector(selectors.destroyButton);
+    if (!button) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      button.disabled = true;
+      button.title = STRINGS.deleteQuestionnaireDestroyLabel;
+      return;
+    }
+    button.disabled = false;
+    button.title = STRINGS.deleteQuestionnaireDestroyLabel;
   }
 
   function focusActiveQuestionnaire() {
@@ -598,6 +754,8 @@ const Builder = (() => {
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
     const scoring = renderScoringSummary(questionnaire);
+    const deleteDisabled = questionnaire.hasResponses;
+    const deleteTitle = deleteDisabled ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
 
     return `
       <div class="qb-card" data-q="${questionnaire.clientId}">
@@ -617,6 +775,12 @@ const Builder = (() => {
                 .map((status) => `<option value="${status}" ${status === questionnaire.status ? 'selected' : ''}>${formatStatusLabel(status)}</option>`)
                 .join('')}
             </select>
+          </div>
+          <div class="qb-field qb-actions">
+            <label class="md-visually-hidden">${escapeHtml(STRINGS.deleteQuestionnaireLabel)}</label>
+            <button type="button" class="md-button md-outline qb-danger" data-role="remove-questionnaire" ${deleteDisabled ? 'disabled' : ''} title="${escapeAttr(deleteTitle)}">
+              ${escapeHtml(STRINGS.deleteQuestionnaireLabel)}
+            </button>
           </div>
         </div>
         <div class="qb-body">
@@ -886,6 +1050,7 @@ const Builder = (() => {
     const qid = card.getAttribute('data-q');
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
+    hydrateActiveQuestionnaireFromDom();
 
     switch (role) {
       case 'q-title':
@@ -895,6 +1060,8 @@ const Builder = (() => {
         renderSectionNav();
         break;
       case 'q-description':
+        questionnaire.description = event.target.value;
+        break;
       case 'q-status':
         questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
@@ -920,8 +1087,38 @@ const Builder = (() => {
     }
     markDirty();
     if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
-      render();
+      const itemRow = event.target.closest('[data-item]');
+      rerenderItemRow(questionnaire, itemRow);
     }
+    if (['item-type', 'item-multi', 'item-requires-correct', 'item-weight'].includes(role)) {
+      rerenderScoringSummary(questionnaire);
+    }
+  }
+
+  function rerenderItemRow(questionnaire, itemRow) {
+    if (!itemRow) return;
+    const itemId = itemRow.getAttribute('data-item');
+    if (!itemId) return;
+    const sectionId = itemRow.getAttribute('data-section') || null;
+    const item = findItem(questionnaire, sectionId, itemId);
+    if (!item) return;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = buildItemRow(questionnaire, sectionId, item).trim();
+    const next = wrapper.firstElementChild;
+    if (!next) return;
+    itemRow.replaceWith(next);
+  }
+
+  function rerenderScoringSummary(questionnaire) {
+    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
+    if (!card) return;
+    const current = card.querySelector('.qb-scoring');
+    if (!current) return;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = renderScoringSummary(questionnaire).trim();
+    const next = wrapper.firstElementChild;
+    if (!next) return;
+    current.replaceWith(next);
   }
 
   function handleListClick(event) {
@@ -932,7 +1129,6 @@ const Builder = (() => {
     const qid = card.getAttribute('data-q');
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
-
     switch (role) {
       case 'add-section':
         addSection(questionnaire);

@@ -62,24 +62,13 @@ $topNavLinkAttributes = static function (string ...$keys) use ($isActiveNav): st
     $aria = $isActiveNav(...$keys) ? ' aria-current="page"' : '';
     return sprintf('class="%s"%s', $class, $aria);
 };
-$localeFlags = [
-    'en' => '🇬🇧',
-    'fr' => '🇫🇷',
-    'am' => '🇪🇹',
-];
-$localeFlagIcons = [
-    'en' => 'assets/images/flags/flag-en.svg',
-    'fr' => 'assets/images/flags/flag-fr.svg',
-    'am' => 'assets/images/flags/flag-am.svg',
-];
 $currentLocale = $locale ?? $defaultLocale;
 $localeCount = count($availableLocales);
 $localeIndex = $localeCount > 0 ? array_search($currentLocale, $availableLocales, true) : false;
 $nextLocale = $localeCount > 0
     ? $availableLocales[(($localeIndex === false ? 0 : $localeIndex) + 1) % $localeCount]
     : $currentLocale;
-$currentLocaleFlag = $localeFlags[$currentLocale] ?? '🌐';
-$currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
+$currentLocaleBadge = strtoupper((string)$currentLocale);
 ?>
 <?php if ($brandStyle !== ''): ?>
 <style id="md-brand-style"><?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?></style>
@@ -111,16 +100,7 @@ $currentLocaleFlagIcon = $localeFlagIcons[$currentLocale] ?? null;
       aria-label="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
       title="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
     >
-      <?php if ($currentLocaleFlagIcon): ?>
-        <img
-          src="<?=htmlspecialchars(url_for($currentLocaleFlagIcon), ENT_QUOTES, 'UTF-8')?>"
-          alt=""
-          class="md-appbar-flag"
-          aria-hidden="true"
-        >
-      <?php else: ?>
-        <span aria-hidden="true"><?=$currentLocaleFlag?></span>
-      <?php endif; ?>
+      <span class="md-appbar-language-text" aria-hidden="true"><?=htmlspecialchars($currentLocaleBadge, ENT_QUOTES, 'UTF-8')?></span>
     </a>
     <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
       <?=t($t, 'logout', 'Logout')?>

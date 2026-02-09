@@ -570,7 +570,10 @@ button,
   background: var(--app-on-primary-soft);
 }
 
-.md-appbar-link.md-appbar-language .md-appbar-flag {
+.md-appbar-link.md-appbar-language .md-appbar-language-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   min-width: 100%;
