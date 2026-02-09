@@ -1041,6 +1041,7 @@ const Builder = (() => {
     const qid = card.getAttribute('data-q');
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
+    hydrateActiveQuestionnaireFromDom();
 
     switch (role) {
       case 'q-title':
@@ -1077,6 +1078,7 @@ const Builder = (() => {
     }
     markDirty();
     if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
+      hydrateActiveQuestionnaireFromDom();
       render();
     }
   }
