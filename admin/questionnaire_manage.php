@@ -303,6 +303,8 @@ function qb_questionnaire_items_to_fhir_items(array $items): array
 function send_json(array $payload, int $status = 200): void {
     http_response_code($status);
     header('Content-Type: application/json');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     echo json_encode($payload);
     exit;
 }
