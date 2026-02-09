@@ -228,9 +228,32 @@ button,
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--app-primary) 18%, rgba(15, 23, 42, 0.1));
+  background-color: color-mix(in srgb, var(--app-primary) 45%, rgba(15, 23, 42, 0.2));
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: 18px 18px;
   flex-shrink: 0;
+}
+
+.md-topnav-trigger[data-topnav-icon="workspace"]::before {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M9 4h6a2 2 0 0 1 2 2v2h3a2 2 0 0 1 2 2v7a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-7a2 2 0 0 1 2-2h3V6a2 2 0 0 1 2-2Zm0 4h6V6H9v2Zm-5 4v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5H4Z'/></svg>");
+}
+
+.md-topnav-trigger[data-topnav-icon="team"]::before {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M7.5 12a4 4 0 1 1 4-4 4 4 0 0 1-4 4Zm9 0a3.5 3.5 0 1 1 3.5-3.5A3.5 3.5 0 0 1 16.5 12ZM3 20a5.5 5.5 0 0 1 11 0v1H3Zm12.5 1v-1a6.5 6.5 0 0 0-.5-2.5 5 5 0 0 1 8 3.5Z'/></svg>");
+}
+
+.md-topnav-trigger[data-topnav-icon="admin"]::before {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 8a4 4 0 1 1-4 4 4 4 0 0 1 4-4Zm9 4a6.9 6.9 0 0 0-.1-1.3l2-1.6-2-3.4-2.5 1a7.6 7.6 0 0 0-2.2-1.3L15.7 2H8.3L7.8 5.4a7.6 7.6 0 0 0-2.2 1.3l-2.5-1-2 3.4 2 1.6A6.9 6.9 0 0 0 3 12a6.9 6.9 0 0 0 .1 1.3l-2 1.6 2 3.4 2.5-1a7.6 7.6 0 0 0 2.2 1.3L8.3 22h7.4l.5-3.4a7.6 7.6 0 0 0 2.2-1.3l2.5 1 2-3.4-2-1.6A6.9 6.9 0 0 0 21 12Z'/></svg>");
+}
+
+.md-topnav-trigger[data-topnav-icon="system"]::before {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm0 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4Zm3-8h4v2H7V7Zm0 10h4v2H7v-2Z'/></svg>");
+}
+
+.md-topnav-trigger[data-topnav-icon="account"]::before {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 12a4 4 0 1 1 4-4 4 4 0 0 1-4 4Zm0 2c4.4 0 8 2.2 8 5v1H4v-1c0-2.8 3.6-5 8-5Z'/></svg>");
 }
 
 .md-topnav-label {

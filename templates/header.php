@@ -326,7 +326,7 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
     $workspaceActive = $isActiveNav('workspace.my_performance', 'workspace.submit_assessment');
     ?>
     <li class="md-topnav-item<?=$workspaceActive ? ' is-active' : ''?>" data-topnav-item>
-      <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+      <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="workspace" aria-haspopup="true" aria-expanded="false">
         <span class="md-topnav-label">
           <span class="md-topnav-title"><?=t($t, 'my_workspace', 'My Workspace')?></span>
           <span class="md-topnav-desc"><?=t($t, 'my_workspace_summary', 'Stay on top of your goals and tasks.')?></span>
@@ -363,7 +363,7 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
       $teamActive = $teamNavKeys ? $isActiveNav(...$teamNavKeys) : false;
       ?>
       <li class="md-topnav-item<?=$teamActive ? ' is-active' : ''?>" data-topnav-item>
-        <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="team" aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'team_navigation', 'Team & Reviews')?></span>
             <span class="md-topnav-desc"><?=t($t, 'team_navigation_summary', 'Support your team with reviews and approvals.')?></span>
@@ -409,7 +409,7 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
       $systemActive = $isActiveNav('admin.dashboard', 'admin.export', 'admin.settings');
       ?>
       <li class="md-topnav-item<?=$adminActive ? ' is-active' : ''?>" data-topnav-item>
-        <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="admin" aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'admin_navigation', 'Administration')?></span>
             <span class="md-topnav-desc"><?=t($t, 'admin_navigation_summary', 'Manage users, questionnaires, and branding.')?></span>
@@ -456,7 +456,7 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
         </ul>
       </li>
       <li class="md-topnav-item<?=$systemActive ? ' is-active' : ''?>" data-topnav-item>
-        <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="system" aria-haspopup="true" aria-expanded="false">
           <span class="md-topnav-label">
             <span class="md-topnav-title"><?=t($t, 'system_navigation', 'System')?></span>
             <span class="md-topnav-desc"><?=t($t, 'system_navigation_summary', 'Configure authentication, exports, and platform upgrades.')?></span>
@@ -504,7 +504,7 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
       </li>
     <?php endif; ?>
     <li class="md-topnav-item" data-topnav-item>
-      <button type="button" class="md-topnav-trigger" data-topnav-trigger aria-haspopup="true" aria-expanded="false">
+      <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="account" aria-haspopup="true" aria-expanded="false">
         <span class="md-topnav-label">
           <span class="md-topnav-title"><?=t($t, 'account_tools', 'Account & Tools')?></span>
           <span class="md-topnav-desc"><?=t($t, 'account_tools_summary', 'Quick actions, profile, and preferences.')?></span>
