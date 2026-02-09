@@ -118,6 +118,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         info('Package downloaded. Applying files...');
         $engine->deployRelease($download['extract_root'], $preservePaths);
         info('Release deployed successfully.');
+        applyConfigMigrations($engine);
 
         info('Checking for database migrations...');
         $appliedMigrations = applyDatabaseMigrations($engine, $pdo);
@@ -264,6 +265,42 @@ USAGE;
 function info(string $message): void
 {
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
+}
+
+function applyConfigMigrations(UpgradeEngine $engine): void
+{
+    $configPath = $engine->absoluteFromRoot('config.php');
+    if (!is_file($configPath)) {
+        info('Skipping config.php migrations (config.php not found).');
+        return;
+    }
+
+    $contents = file_get_contents($configPath);
+    if ($contents === false) {
+        info('Skipping config.php migrations (unable to read config.php).');
+        return;
+    }
+
+    if (strpos($contents, 'config.migrations.php') !== false) {
+        info('config.php already references config.migrations.php.');
+        return;
+    }
+
+    $snippet = "\nif (is_readable(__DIR__ . '/config.migrations.php')) {\n    require_once __DIR__ . '/config.migrations.php';\n}\n";
+    $pos = strrpos($contents, '?>');
+    if ($pos !== false) {
+        $contents = substr($contents, 0, $pos) . $snippet . substr($contents, $pos);
+    } else {
+        $contents .= $snippet;
+    }
+
+    $result = file_put_contents($configPath, $contents);
+    if ($result === false) {
+        info('Unable to update config.php to include config.migrations.php.');
+        return;
+    }
+
+    info('Added config.migrations.php include to config.php.');
 }
 
 function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
