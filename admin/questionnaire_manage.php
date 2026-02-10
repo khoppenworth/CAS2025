@@ -10,7 +10,7 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $workFunctionChoices = work_function_choices($pdo);
-$availableWorkFunctions = array_keys($workFunctionChoices);
+$availableWorkFunctions = array_keys(work_function_definitions($pdo));
 $qbStrings = [
     'scoreWeightLabel' => t($t, 'qb_weight_label', 'Score weight (%)'),
     'scoreWeightHint' => t(
@@ -176,6 +176,7 @@ function qb_import_normalize_nullable_string($value, int $maxLength): ?string
     }
     return qb_import_truncate($normalized, $maxLength);
 }
+
 
 function qb_questionnaire_to_fhir_resource(array $questionnaire): array
 {

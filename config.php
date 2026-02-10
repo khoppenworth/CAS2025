@@ -103,11 +103,6 @@ if ($isBootstrapRequested) {
 
     try {
         $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
-        try {
-            initialize_database_schema($pdo);
-        } catch (Throwable $e) {
-            error_log('Database schema initialization failed: ' . $e->getMessage());
-        }
     } catch (PDOException $e) {
         $friendly = 'Unable to connect to the application database. Please try again later or contact support.';
         error_log('DB connection failed: ' . $e->getMessage());
@@ -1711,6 +1706,15 @@ function contrast_color(string $hex): string
     return tint_color($hex, 0.85);
 }
 
+
+
+    if ($isBootstrapRequested && isset($pdo) && function_exists('initialize_database_schema')) {
+        try {
+            initialize_database_schema($pdo);
+        } catch (Throwable $e) {
+            error_log('Database schema initialization failed: ' . $e->getMessage());
+        }
+    }
     $configMigrationPath = __DIR__ . '/config.migrations.php';
     if (is_readable($configMigrationPath)) {
         require_once $configMigrationPath;
