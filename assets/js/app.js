@@ -152,6 +152,25 @@
           item.classList.add('is-open');
         }
       });
+
+      const item = trigger.closest('[data-topnav-item]');
+      if (item) {
+        item.addEventListener('click', (event) => {
+          if (!isMobileView()) {
+            return;
+          }
+          const target = event.target;
+          if (!(target instanceof Element)) {
+            return;
+          }
+          if (target.closest('[data-topnav-trigger]') || target.closest('.md-topnav-submenu')) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          trigger.click();
+        });
+      }
     });
 
     document.addEventListener('click', (event) => {
