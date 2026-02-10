@@ -1260,7 +1260,7 @@ CREATE TABLE IF NOT EXISTS training_recommendation (
 
 CREATE TABLE IF NOT EXISTS questionnaire_work_function (
   questionnaire_id INT NOT NULL,
-  work_function VARCHAR(100) NOT NULL,
+  work_function VARCHAR(255) NOT NULL,
   PRIMARY KEY (questionnaire_id, work_function),
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
