@@ -117,7 +117,7 @@ if (!function_exists('ensure_questionnaire_work_function_schema')) {
 
             $pdo->exec("CREATE TABLE IF NOT EXISTS questionnaire_work_function (
                 questionnaire_id INT NOT NULL,
-                work_function VARCHAR(255) NOT NULL,
+                work_function VARCHAR(100) NOT NULL,
                 PRIMARY KEY (questionnaire_id, work_function)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
@@ -130,7 +130,7 @@ if (!function_exists('ensure_questionnaire_work_function_schema')) {
             }
 
             if (!isset($columns['work_function'])) {
-                $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(255) NOT NULL AFTER questionnaire_id');
+                $pdo->exec('ALTER TABLE questionnaire_work_function ADD COLUMN work_function VARCHAR(100) NOT NULL AFTER questionnaire_id');
             } else {
                 $type = strtolower((string)($columns['work_function']['Type'] ?? ''));
                 $needsUpdate = true;
@@ -139,10 +139,10 @@ if (!function_exists('ensure_questionnaire_work_function_schema')) {
                     if (preg_match('/varchar\((\d+)\)/i', $type, $matches)) {
                         $length = (int)$matches[1];
                     }
-                    $needsUpdate = $length < 1 || $length < 255;
+                    $needsUpdate = $length < 1 || $length < 100;
                 }
                 if ($needsUpdate) {
-                    $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(255) NOT NULL');
+                    $pdo->exec('ALTER TABLE questionnaire_work_function MODIFY COLUMN work_function VARCHAR(100) NOT NULL');
                 }
             }
 
