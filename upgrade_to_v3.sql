@@ -188,12 +188,12 @@ WHERE is_active IS NULL;
 -- Ensure questionnaire_work_function exists and is keyed properly.
 CREATE TABLE IF NOT EXISTS questionnaire_work_function (
   questionnaire_id INT NOT NULL,
-  work_function VARCHAR(100) NOT NULL,
+  work_function VARCHAR(255) NOT NULL,
   PRIMARY KEY (questionnaire_id, work_function)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE questionnaire_work_function
-  MODIFY COLUMN work_function VARCHAR(100) NOT NULL;
+  MODIFY COLUMN work_function VARCHAR(255) NOT NULL;
 
 CREATE TABLE IF NOT EXISTS work_function_catalog (
   slug VARCHAR(100) NOT NULL PRIMARY KEY,

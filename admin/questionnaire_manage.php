@@ -177,6 +177,7 @@ function qb_import_normalize_nullable_string($value, int $maxLength): ?string
     return qb_import_truncate($normalized, $maxLength);
 }
 
+
 function qb_questionnaire_to_fhir_resource(array $questionnaire): array
 {
     $resource = [
