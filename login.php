@@ -249,7 +249,11 @@ render_login:
             <span class="md-login-footer-label"><?= $languageLabel ?></span>
             <nav class="md-login-footer-value md-login-footer-locale lang-switch" aria-label="<?= $languageLabel ?>">
               <?php foreach ($availableLocales as $loc): ?>
-                <a href="<?= htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(strtoupper($loc), ENT_QUOTES, 'UTF-8') ?></a>
+                <?php $flag = htmlspecialchars(asset_url('assets/images/flags/flag-' . $loc . '.svg'), ENT_QUOTES, 'UTF-8'); ?>
+                <a href="<?= htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars(strtoupper($loc), ENT_QUOTES, 'UTF-8') ?>">
+                  <img src="<?= $flag ?>" alt="" width="26" height="26" loading="lazy" decoding="async" />
+                  <span><?= htmlspecialchars(strtoupper($loc), ENT_QUOTES, 'UTF-8') ?></span>
+                </a>
               <?php endforeach; ?>
             </nav>
           </div>
