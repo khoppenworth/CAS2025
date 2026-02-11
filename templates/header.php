@@ -69,6 +69,7 @@ $nextLocale = $localeCount > 0
     ? $availableLocales[(($localeIndex === false ? 0 : $localeIndex) + 1) % $localeCount]
     : $currentLocale;
 $currentLocaleBadge = strtoupper((string)$currentLocale);
+$currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.svg');
 ?>
 <?php if ($brandStyle !== ''): ?>
 <style id="md-brand-style"><?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?></style>
@@ -100,7 +101,16 @@ $currentLocaleBadge = strtoupper((string)$currentLocale);
       aria-label="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
       title="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
     >
-      <span class="md-appbar-language-text" aria-hidden="true"><?=htmlspecialchars($currentLocaleBadge, ENT_QUOTES, 'UTF-8')?></span>
+      <img
+        src="<?=htmlspecialchars($currentLocaleFlag, ENT_QUOTES, 'UTF-8')?>"
+        alt=""
+        class="md-appbar-language-flag"
+        width="24"
+        height="24"
+        loading="lazy"
+        decoding="async"
+      >
+      <span class="md-appbar-language-text"><?=htmlspecialchars($currentLocaleBadge, ENT_QUOTES, 'UTF-8')?></span>
     </a>
     <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
       <?=t($t, 'logout', 'Logout')?>
