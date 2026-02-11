@@ -188,6 +188,7 @@ while keeping at least English or French active. To add a language:
 - `dummy_data.sql` – optional demo users and responses. Remove with `dummy_data_cleanup.sql` if needed.
 - `scripts/purge_questionnaires_and_submissions.php --yes` – removes all questionnaires and linked submissions.
 - `scripts/seed_dummy_data_from_questionnaires.php` – creates dummy users/responses based on existing questionnaires.
+- `docs/dummy-data-seeding.md` – details questionnaire eligibility and analytics implications for seeded data.
 
 ### Data Export
 
