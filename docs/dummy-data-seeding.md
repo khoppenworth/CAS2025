@@ -2,6 +2,16 @@
 
 The `scripts/seed_dummy_data_from_questionnaires.php` script is intended for demo/training environments.
 
+## How to run
+
+From the project root:
+
+```bash
+php ./scripts/seed_dummy_data_from_questionnaires.php
+```
+
+Before running, ensure your `.env` has valid `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASS` values so `config.php` can open a database connection.
+
 ## What it does
 
 - Selects questionnaires that have at least one active item, no active `likert` items, and at least one auto-gradable `choice` item marked `requires_correct = 1`.

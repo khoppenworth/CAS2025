@@ -14,8 +14,12 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-define('APP_BOOTSTRAPPED', true);
 require_once __DIR__ . '/../config.php';
+
+if (!isset($pdo) || !$pdo instanceof PDO) {
+    fwrite(STDERR, "Database connection is not available. Check your .env DB_* settings and try again." . PHP_EOL);
+    exit(1);
+}
 
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
