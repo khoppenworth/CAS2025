@@ -160,9 +160,10 @@ $featureItems = [
           foreach ($availableLocales as $loc) {
               $url = htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8');
               $label = htmlspecialchars(strtoupper($loc), ENT_QUOTES, 'UTF-8');
-              $links[] = "<a href='" . $url . "'>" . $label . "</a>";
+              $flag = htmlspecialchars(asset_url('assets/images/flags/flag-' . $loc . '.svg'), ENT_QUOTES, 'UTF-8');
+              $links[] = "<a href='" . $url . "' class='landing-language-link' aria-label='" . $label . "'><img src='" . $flag . "' alt='' width='28' height='28' loading='lazy' decoding='async' /><span>" . $label . "</span></a>";
           }
-          echo implode(' · ', $links);
+          echo implode('', $links);
           ?>
         </div>
       </div>

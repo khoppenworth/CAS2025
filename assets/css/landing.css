@@ -385,11 +385,28 @@ body.landing-body {
   align-items: flex-start;
 }
 
+.landing-footer__languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 .landing-footer__languages a {
   color: var(--landing-primary);
   text-decoration: none;
   font-weight: 600;
   letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.landing-footer__languages a img {
+  display: block;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
 }
 
 .landing-footer__languages a:hover,

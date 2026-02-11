@@ -943,6 +943,17 @@ body.md-login-page .md-login-footer-value {
   color: var(--md-primary);
   font-weight: 600;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.md-login-footer-locale a img {
+  display: block;
+  inline-size: 1.625rem;
+  block-size: 1.625rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
 }
 
 .md-login-footer-locale.lang-switch a {
