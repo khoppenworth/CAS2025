@@ -1149,13 +1149,13 @@ function site_theme_tokens(array $cfg): array
     $mutedLight = $palette['mutedLight'];
 
     $accent = adjust_hsl($primary, 35.0, 1.05, 1.12);
-    $warning = adjust_hsl($primary, 70.0, 1.15, 1.15);
-    $danger = adjust_hsl($primary, -40.0, 1.18, 0.9);
-    $success = adjust_hsl($primary, 120.0, 0.95, 0.78);
-    $info = adjust_hsl($primary, -20.0, 1.08, 1.02);
     $semanticDanger = '#dc2626';
     $semanticWarning = '#f59e0b';
     $semanticSuccess = '#16a34a';
+    $warning = $semanticWarning;
+    $danger = $semanticDanger;
+    $success = $semanticSuccess;
+    $info = adjust_hsl($primary, -20.0, 1.08, 1.02);
 
     $lightSurface = tint_color($primary, 0.9);
     $lightSurfaceAlt = tint_color($primary, 0.95);
