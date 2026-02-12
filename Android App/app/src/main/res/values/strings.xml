@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">CAS2025 Android App</string>
+    <string name="title_setup">CAS2025 Android App</string>
+    <string name="setup_description">Enter your CAS web portal URL. The app stores it only on-device.</string>
+    <string name="hint_server_url">Server URL (example: https://cas.example.org)</string>
+    <string name="button_open_portal">Save &amp; Open Portal</string>
+    <string name="help_text">App behavior: launches a secure WebView and appends ?mobile=1</string>
+    <string name="webview_title">CAS Mobile Test</string>
+    <string name="button_refresh">Refresh</string>
+    <string name="error_server_required">Enter a valid server URL starting with http:// or https://.</string>
+    <string name="button_check_updates">Check for Updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_up_to_date">You already have the latest APK.</string>
+    <string name="update_check_failed">Could not check updates. Verify server URL and update manifest.</string>
+    <string name="update_available_title">Update Available</string>
+    <string name="update_available_message">A newer APK (version code %1$d) is available.</string>
+    <string name="update_download_now">Download APK</string>
+</resources>
