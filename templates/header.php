@@ -110,7 +110,6 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
         loading="lazy"
         decoding="async"
       >
-      <span class="md-appbar-language-text"><?=htmlspecialchars($currentLocaleBadge, ENT_QUOTES, 'UTF-8')?></span>
     </a>
     <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
       <?=t($t, 'logout', 'Logout')?>
