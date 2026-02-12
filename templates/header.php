@@ -321,7 +321,22 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
   aria-hidden="true"
 >
   <div class="md-topnav-mobile-header" data-topnav-mobile-header>
-    <span class="md-topnav-mobile-title"><?=t($t, 'navigation_menu', 'Navigation')?></span>
+    <div class="md-topnav-mobile-brand">
+      <img src="<?=$logoPathSmall?>" alt="<?=$siteLogoAlt?>" class="md-topnav-mobile-logo" loading="lazy">
+      <span class="md-topnav-mobile-title"><?=t($t, 'navigation_menu', 'Navigation')?></span>
+    </div>
+    <div class="md-topnav-mobile-actions">
+      <a
+        href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
+        class="md-topnav-mobile-link"
+        aria-label="<?=htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8')?>"
+      >
+        <?=htmlspecialchars($currentLocaleBadge, ENT_QUOTES, 'UTF-8')?>
+      </a>
+      <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-mobile-link">
+        <?=t($t, 'logout', 'Logout')?>
+      </a>
+    </div>
     <button
       type="button"
       class="md-topnav-close"
