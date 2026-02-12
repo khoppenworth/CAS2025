@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">CAS2025 Android App</string>
+    <string name="title_setup">CAS2025 Android App</string>
+    <string name="setup_description">Enter your CAS web portal URL and test user code. The app stores both values only on-device.</string>
+    <string name="hint_server_url">Server URL (example: https://cas.example.org)</string>
+    <string name="hint_user_code">User code</string>
+    <string name="button_open_portal">Save &amp; Open Portal</string>
+    <string name="help_text">App behavior: launches a secure WebView and appends ?mobile=1&amp;userCode=...</string>
+    <string name="webview_title">CAS Mobile Test</string>
+    <string name="button_refresh">Refresh</string>
+    <string name="error_server_required">Enter a valid server URL starting with http:// or https://.</string>
+</resources>
