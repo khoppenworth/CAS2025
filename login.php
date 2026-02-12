@@ -245,7 +245,7 @@ render_login:
               <span class="md-login-footer-value"><?= $contact ?></span>
             </div>
           <?php endif; ?>
-          <div>
+          <div class="login-panel__footer-language">
             <span class="md-login-footer-label"><?= $languageLabel ?></span>
             <nav class="md-login-footer-value md-login-footer-locale lang-switch" aria-label="<?= $languageLabel ?>">
               <?php foreach ($availableLocales as $loc): ?>
