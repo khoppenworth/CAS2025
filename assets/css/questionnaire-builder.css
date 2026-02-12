@@ -444,7 +444,7 @@
 }
 
 .qb-scoring-message[data-type="warning"] {
-  color: var(--app-danger, #b10d0d);
+  color: var(--semantic-warning, #f59e0b);
 }
 
 .qb-scoring-message[data-type="success"] {

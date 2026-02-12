@@ -18,6 +18,124 @@
   const appStrings = (typeof window.APP_STRINGS === 'object' && window.APP_STRINGS !== null)
     ? window.APP_STRINGS
     : {};
+  const themeToggleButton = document.querySelector('[data-theme-toggle]');
+  const themeOverrideStorageKey = 'hrassess:theme:override';
+
+  const applyTheme = (theme) => {
+    const next = theme === 'dark' ? 'dark' : 'light';
+    document.body.classList.toggle('theme-dark', next === 'dark');
+    document.body.classList.toggle('theme-light', next === 'light');
+    document.documentElement.setAttribute('data-theme', next);
+    return next;
+  };
+
+  const getStoredThemeOverride = () => {
+    try {
+      const stored = window.localStorage.getItem(themeOverrideStorageKey);
+      return stored === 'light' || stored === 'dark' ? stored : null;
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const saveThemeOverride = (theme) => {
+    try {
+      window.localStorage.setItem(themeOverrideStorageKey, theme);
+    } catch (err) {
+      // Ignore storage limitations.
+    }
+  };
+
+  const dayOfYear = (date) => {
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date - start + ((start.getTimezoneOffset() - date.getTimezoneOffset()) * 60000);
+    return Math.floor(diff / 86400000);
+  };
+
+  const computeSunTimes = (date, latitude, longitude) => {
+    const calc = (isSunrise) => {
+      const zenith = 90.833;
+      const N = dayOfYear(date);
+      const lngHour = longitude / 15;
+      const t = N + ((isSunrise ? 6 : 18) - lngHour) / 24;
+      const M = (0.9856 * t) - 3.289;
+      let L = M + (1.916 * Math.sin(M * Math.PI / 180)) + (0.020 * Math.sin(2 * M * Math.PI / 180)) + 282.634;
+      L = ((L % 360) + 360) % 360;
+      let RA = Math.atan(0.91764 * Math.tan(L * Math.PI / 180)) * 180 / Math.PI;
+      RA = ((RA % 360) + 360) % 360;
+      const Lquadrant = Math.floor(L / 90) * 90;
+      const RAquadrant = Math.floor(RA / 90) * 90;
+      RA = (RA + (Lquadrant - RAquadrant)) / 15;
+      const sinDec = 0.39782 * Math.sin(L * Math.PI / 180);
+      const cosDec = Math.cos(Math.asin(sinDec));
+      const cosH = (Math.cos(zenith * Math.PI / 180) - (sinDec * Math.sin(latitude * Math.PI / 180))) / (cosDec * Math.cos(latitude * Math.PI / 180));
+      if (cosH > 1 || cosH < -1) {
+        return null;
+      }
+      let H = isSunrise ? 360 - (Math.acos(cosH) * 180 / Math.PI) : (Math.acos(cosH) * 180 / Math.PI);
+      H /= 15;
+      const T = H + RA - (0.06571 * t) - 6.622;
+      let UT = T - lngHour;
+      UT = ((UT % 24) + 24) % 24;
+      const hr = Math.floor(UT);
+      const min = Math.floor((UT - hr) * 60);
+      const sec = Math.floor((((UT - hr) * 60) - min) * 60);
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), hr, min, sec));
+      return new Date(utcDate.getTime() + (date.getTimezoneOffset() * -60000));
+    };
+
+    return { sunrise: calc(true), sunset: calc(false) };
+  };
+
+  const detectAutoTheme = (options = {}) => {
+    const now = options.now instanceof Date ? options.now : new Date();
+    const coords = options.coords || null;
+    if (coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude)) {
+      const sun = computeSunTimes(now, coords.latitude, coords.longitude);
+      if (sun.sunrise instanceof Date && sun.sunset instanceof Date) {
+        return now >= sun.sunrise && now < sun.sunset ? 'light' : 'dark';
+      }
+    }
+    const hour = now.getHours();
+    return hour >= 7 && hour < 19 ? 'light' : 'dark';
+  };
+
+  const applyThemeMode = (overrideTheme = null, coords = null) => {
+    const target = overrideTheme || detectAutoTheme({ coords });
+    const activeTheme = applyTheme(target);
+    if (themeToggleButton) {
+      const modeText = overrideTheme ? (appStrings.theme_mode_manual || 'Manual') : (appStrings.theme_mode_auto || 'Auto');
+      const nextText = activeTheme === 'dark' ? (appStrings.theme_switch_to_light || 'Switch to light theme') : (appStrings.theme_switch_to_dark || 'Switch to dark theme');
+      themeToggleButton.setAttribute('aria-label', nextText);
+      themeToggleButton.setAttribute('title', `${modeText}: ${activeTheme}`);
+      themeToggleButton.setAttribute('data-theme-mode', overrideTheme ? 'manual' : 'auto');
+      themeToggleButton.setAttribute('data-theme-active', activeTheme);
+      themeToggleButton.textContent = activeTheme === 'dark' ? '🌙' : '☀️';
+    }
+    return activeTheme;
+  };
+
+  let manualThemeOverride = getStoredThemeOverride();
+  applyThemeMode(manualThemeOverride);
+
+  if (!manualThemeOverride && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
+    navigator.geolocation.getCurrentPosition((position) => {
+      applyThemeMode(null, position && position.coords ? position.coords : null);
+    }, () => {
+      // Ignore geolocation errors and keep time-based fallback.
+    }, { maximumAge: 30 * 60 * 1000, timeout: 3000, enableHighAccuracy: false });
+  }
+
+  if (themeToggleButton) {
+    themeToggleButton.addEventListener('click', () => {
+      const currentTheme = document.body.classList.contains('theme-dark') ? 'dark' : 'light';
+      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      manualThemeOverride = nextTheme;
+      saveThemeOverride(nextTheme);
+      applyThemeMode(manualThemeOverride);
+    });
+  }
+
   const isMobileView = () => (mobileMedia ? mobileMedia.matches : window.innerWidth <= 900);
   let closeTopnavSubmenus = null;
   const focusableSelector = 'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
