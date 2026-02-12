@@ -359,6 +359,9 @@ foreach ($rows as $r) {
   .md-user-search {
     max-width: 320px;
   }
+  .md-user-view-btn.is-active {
+    color: #000;
+  }
   .md-user-card--hidden {
     display: none !important;
   }
