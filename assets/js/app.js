@@ -100,6 +100,13 @@
     updateBackdrop(shouldLock);
     applyTopnavA11yState(nextState);
     if (shouldLock) {
+      const activeItem = topnav.querySelector('[data-topnav-item].is-active');
+      if (activeItem instanceof HTMLElement) {
+        const activeTrigger = activeItem.querySelector('[data-topnav-trigger]');
+        if (activeTrigger instanceof HTMLElement) {
+          activeTrigger.click();
+        }
+      }
       const focusables = getTopnavFocusables();
       const firstFocusable = focusables.length ? focusables[0] : null;
       if (firstFocusable && typeof firstFocusable.focus === 'function') {
@@ -134,6 +141,19 @@
       });
     };
 
+    const openSubmenuForItem = (item) => {
+      if (!item) {
+        return;
+      }
+      const trigger = item.querySelector('[data-topnav-trigger]');
+      if (!trigger) {
+        return;
+      }
+      closeSubmenus();
+      trigger.setAttribute('aria-expanded', 'true');
+      item.classList.add('is-open');
+    };
+
     closeTopnavSubmenus = closeSubmenus;
 
     triggers.forEach((trigger) => {
@@ -145,32 +165,12 @@
         if (!item) {
           return;
         }
-        const willOpen = !item.classList.contains('is-open');
-        closeSubmenus();
-        if (willOpen) {
-          trigger.setAttribute('aria-expanded', 'true');
-          item.classList.add('is-open');
+        if (item.classList.contains('is-open')) {
+          closeSubmenus();
+          return;
         }
+        openSubmenuForItem(item);
       });
-
-      const item = trigger.closest('[data-topnav-item]');
-      if (item) {
-        item.addEventListener('click', (event) => {
-          if (!isMobileView()) {
-            return;
-          }
-          const target = event.target;
-          if (!(target instanceof Element)) {
-            return;
-          }
-          if (target.closest('[data-topnav-trigger]') || target.closest('.md-topnav-submenu')) {
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          trigger.click();
-        });
-      }
     });
 
     document.addEventListener('click', (event) => {
