@@ -145,6 +145,26 @@
   color: #1d2939;
 }
 
+.md-login-page .login-panel__footer-language {
+  justify-self: end;
+  text-align: right;
+}
+
+.md-login-page .login-panel__footer-language .md-login-footer-locale {
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .md-login-page .login-panel__footer-language {
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .md-login-page .login-panel__footer-language .md-login-footer-locale {
+    justify-content: flex-start;
+  }
+}
+
 .md-login-page .md-login-footer-hint {
   margin: 6px 0 0;
   color: #5f6b7a;

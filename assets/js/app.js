@@ -248,6 +248,26 @@
       closeSubmenus();
     });
 
+    topnav.addEventListener('focusout', (event) => {
+      if (isMobileView()) {
+        return;
+      }
+      const nextFocused = event.relatedTarget;
+      if (nextFocused instanceof Node && topnav.contains(nextFocused)) {
+        return;
+      }
+      closeSubmenus();
+    });
+
+    if (typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches) {
+      topnav.addEventListener('mouseleave', () => {
+        if (isMobileView()) {
+          return;
+        }
+        closeSubmenus();
+      });
+    }
+
     topnav.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         closeSubmenus();
