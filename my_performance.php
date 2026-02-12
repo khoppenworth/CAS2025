@@ -45,12 +45,21 @@ $stmt = $pdo->prepare(
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
     "JOIN performance_period pp ON pp.id = qr.performance_period_id " .
-    "WHERE qr.user_id = ? ORDER BY qr.created_at ASC, qr.id ASC"
+    "WHERE qr.user_id = ? AND (qr.status IS NULL OR qr.status <> 'draft') ORDER BY qr.created_at ASC, qr.id ASC"
 );
 $stmt->execute([$user['id']]);
 
+$draftStmt = $pdo->prepare(
+    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, pp.label AS period_label " .
+    "FROM questionnaire_response qr " .
+    "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
+    "JOIN performance_period pp ON pp.id = qr.performance_period_id " .
+    "WHERE qr.user_id = ? AND qr.status = 'draft' ORDER BY qr.created_at DESC, qr.id DESC"
+);
+$draftStmt->execute([$user['id']]);
+$draftResponses = $draftStmt->fetchAll(PDO::FETCH_ASSOC);
+
 $responses = [];
-$draftResponses = [];
 $latestScores = [];
 $latestEntry = null;
 $belowThreshold = [];
@@ -60,9 +69,6 @@ $timelinePoints = [];
 
 while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
     $responses[] = $row;
-    if (($row['status'] ?? '') === 'draft') {
-        $draftResponses[] = $row;
-    }
 
     $latestScores[$row['questionnaire_id']] = $row;
     $latestEntry = $row;
@@ -244,8 +250,6 @@ $pageHelpKey = 'workspace.my_performance';
         <?php
           $statusKey = $r['status'] ?? 'submitted';
           $statusLabel = $statusLabels[$statusKey] ?? ucfirst($statusKey);
-          $isDraft = ($statusKey === 'draft');
-          $resumeLink = $isDraft ? url_for('submit_assessment.php?qid=' . $r['questionnaire_id'] . '&performance_period_id=' . $r['performance_period_id']) : null;
         ?>
         <tr>
           <td><?=htmlspecialchars($r['created_at'])?></td>
@@ -253,13 +257,7 @@ $pageHelpKey = 'workspace.my_performance';
           <td><?=htmlspecialchars($r['period_label'])?></td>
           <td><?= is_null($r['score']) ? '-' : (int)$r['score']?></td>
           <td><?=htmlspecialchars($statusLabel)?></td>
-          <td>
-            <?php if ($resumeLink): ?>
-              <a class="md-button md-compact md-outline" href="<?=htmlspecialchars($resumeLink, ENT_QUOTES, 'UTF-8')?>"><?=t($t,'continue_draft','Continue Draft')?></a>
-            <?php else: ?>
-              <span class="md-muted">—</span>
-            <?php endif; ?>
-          </td>
+          <td><span class="md-muted">—</span></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

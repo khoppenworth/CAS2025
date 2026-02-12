@@ -17,17 +17,18 @@ function enforce_rate_limit(array $server, ?int $limit = null, ?int $intervalSec
         return;
     }
 
-    $clientIp = trim((string) ($server['REMOTE_ADDR'] ?? ''));
-    if ($clientIp === '') {
-        $clientIp = 'unknown';
-    }
+    $clientIp = rate_limit_client_ip($server);
+    $sessionHint = rate_limit_session_hint($server);
+    $userAgent = trim((string)($server['HTTP_USER_AGENT'] ?? ''));
+    $requestUri = trim((string)($server['REQUEST_URI'] ?? ''));
 
     $storageDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'hrassess-rate-limiter';
     if (!is_dir($storageDir) && !@mkdir($storageDir, 0770, true) && !is_dir($storageDir)) {
         return;
     }
 
-    $key = hash('sha256', $clientIp);
+    $keySeed = implode('|', [$clientIp, $sessionHint, $userAgent, $requestUri]);
+    $key = hash('sha256', $keySeed);
     $filePath = $storageDir . DIRECTORY_SEPARATOR . $key . '.json';
 
     $now = time();
@@ -67,6 +68,52 @@ function enforce_rate_limit(array $server, ?int $limit = null, ?int $intervalSec
         flock($handle, LOCK_UN);
         fclose($handle);
     }
+}
+
+function rate_limit_client_ip(array $server): string
+{
+    $candidates = [
+        (string)($server['HTTP_CF_CONNECTING_IP'] ?? ''),
+        (string)($server['HTTP_X_REAL_IP'] ?? ''),
+        (string)($server['HTTP_X_FORWARDED_FOR'] ?? ''),
+        (string)($server['REMOTE_ADDR'] ?? ''),
+    ];
+
+    foreach ($candidates as $candidate) {
+        $trimmed = trim($candidate);
+        if ($trimmed === '') {
+            continue;
+        }
+
+        if (strpos($trimmed, ',') !== false) {
+            $parts = array_map('trim', explode(',', $trimmed));
+            $trimmed = (string)($parts[0] ?? '');
+        }
+
+        if ($trimmed !== '') {
+            return $trimmed;
+        }
+    }
+
+    return 'unknown';
+}
+
+function rate_limit_session_hint(array $server): string
+{
+    $cookieHeader = (string)($server['HTTP_COOKIE'] ?? '');
+    if ($cookieHeader === '') {
+        return '';
+    }
+
+    foreach (explode(';', $cookieHeader) as $cookiePart) {
+        $pair = explode('=', trim($cookiePart), 2);
+        $key = trim((string)($pair[0] ?? ''));
+        if ($key === 'PHPSESSID') {
+            return trim((string)($pair[1] ?? ''));
+        }
+    }
+
+    return '';
 }
 
 function send_rate_limited_response(int $intervalSeconds): void
