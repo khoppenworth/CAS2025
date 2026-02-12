@@ -173,13 +173,37 @@
       });
     });
 
-    document.addEventListener('click', (event) => {
-      if (topnav.contains(event.target) || (toggle && toggle.contains(event.target)) || (backdrop && backdrop.contains(event.target))) {
+    const closeMenusIfOutside = (target) => {
+      if (topnav.contains(target) || (toggle && toggle.contains(target)) || (backdrop && backdrop.contains(target))) {
         return;
       }
       closeSubmenus();
       closeTopnav();
+    };
+
+    document.addEventListener('click', (event) => {
+      closeMenusIfOutside(event.target);
     });
+
+    topnav.addEventListener('focusout', (event) => {
+      if (isMobileView()) {
+        return;
+      }
+      const nextFocused = event.relatedTarget;
+      if (nextFocused instanceof Node && topnav.contains(nextFocused)) {
+        return;
+      }
+      closeSubmenus();
+    });
+
+    if (typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches) {
+      topnav.addEventListener('mouseleave', () => {
+        if (isMobileView()) {
+          return;
+        }
+        closeSubmenus();
+      });
+    }
 
     topnav.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
