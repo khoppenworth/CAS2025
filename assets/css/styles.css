@@ -614,7 +614,7 @@ button,
 }
 
 .md-appbar-link.md-appbar-language {
-  padding: 0 0.55rem;
+  padding: 0;
   flex: 0 0 var(--app-button-height);
   width: auto;
   height: var(--app-button-height);
@@ -622,7 +622,6 @@ button,
   border-radius: 999px;
   font-size: 0.85rem;
   line-height: 1;
-  gap: 0.35rem;
   background: var(--app-on-primary-subtle);
 }
 
@@ -640,11 +639,6 @@ button,
   flex: 0 0 auto;
 }
 
-.md-appbar-link.md-appbar-language .md-appbar-language-text {
-  display: inline-block;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
 
 .md-lang-switch a {
   margin: 0 0.15rem;
