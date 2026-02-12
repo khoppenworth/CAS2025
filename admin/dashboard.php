@@ -550,7 +550,7 @@ if ($selectedBackupId === '' && $formattedBackups !== []) {
 $pageHelpKey = 'admin.dashboard';
 ?>
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>"><head>
-<meta charset="utf-8"><title><?=htmlspecialchars(t($t,'admin_dashboard','System Information'), ENT_QUOTES, 'UTF-8')?></title>
+<meta charset="utf-8"><title><?=htmlspecialchars(t($t,'admin_dashboard','System Upgrade'), ENT_QUOTES, 'UTF-8')?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="app-base-url" content="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
 <link rel="manifest" href="<?=asset_url('manifest.php')?>">
@@ -561,7 +561,7 @@ $pageHelpKey = 'admin.dashboard';
 <section class="md-section">
   <header class="md-page-header">
     <div class="md-page-header__content">
-      <h1 class="md-page-title"><?=t($t,'admin_dashboard','System Information')?></h1>
+      <h1 class="md-page-title"><?=t($t,'admin_dashboard','System Upgrade')?></h1>
       <p class="md-page-subtitle"><?=t($t,'system_information_intro','Monitor release status, backups, and key usage metrics from a single view.')?></p>
     </div>
   </header>
@@ -778,41 +778,6 @@ $pageHelpKey = 'admin.dashboard';
       </article>
     </div>
   </section>
-  <div class="md-dashboard-grid">
-    <div class="md-card md-elev-2 md-dashboard-card">
-      <h2 class="md-card-title"><?=t($t,'system_snapshot','System Snapshot')?></h2>
-      <ul class="md-stat-list">
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'total_users','Total accounts')?></span><span class="md-stat-value"><?=$users?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'active_users','Active')?></span><span class="md-stat-value"><?=$activeUsers?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'pending_accounts','Pending approvals')?></span><span class="md-stat-value"><?=$pendingUsers?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'disabled_accounts','Disabled')?></span><span class="md-stat-value"><?=$disabledUsers?></span></li>
-      </ul>
-      <p class="md-upgrade-meta"><?=t($t,'snapshot_hint','Review pending or disabled accounts frequently to maintain workforce readiness.')?></p>
-    </div>
-
-    <div class="md-card md-elev-2 md-dashboard-card">
-      <h2 class="md-card-title"><?=t($t,'assessment_activity','Assessment Activity')?></h2>
-      <ul class="md-stat-list">
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'questionnaires_count','Questionnaires')?></span><span class="md-stat-value"><?=$totalQuestionnaires?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'responses_count','All responses')?></span><span class="md-stat-value"><?=$totalResponses?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'responses_last_30','Responses (30 days)')?></span><span class="md-stat-value"><?=$assessmentsLast30?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'draft_responses','Draft responses')?></span><span class="md-stat-value"><?=$draftResponses?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'pending_reviews','Pending reviews')?></span><span class="md-stat-value"><?=$submittedResponses?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'approved_responses','Approved responses')?></span><span class="md-stat-value"><?=$approvedResponses?></span></li>
-      </ul>
-    </div>
-
-    <div class="md-card md-elev-2 md-dashboard-card">
-      <h2 class="md-card-title"><?=t($t,'performance_insights','Performance Insights')?></h2>
-      <ul class="md-stat-list">
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'average_score','Average score')?></span><span class="md-stat-value"><?=$avgScoreDisplay?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'highest_score','Highest score')?></span><span class="md-stat-value"><?=$maxScoreDisplay?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'lowest_score','Lowest score')?></span><span class="md-stat-value"><?=$minScoreDisplay?></span></li>
-        <li class="md-stat-item"><span class="md-stat-label"><?=t($t,'latest_submission','Latest submission')?></span><span class="md-stat-value" style="font-size: 1rem;"><?=htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8')?></span></li>
-      </ul>
-      <p class="md-upgrade-meta"><?=t($t,'insight_hint','Use these trends to target coaching and professional development activities.')?></p>
-    </div>
-  </div>
 </section>
 <script>
   document.addEventListener('click', function (event) {

@@ -502,7 +502,7 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
           <li>
             <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
               <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Information')?></span>
+                <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Upgrade')?></span>
                 <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
