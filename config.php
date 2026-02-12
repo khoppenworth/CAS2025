@@ -63,7 +63,11 @@ $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
 define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
 
 if ($isBootstrapRequested) {
-    enforce_rate_limit($_SERVER);
+    $scriptPath = trim((string)($_SERVER['SCRIPT_NAME'] ?? ''), '/');
+    $isAuthRoute = in_array($scriptPath, ['login.php', 'admin/login.php', 'oauth.php'], true);
+    if ($isAuthRoute) {
+        enforce_rate_limit($_SERVER);
+    }
 
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();

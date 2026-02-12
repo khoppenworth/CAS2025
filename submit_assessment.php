@@ -32,6 +32,16 @@ try {
             }
         }
 
+        $directAssignmentStmt = $pdo->prepare(
+            "SELECT q.id AS id, q.title AS title FROM questionnaire_assignment qa " .
+            "JOIN questionnaire q ON q.id = qa.questionnaire_id " .
+            "WHERE qa.staff_id = :staff_id AND q.status='published' ORDER BY q.title"
+        );
+        $directAssignmentStmt->execute([':staff_id' => (int)($user['id'] ?? 0)]);
+        foreach ($directAssignmentStmt->fetchAll() as $row) {
+            $assigned[(int)$row['id']] = $row;
+        }
+
         $q = array_values($assigned);
     } else {
         $q = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title")->fetchAll();
