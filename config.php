@@ -1277,7 +1277,7 @@ function site_theme_tokens(array $cfg): array
         '--brand-primary' => $primary,
         '--brand-primary-dark' => $primaryDark,
         '--brand-primary-darker' => $primaryDarker,
-        '--brand-primary-light' => $primaryLight,
+        '--brand-primary-light' => '#ffffff',
         '--brand-secondary' => $secondary,
         '--brand-muted' => $muted,
         '--brand-muted-light' => $mutedLight,
@@ -1330,6 +1330,7 @@ function site_theme_tokens(array $cfg): array
     ];
 
     $light = [
+        '--brand-primary-light' => '#ffffff',
         '--app-primary' => $primary,
         '--app-primary-dark' => $primaryDark,
         '--app-primary-darker' => $primaryDarker,
@@ -1381,6 +1382,7 @@ function site_theme_tokens(array $cfg): array
     ];
 
     $dark = [
+        '--brand-primary-light' => $primaryLight,
         '--app-primary' => $primaryLight,
         '--app-primary-dark' => $primary,
         '--app-primary-darker' => $primaryDark,
