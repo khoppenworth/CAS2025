@@ -127,58 +127,125 @@
     setTopnavOpen(false);
   };
   if (topnav) {
-    const triggers = topnav.querySelectorAll('[data-topnav-trigger]');
+    const items = Array.from(topnav.querySelectorAll('[data-topnav-item]'));
+    const triggers = items.map((item) => item.querySelector('[data-topnav-trigger]')).filter((trigger) => trigger instanceof HTMLElement);
     const links = topnav.querySelectorAll('.md-topnav-link');
     const closeButtons = topnav.querySelectorAll('[data-topnav-close]');
+    const prefersHover = typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches;
 
-    const closeSubmenus = () => {
-      triggers.forEach((trigger) => {
-        trigger.setAttribute('aria-expanded', 'false');
-        const item = trigger.closest('[data-topnav-item]');
-        if (item) {
-          item.classList.remove('is-open');
+    const setItemExpanded = (item, expanded) => {
+      if (!(item instanceof HTMLElement)) {
+        return;
+      }
+      const trigger = item.querySelector('[data-topnav-trigger]');
+      const submenu = item.querySelector('.md-topnav-submenu');
+      const isExpanded = Boolean(expanded);
+      item.classList.toggle('is-open', isExpanded);
+      if (trigger instanceof HTMLElement) {
+        trigger.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      }
+      if (submenu instanceof HTMLElement) {
+        submenu.setAttribute('aria-hidden', isExpanded ? 'false' : 'true');
+      }
+    };
+
+    const closeSubmenus = (exceptItem = null) => {
+      items.forEach((item) => {
+        if (exceptItem && item === exceptItem) {
+          return;
         }
+        setItemExpanded(item, false);
       });
     };
 
     const openSubmenuForItem = (item) => {
-      if (!item) {
+      if (!(item instanceof HTMLElement)) {
         return;
       }
-      const trigger = item.querySelector('[data-topnav-trigger]');
-      if (!trigger) {
-        return;
-      }
-      closeSubmenus();
-      trigger.setAttribute('aria-expanded', 'true');
-      item.classList.add('is-open');
+      closeSubmenus(item);
+      setItemExpanded(item, true);
     };
 
-    closeTopnavSubmenus = closeSubmenus;
+    const toggleSubmenuForItem = (item) => {
+      if (!(item instanceof HTMLElement)) {
+        return;
+      }
+      const willOpen = !item.classList.contains('is-open');
+      closeSubmenus(item);
+      setItemExpanded(item, willOpen);
+    };
 
-    triggers.forEach((trigger) => {
-      trigger.setAttribute('aria-expanded', 'false');
+    closeTopnavSubmenus = () => closeSubmenus();
+
+    items.forEach((item, index) => {
+      const trigger = item.querySelector('[data-topnav-trigger]');
+      const submenu = item.querySelector('.md-topnav-submenu');
+      if (!(trigger instanceof HTMLElement) || !(submenu instanceof HTMLElement)) {
+        return;
+      }
+
+      if (!submenu.id) {
+        submenu.id = `topnav-submenu-${index + 1}`;
+      }
+      if (!trigger.id) {
+        trigger.id = `topnav-trigger-${index + 1}`;
+      }
+
+      trigger.setAttribute('aria-controls', submenu.id);
+      submenu.setAttribute('aria-labelledby', trigger.id);
+      submenu.setAttribute('aria-hidden', 'true');
+      setItemExpanded(item, false);
+
       trigger.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const item = trigger.closest('[data-topnav-item]');
-        if (!item) {
-          return;
-        }
-        if (item.classList.contains('is-open')) {
-          closeSubmenus();
-          return;
-        }
-        openSubmenuForItem(item);
+        toggleSubmenuForItem(item);
       });
+
+      trigger.addEventListener('focus', () => {
+        if (!isMobileView()) {
+          openSubmenuForItem(item);
+        }
+      });
+
+      if (prefersHover) {
+        item.addEventListener('mouseenter', () => {
+          if (!isMobileView()) {
+            openSubmenuForItem(item);
+          }
+        });
+      }
     });
 
-    document.addEventListener('click', (event) => {
-      if (topnav.contains(event.target) || (toggle && toggle.contains(event.target)) || (backdrop && backdrop.contains(event.target))) {
+    const closeMenusIfOutside = (target) => {
+      if (target instanceof Node && (topnav.contains(target) || (toggle && toggle.contains(target)) || (backdrop && backdrop.contains(target)))) {
         return;
       }
       closeSubmenus();
       closeTopnav();
+    };
+
+    document.addEventListener('pointerdown', (event) => {
+      closeMenusIfOutside(event.target);
+    });
+
+    if (prefersHover) {
+      topnav.addEventListener('mouseleave', () => {
+        if (!isMobileView()) {
+          closeSubmenus();
+        }
+      });
+    }
+
+    topnav.addEventListener('focusout', (event) => {
+      if (isMobileView()) {
+        return;
+      }
+      const nextFocused = event.relatedTarget;
+      if (nextFocused instanceof Node && topnav.contains(nextFocused)) {
+        return;
+      }
+      closeSubmenus();
     });
 
     topnav.addEventListener('keydown', (event) => {
@@ -187,6 +254,26 @@
         closeTopnav();
         return;
       }
+
+      if (!isMobileView() && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+        const activeTrigger = event.target instanceof HTMLElement ? event.target.closest('[data-topnav-trigger]') : null;
+        if (!(activeTrigger instanceof HTMLElement)) {
+          return;
+        }
+        const currentIndex = triggers.indexOf(activeTrigger);
+        if (currentIndex < 0) {
+          return;
+        }
+        event.preventDefault();
+        const increment = event.key === 'ArrowRight' ? 1 : -1;
+        const nextIndex = (currentIndex + increment + triggers.length) % triggers.length;
+        const nextTrigger = triggers[nextIndex];
+        if (nextTrigger && typeof nextTrigger.focus === 'function') {
+          nextTrigger.focus();
+        }
+        return;
+      }
+
       if (event.key === 'Tab' && isMobileView() && topnav.classList.contains('is-open')) {
         const focusables = getTopnavFocusables();
         if (!focusables.length) {
@@ -222,6 +309,7 @@
       });
     });
   }
+
 
   if (topnav && toggle) {
     toggle.addEventListener('click', () => {
