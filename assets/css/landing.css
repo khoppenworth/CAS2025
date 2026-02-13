@@ -1,16 +1,12 @@
 :root {
-  --landing-primary: var(--app-primary, #0d63d9);
-  --landing-primary-dark: var(--app-primary-dark, #0c4fb0);
-  --landing-primary-darker: var(--app-primary-darker, #083575);
-  --landing-accent: #2ba7ff;
+  --landing-primary: var(--md-primary, #0d63d9);
+  --landing-primary-dark: var(--md-primary-dark, #0c4fb0);
+  --landing-primary-darker: var(--md-primary-dark, #083575);
+  --landing-accent: var(--md-accent, #2ba7ff);
   --landing-surface: var(--app-surface, #ffffff);
   --landing-surface-muted: #f8fafc;
   --landing-muted: var(--app-text-muted, #4b5a6b);
-  --landing-background: linear-gradient(
-    135deg,
-    var(--landing-primary) 0%,
-    color-mix(in srgb, var(--landing-primary) 70%, #2ba7ff 30%) 100%
-  );
+  --landing-background: linear-gradient(140deg, var(--landing-primary-dark), var(--landing-primary));
   --landing-radius-lg: 28px;
   --landing-radius-md: 18px;
   --landing-shadow-lg: 0 24px 58px rgba(9, 24, 54, 0.3);
@@ -24,7 +20,10 @@ body.landing-body {
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--app-text-primary, #0f1c31);
-  background: linear-gradient(135deg, #f4f7fb 0%, #eaf0f7 100%);
+  background:
+    radial-gradient(140% 140% at 15% 20%, color-mix(in srgb, var(--md-primary) 18%, transparent) 0%, transparent 72%),
+    radial-gradient(120% 120% at 85% 5%, color-mix(in srgb, var(--md-accent) 14%, transparent) 0%, transparent 74%),
+    color-mix(in srgb, var(--md-bg) 78%, #0f172a 22%);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -43,7 +42,7 @@ body.landing-body {
   padding: clamp(3.5rem, 7vw, 6.5rem) clamp(1.75rem, 6vw, 4.5rem);
   background: var(--landing-background);
   border-radius: 0 0 28px 28px;
-  box-shadow: 0 14px 60px rgba(15, 27, 56, 0.16);
+  box-shadow: 0 14px 60px color-mix(in srgb, var(--app-shadow-soft) 72%, transparent);
   overflow: hidden;
   align-items: center;
 }
@@ -295,9 +294,9 @@ body.landing-body {
 .landing-feature-card {
   padding: 1.85rem;
   border-radius: var(--landing-radius-md);
-  background: var(--landing-surface);
-  box-shadow: var(--landing-shadow-sm);
-  border: 1px solid var(--app-primary-softer, rgba(12, 39, 88, 0.06));
+  background: color-mix(in srgb, var(--md-surface) 94%, transparent);
+  box-shadow: 0 18px 34px color-mix(in srgb, var(--app-shadow-soft) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border) 65%, transparent);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -365,11 +364,12 @@ body.landing-body {
 
 .landing-footer {
   padding: clamp(2.5rem, 5vw, 3.5rem);
-  background: #ffffff;
-  color: #4f5b66;
+  background: color-mix(in srgb, var(--md-surface) 96%, transparent);
+  color: var(--app-text-secondary, #4f5b66);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 65%, transparent);
 }
 
 .landing-footer__contact strong {
