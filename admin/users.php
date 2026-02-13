@@ -35,6 +35,7 @@ try {
 }
 
 $msg = $_SESSION['admin_users_flash'] ?? '';
+$msgVariant = $msg !== '' ? 'success' : '';
 if ($msg !== '') {
     unset($_SESSION['admin_users_flash']);
 }
@@ -75,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dt = DateTime::createFromFormat('Y-m-d', $nextAssessment);
             if (!$dt) {
                 $msg = t($t, 'invalid_date', 'Please provide a valid next assessment date.');
+                $msgVariant = 'error';
             } else {
                 $nextAssessment = $dt->format('Y-m-d');
             }
@@ -85,8 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($msg === '') {
             if ($username === '' || $password === '') {
                 $msg = t($t, 'admin_user_required', 'Username and password are required.');
+                $msgVariant = 'error';
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -119,12 +123,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     $msg = t($t, 'user_created', 'User created successfully.');
+                    $msgVariant = 'success';
                 } catch (PDOException $e) {
                     if ((int)$e->getCode() === 23000) {
                         $msg = t($t, 'username_exists', 'A user with that username already exists.');
+                        $msgVariant = 'error';
                     } else {
                         error_log('Admin user create failed: ' . $e->getMessage());
                         $msg = t($t, 'user_create_failed', 'Unable to create user. Please try again.');
+                        $msgVariant = 'error';
                     }
                 }
             }
@@ -145,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dt = DateTime::createFromFormat('Y-m-d', $nextAssessment);
             if (!$dt) {
                 $msg = t($t, 'invalid_date', 'Please provide a valid next assessment date.');
+                $msgVariant = 'error';
             } else {
                 $nextAssessment = $dt->format('Y-m-d');
             }
@@ -155,8 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($msg === '') {
             if ($id <= 0) {
                 $msg = t($t, 'admin_reset_required', 'User selection is required.');
+                $msgVariant = 'error';
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $existingUser = null;
@@ -215,12 +225,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $updatedUser = null;
                     }
                     $msg = t($t, 'user_updated', 'User updated successfully.');
+                    $msgVariant = 'success';
                 } catch (PDOException $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
                     }
                     error_log('Admin user update failed: ' . $e->getMessage());
                     $msg = t($t, 'user_update_failed', 'Unable to update user. Please try again.');
+                    $msgVariant = 'error';
                 }
             }
         }
@@ -406,7 +418,7 @@ foreach ($rows as $r) {
 <body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/../templates/header.php'; ?>
 <section class="md-section">
-<?php if ($msg): ?><div class="md-alert"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+<?php if ($msg): ?><div class="md-alert <?=$msgVariant === 'error' ? 'error' : 'success'?>"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
 <div class="md-card md-elev-2"><h2 class="md-card-title"><?=t($t,'create_user','Create User')?></h2>
 <form method="post" class="md-form-grid" action="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>">
 <input type="hidden" name="csrf" value="<?=csrf_token()?>">
