@@ -517,7 +517,7 @@ button,
 }
 
 .md-status-indicator:focus-visible {
-  outline: 2px solid var(--status-info, #2563eb);
+  outline: 2px solid var(--status-info, #f59e0b);
   outline-offset: 2px;
 }
 
@@ -1134,8 +1134,8 @@ body.theme-dark .md-user-card__heading h3 {
 
 .md-user-chip.status-active {
   background: var(--semantic-success-soft);
-  color: var(--semantic-success-text);
-  box-shadow: inset 0 0 0 1px var(--semantic-success-soft);
+  color: var(--semantic-success);
+  box-shadow: inset 0 0 0 1px var(--semantic-success-border);
 }
 
 .md-user-chip.status-pending {
@@ -1158,8 +1158,8 @@ body.theme-dark .md-user-chip {
 
 body.theme-dark .md-user-chip.status-active {
   background: var(--semantic-success-soft);
-  color: var(--semantic-success-text);
-  box-shadow: inset 0 0 0 1px var(--semantic-success-soft);
+  color: var(--semantic-success);
+  box-shadow: inset 0 0 0 1px var(--semantic-success-border);
 }
 
 body.theme-dark .md-user-chip.status-pending {
@@ -2396,6 +2396,12 @@ body.theme-dark .md-floating-save-draft {
   border-left-color: var(--status-warning);
 }
 
+.md-alert.info {
+  color: var(--status-info);
+  border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
+}
+
 .md-offline-banner {
   position: fixed;
   left: 50%;
@@ -2665,6 +2671,12 @@ body.theme-dark .md-alert.success {
   color: var(--status-success);
   border-color: var(--status-success-border);
   border-left-color: var(--status-success);
+}
+
+body.theme-dark .md-alert.info {
+  color: var(--status-info);
+  border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
 }
 
 body.theme-dark .md-logo {

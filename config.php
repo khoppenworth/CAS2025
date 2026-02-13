@@ -1155,7 +1155,7 @@ function site_theme_tokens(array $cfg): array
     $warning = $semanticWarning;
     $danger = $semanticDanger;
     $success = $semanticSuccess;
-    $info = adjust_hsl($primary, -20.0, 1.08, 1.02);
+    $info = $semanticWarning;
 
     $lightSurface = tint_color($primary, 0.9);
     $lightSurfaceAlt = tint_color($primary, 0.95);

@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             t($t, 'upgrade_available', 'Version %s is available for installation.'),
                             $availableVersionDisplay
                         );
-                        $flashType = 'success';
+                        $flashType = 'info';
                     } else {
                         $upgradeState['available_version'] = null;
                         $upgradeState['available_version_label'] = $availableLabel;
@@ -308,7 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         error_log('Installed release metadata save failed: ' . $versionStoreError->getMessage());
                     }
                     $flashMessage = t($t, 'upgrade_command_success', 'Upgrade command completed successfully. Review the logs for details.');
-                    $flashType = 'success';
+                    $flashType = 'info';
                 } else {
                     $flashMessage = t($t, 'upgrade_command_failed', 'The upgrade command returned a non-zero exit code. Review the log for details.');
                     $flashType = 'error';
