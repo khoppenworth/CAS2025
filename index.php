@@ -12,64 +12,17 @@ $logoRenderPath = site_logo_url($cfg);
 $logo = htmlspecialchars($logoRenderPath, ENT_QUOTES, 'UTF-8');
 $logoAlt = htmlspecialchars($cfg['site_name'] ?? 'Logo', ENT_QUOTES, 'UTF-8');
 $siteName = htmlspecialchars($cfg['site_name'] ?? 'My Performance', ENT_QUOTES, 'UTF-8');
-$landingText = htmlspecialchars($cfg['landing_text'] ?? '', ENT_QUOTES, 'UTF-8');
 $address = htmlspecialchars($cfg['address'] ?? '', ENT_QUOTES, 'UTF-8');
 $contact = htmlspecialchars($cfg['contact'] ?? '', ENT_QUOTES, 'UTF-8');
 $bodyClass = trim(htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8') . ' landing-body');
 $bodyStyle = htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8');
 $brandStyle = site_brand_style($cfg);
-$landingBackgroundUrl = site_landing_background_url($cfg);
 $baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
 $langAttr = htmlspecialchars($locale, ENT_QUOTES, 'UTF-8');
 $loginUrl = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
-$heroSubtitle = $landingText !== ''
-    ? $landingText
-    : htmlspecialchars(t(
-        $t,
-        'landing_intro',
-        "Welcome to the performance management portal. Discover resources and updates about your organisation's assessment program."
-    ), ENT_QUOTES, 'UTF-8');
-
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
 $addressLabel = htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8');
 $contactLabel = htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8');
-$landingHeroClass = 'landing-hero';
-$landingHeroStyle = '--landing-background: linear-gradient(125deg, #0b2d78 0%, #0f5cd8 48%, #24a6ff 100%);';
-if ($landingBackgroundUrl !== '') {
-    $landingHeroClass .= ' landing-hero--image';
-    $landingHeroStyle .= sprintf(
-        ' --landing-hero-image: url("%s");',
-        htmlspecialchars($landingBackgroundUrl, ENT_QUOTES, 'UTF-8')
-    );
-}
-
-$heroStats = [
-    [
-        'value' => htmlspecialchars(t($t, 'landing_stat_engagement_value', '96%'), ENT_QUOTES, 'UTF-8'),
-        'label' => htmlspecialchars(t($t, 'landing_stat_engagement_label', 'Review completion rate'), ENT_QUOTES, 'UTF-8'),
-    ],
-    [
-        'value' => htmlspecialchars(t($t, 'landing_stat_cycle_value', '2.5x'), ENT_QUOTES, 'UTF-8'),
-        'label' => htmlspecialchars(t($t, 'landing_stat_cycle_label', 'Faster feedback cycles'), ENT_QUOTES, 'UTF-8'),
-    ],
-    [
-        'value' => htmlspecialchars(t($t, 'landing_stat_growth_value', '24/7'), ENT_QUOTES, 'UTF-8'),
-        'label' => htmlspecialchars(t($t, 'landing_stat_growth_label', 'Always-on performance visibility'), ENT_QUOTES, 'UTF-8'),
-    ],
-];
-
-$highlightItems = [
-    [
-        'label' => htmlspecialchars(t($t, 'landing_highlight_one', 'Track progress with live dashboards'), ENT_QUOTES, 'UTF-8'),
-    ],
-    [
-        'label' => htmlspecialchars(t($t, 'landing_highlight_two', 'Spot coaching needs before reviews are due'), ENT_QUOTES, 'UTF-8'),
-    ],
-    [
-        'label' => htmlspecialchars(t($t, 'landing_highlight_three', 'Share consistent reports with leadership'), ENT_QUOTES, 'UTF-8'),
-    ],
-];
-
 $featureItems = [
     [
         'title' => htmlspecialchars(t($t, 'feature_insights_title', 'Actionable insights'), ENT_QUOTES, 'UTF-8'),
@@ -138,49 +91,6 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
   <link rel="stylesheet" href="<?= asset_url('assets/css/material.css') ?>">
   <link rel="stylesheet" href="<?= asset_url('assets/css/styles.css') ?>">
   <link rel="stylesheet" href="<?= asset_url('assets/css/landing.css') ?>">
-  <style>
-    .landing-hero {
-      box-shadow: 0 24px 64px rgba(10, 31, 83, 0.35);
-    }
-    .landing-hero::before,
-    .landing-hero::after {
-      opacity: 0.45;
-    }
-    .landing-hero__stats {
-      margin: 2rem 0 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 0.85rem;
-    }
-    .landing-hero__stats li {
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      border-radius: 16px;
-      padding: 0.9rem 1rem;
-      backdrop-filter: blur(10px);
-      min-height: 82px;
-    }
-    .landing-hero__stat-value {
-      display: block;
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #ffffff;
-      margin-bottom: 0.35rem;
-    }
-    .landing-hero__stat-label {
-      display: block;
-      font-size: 0.88rem;
-      line-height: 1.4;
-      color: rgba(236, 243, 255, 0.93);
-    }
-    @media (max-width: 760px) {
-      .landing-hero__stats {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
   <?php if ($brandStyle !== ''): ?>
     <style id="md-brand-style"><?= htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8') ?></style>
   <?php endif; ?>
@@ -196,41 +106,6 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
         <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
       </div>
     </header>
-
-    <section class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
-      <div class="landing-hero__content" aria-labelledby="landing-title" id="about">
-        <div class="landing-brand">
-          <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">
-          <span class="landing-brand__name"><?= $siteName ?></span>
-        </div>
-        <h1 id="landing-title" class="landing-hero__title"><?= htmlspecialchars(t($t, 'landing_title', 'Performance that powers people'), ENT_QUOTES, 'UTF-8') ?></h1>
-        <p class="landing-hero__subtitle"><?= $heroSubtitle ?></p>
-        <div class="landing-hero__summary" aria-label="<?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?>">
-          <h2><?= htmlspecialchars(t($t, 'landing_summary_title', 'Built for confident, modern HR teams'), ENT_QUOTES, 'UTF-8') ?></h2>
-          <p><?= htmlspecialchars(t($t, 'landing_summary_body', 'Use a single hub to align feedback, track completion, and surface development wins.'), ENT_QUOTES, 'UTF-8') ?></p>
-        </div>
-        <div class="landing-hero__actions">
-          <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
-          <p class="landing-hero__cta-note"><?= htmlspecialchars(t($t, 'landing_cta_note', 'One secure sign-in for managers, reviewers, and employees.'), ENT_QUOTES, 'UTF-8') ?></p>
-        </div>
-        <ul class="landing-hero__highlights" role="list">
-          <?php foreach ($highlightItems as $highlight): ?>
-            <li>
-              <span class="landing-hero__bullet" aria-hidden="true"></span>
-              <span><?= $highlight['label'] ?></span>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-        <ul class="landing-hero__stats" role="list" aria-label="<?= htmlspecialchars(t($t, 'landing_stats_label', 'Performance highlights'), ENT_QUOTES, 'UTF-8') ?>">
-          <?php foreach ($heroStats as $stat): ?>
-            <li>
-              <span class="landing-hero__stat-value"><?= $stat['value'] ?></span>
-              <span class="landing-hero__stat-label"><?= $stat['label'] ?></span>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      </div>
-    </section>
 
     <main class="landing-main" aria-labelledby="features-heading">
       <section class="landing-section landing-section--stats">
