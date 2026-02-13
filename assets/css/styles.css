@@ -2241,6 +2241,16 @@ body.theme-dark .email-template-placeholders code {
   scroll-margin-top: 108px;
 }
 
+
+.md-assessment-shell .md-card-title,
+.md-assessment-shell .md-section-title {
+  color: var(--app-primary-dark);
+}
+
+.md-assessment-shell .md-divider {
+  background: var(--app-primary-dark);
+}
+
 @media (max-width: 1024px) {
   .md-questionnaire-layout {
     grid-template-columns: 1fr;
