@@ -1,8 +1,10 @@
 package org.cas2025.prototype
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -80,13 +82,14 @@ class MainActivity : AppCompatActivity() {
 
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(body)
-                val latestVersionCode = json.optInt("latestVersionCode", BuildConfig.VERSION_CODE)
+                val installedVersionCode = getInstalledVersionCode()
+                val latestVersionCode = json.optInt("latestVersionCode", installedVersionCode)
                 val apkUrl = json.optString("apkUrl", "")
                 val notes = json.optString("notes", "")
 
                 runOnUiThread {
                     binding.checkUpdatesButton.isEnabled = true
-                    if (latestVersionCode > BuildConfig.VERSION_CODE && apkUrl.isNotBlank()) {
+                    if (latestVersionCode > installedVersionCode && apkUrl.isNotBlank()) {
                         showUpdateDialog(latestVersionCode, apkUrl, notes)
                     } else {
                         Toast.makeText(this, R.string.update_up_to_date, Toast.LENGTH_LONG).show()
@@ -99,6 +102,25 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+
+    private fun getInstalledVersionCode(): Int {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
+        }
+
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+
+        return versionCode.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 
     private fun showUpdateDialog(latestVersionCode: Int, apkUrl: String, notes: String) {
