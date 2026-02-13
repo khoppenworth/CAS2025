@@ -1380,12 +1380,6 @@ function site_theme_tokens(array $cfg): array
         '--app-chart-surface' => $lightSurface,
         '--app-chip-bg' => rgba_string($primary, 0.08),
         '--app-chip-border' => $lightBorder,
-        '--footer-bg-start' => $onSurfaceStrong,
-        '--footer-bg-mid' => $onSurfaceStrong,
-        '--footer-bg-end' => $onSurfaceMuted,
-        '--footer-text' => $lightSurfaceAlt,
-        '--footer-link' => $lightSurfaceHighlight,
-        '--footer-link-hover' => $inverseText,
         'color' => $lightText,
     ];
 
