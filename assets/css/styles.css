@@ -4127,3 +4127,124 @@ body.theme-dark .md-work-function-row-meta {
   font-size: 1.2rem;
   line-height: 1;
 }
+
+/* EPSS-aligned staff UI refresh (post-login shell) */
+.md-appbar {
+  background: linear-gradient(100deg, #0a2f7a 0%, #0f5cd7 56%, #1b8ee6 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 28px rgba(8, 36, 92, 0.34);
+}
+
+.md-appbar-title {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.md-appbar-logo {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.md-appbar-link,
+.md-appbar-button,
+.md-appbar-theme-toggle {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.md-appbar-link:hover,
+.md-appbar-link:focus,
+.md-appbar-button:hover,
+.md-appbar-button:focus,
+.md-appbar-theme-toggle:hover,
+.md-appbar-theme-toggle:focus {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.md-shell {
+  padding-top: 1rem;
+}
+
+.md-topnav {
+  top: calc(var(--appbar-height) + 0.4rem);
+  border-radius: 16px;
+  border: 1px solid rgba(15, 77, 170, 0.2);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+.md-topnav-trigger::before {
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--app-primary) 70%, #ffffff 30%);
+}
+
+.md-topnav-trigger:hover,
+.md-topnav-trigger:focus-visible,
+.md-topnav-item.is-active > .md-topnav-trigger,
+.md-topnav-item.is-open > .md-topnav-trigger {
+  background: linear-gradient(140deg, rgba(15, 92, 216, 0.16), rgba(43, 167, 255, 0.1));
+  border-color: rgba(15, 92, 216, 0.22);
+  box-shadow: 0 8px 20px rgba(15, 92, 216, 0.2);
+}
+
+.md-topnav-submenu {
+  border-radius: 14px;
+  border-color: rgba(15, 77, 170, 0.2);
+}
+
+.md-topnav-link:hover,
+.md-topnav-link:focus-visible,
+.md-topnav-link.active {
+  background: linear-gradient(120deg, rgba(15, 92, 216, 0.16), rgba(15, 169, 223, 0.09));
+}
+
+.md-page-header {
+  border-radius: 20px;
+  border-color: rgba(15, 77, 170, 0.18);
+  box-shadow: 0 14px 34px rgba(30, 64, 120, 0.12);
+}
+
+.md-page-header::after {
+  background: linear-gradient(135deg, rgba(15, 92, 216, 0.15), rgba(38, 170, 244, 0.08));
+}
+
+.md-card {
+  border-radius: 18px;
+  border-color: rgba(15, 77, 170, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 35, 70, 0.1);
+}
+
+.md-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0f5cd8, #2ba7ff);
+}
+
+@media (max-width: 1024px) {
+  .md-topnav {
+    top: var(--appbar-height);
+  }
+}
+
+body.theme-dark .md-appbar {
+  background: linear-gradient(100deg, #0d224f 0%, #0c3778 55%, #1453a4 100%);
+}
+
+body.theme-dark .md-topnav,
+body.theme-dark .md-topnav-submenu,
+body.theme-dark .md-page-header,
+body.theme-dark .md-card {
+  border-color: rgba(96, 165, 250, 0.24);
+}
+
+/* Post-login page canvas tone adjustment */
+body.md-bg:not(.landing-body) {
+  background: #eef4fb;
+}
+
+body.theme-dark.md-bg:not(.landing-body) {
+  background: #0d1524;
+}
