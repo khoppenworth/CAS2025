@@ -36,6 +36,13 @@ function get_page_help(string $key, array $t): array
                 t($t, 'help_dashboard_tip_tasks', 'Review system tasks for any failed upgrades or scheduled reports needing attention.'),
             ],
         ],
+        'admin.course_mappings' => [
+            'title' => t($t, 'help_course_mapping_title', 'Course mapping rules'),
+            'tips' => [
+                t($t, 'help_course_mapping_tip_bands', 'Create score bands per questionnaire so low, medium, and high results can map to different Moodle courses.'),
+                t($t, 'help_course_mapping_tip_links', 'Use full Moodle course URLs so staff can launch learning content directly from their performance view.'),
+            ],
+        ],
         'workspace.my_performance' => [
             'title' => t($t, 'help_performance_title', 'Your performance workspace'),
             'tips' => [

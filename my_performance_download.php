@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/simple_pdf.php';
+require_once __DIR__ . '/lib/course_recommendations.php';
 require_once __DIR__ . '/lib/analytics_report.php';
 require_once __DIR__ . '/lib/performance_sections.php';
 
@@ -12,6 +13,7 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $user = current_user();
+ensure_course_recommendation_schema($pdo);
 $userId = (int) ($user['id'] ?? 0);
 
 if ($userId <= 0) {
@@ -79,13 +81,13 @@ $averageScore = $scoredValues ? array_sum($scoredValues) / count($scoredValues) 
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
-    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? ORDER BY min_score ASC');
+    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
     foreach ($latestScores as $scoreRow) {
         if ($scoreRow['score'] === null) {
             continue;
         }
         $score = (int) $scoreRow['score'];
-        $courseStmt->execute([$user['work_function'], $score, $score]);
+        $courseStmt->execute([$user['work_function'], $score, $score, (int)($scoreRow['questionnaire_id'] ?? 0)]);
         foreach ($courseStmt->fetchAll(PDO::FETCH_ASSOC) as $course) {
             $recommendedCourses[$course['id']] = $course;
         }

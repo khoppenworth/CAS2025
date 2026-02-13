@@ -33,6 +33,7 @@ $navKeyMap = [
     'admin/export.php' => 'admin.export',
     'admin/branding.php' => 'admin.branding',
     'admin/settings.php' => 'admin.settings',
+    'admin/course_mappings.php' => 'admin.course_mappings',
     'swagger.php' => 'admin.api_docs',
 ];
 if ($drawerKey === null && $scriptName !== '') {
@@ -440,7 +441,7 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
     <?php endif; ?>
     <?php if ($role === 'admin'): ?>
       <?php
-      $adminActive = $isActiveNav('admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.branding');
+      $adminActive = $isActiveNav('admin.users', 'admin.manage_questionnaires', 'admin.work_function_defaults', 'admin.branding', 'admin.course_mappings');
       $systemActive = $isActiveNav('admin.dashboard', 'admin.export', 'admin.settings');
       ?>
       <li class="md-topnav-item<?=$adminActive ? ' is-active' : ''?>" data-topnav-item>
@@ -484,6 +485,15 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
                 <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
+              </span>
+              <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
+            </a>
+          </li>
+          <li>
+            <a href="<?=htmlspecialchars(url_for('admin/course_mappings.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.course_mappings')?>>
+              <span class="md-topnav-link-content">
+                <span class="md-topnav-link-title"><?=t($t, 'course_mapping_nav', 'Course Mappings')?></span>
+                <span class="md-topnav-link-desc"><?=t($t, 'course_mapping_nav_summary', 'Map assessment score bands to Moodle learning links.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
