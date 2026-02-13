@@ -58,7 +58,7 @@ body.md-bg {
   gap: 6px;
   padding: 6px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--status-success-soft, rgba(34, 197, 94, 0.22));
   color: inherit;
   border: none;
   cursor: pointer;
@@ -75,11 +75,11 @@ body.md-bg {
 }
 
 .md-status-dot {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--status-success);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
   transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -88,7 +88,7 @@ body.md-bg {
 }
 
 .md-status-indicator.is-offline {
-  background: rgba(255, 140, 0, 0.18);
+  background: var(--status-warning-surface, rgba(255, 140, 0, 0.2));
 }
 
 .md-status-indicator.is-offline .md-status-dot {
