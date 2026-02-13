@@ -1243,10 +1243,12 @@ CREATE TABLE IF NOT EXISTS course_catalogue (
   title VARCHAR(255) NOT NULL,
   moodle_url VARCHAR(255) NULL,
   recommended_for ENUM('finance','general_service','hrm','ict','leadership_tn','legal_service','pme','quantification','records_documentation','security_driver','security','tmd','wim','cmd','communication','dfm','driver','ethics') NOT NULL,
+  questionnaire_id INT NULL,
   min_score INT NOT NULL DEFAULT 0,
   max_score INT NOT NULL DEFAULT 99,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 CREATE TABLE IF NOT EXISTS training_recommendation (
   id INT AUTO_INCREMENT PRIMARY KEY,

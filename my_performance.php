@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
 require_once __DIR__ . '/lib/performance_sections.php';
+require_once __DIR__ . '/lib/course_recommendations.php';
 auth_required(['staff','supervisor','admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -10,6 +11,7 @@ $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $user = current_user();
 $userWorkFunctionLabel = work_function_label($pdo, (string)($user['work_function'] ?? ''));
+ensure_course_recommendation_schema($pdo);
 
 function resolve_timeline_label(array $row): string
 {
@@ -137,13 +139,13 @@ $timelinePoints = array_map(static function ($point) {
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
-    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? ORDER BY min_score ASC');
+    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
     foreach ($latestScores as $scoreRow) {
         if ($scoreRow['score'] === null) {
             continue;
         }
         $score = (int)$scoreRow['score'];
-        $courseStmt->execute([$user['work_function'], $score, $score]);
+        $courseStmt->execute([$user['work_function'], $score, $score, (int)($scoreRow['questionnaire_id'] ?? 0)]);
         foreach ($courseStmt->fetchAll() as $course) {
             $recommendedCourses[$course['id']] = $course;
         }

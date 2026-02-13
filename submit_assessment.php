@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
+require_once __DIR__ . '/lib/course_recommendations.php';
 if (!function_exists('canonical')) {
     require_once __DIR__ . '/lib/work_functions.php';
 }
@@ -13,6 +14,7 @@ $err = '';
 $flashNotice = '';
 $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
+ensure_course_recommendation_schema($pdo);
 
 $user = current_user();
 try {
@@ -306,10 +308,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 if ($isDraftSave) {
                     $pdo->prepare('UPDATE questionnaire_response SET score=NULL WHERE id=?')->execute([$responseId]);
+                    $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id=?')->execute([$responseId]);
                 } else {
                     $pctRaw = $max_points > 0 ? ($score_sum / $max_points) * 100 : 0.0;
                     $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
                     $pdo->prepare('UPDATE questionnaire_response SET score=? WHERE id=?')->execute([$pct, $responseId]);
+                    map_response_to_training_courses($pdo, $responseId, (string)($user['work_function'] ?? ''), $pct, $qid);
                 }
                 $pdo->commit();
                 if ($isDraftSave) {
