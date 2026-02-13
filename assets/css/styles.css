@@ -198,7 +198,6 @@ button,
   align-items: stretch;
 }
 
-.md-topnav-item.is-active > .md-topnav-trigger,
 .md-topnav-item.is-open > .md-topnav-trigger {
   background: color-mix(in srgb, var(--app-primary) 16%, rgba(37, 99, 235, 0.05));
   color: var(--app-primary-dark);
@@ -277,7 +276,6 @@ button,
   display: none;
 }
 
-.md-topnav-item.is-active > .md-topnav-trigger .md-topnav-desc,
 .md-topnav-item.is-open > .md-topnav-trigger .md-topnav-desc,
 .md-topnav-trigger:hover .md-topnav-desc,
 .md-topnav-trigger:focus-visible .md-topnav-desc {
@@ -2573,7 +2571,6 @@ body.theme-dark .md-topnav-trigger {
 
 body.theme-dark .md-topnav-trigger:hover,
 body.theme-dark .md-topnav-trigger:focus-visible,
-body.theme-dark .md-topnav-item.is-active > .md-topnav-trigger,
 body.theme-dark .md-topnav-item.is-open > .md-topnav-trigger {
   background: var(--app-primary-soft);
   color: var(--app-text-primary);
@@ -4197,7 +4194,6 @@ body.theme-dark .md-work-function-row-meta {
 
 .md-topnav-trigger:hover,
 .md-topnav-trigger:focus-visible,
-.md-topnav-item.is-active > .md-topnav-trigger,
 .md-topnav-item.is-open > .md-topnav-trigger {
   background: linear-gradient(140deg, rgba(15, 92, 216, 0.16), rgba(43, 167, 255, 0.1));
   border-color: rgba(15, 92, 216, 0.22);
