@@ -3059,27 +3059,33 @@ body.theme-dark .md-button.md-secondary {
 
   .md-topnav-trigger {
     width: 100%;
-    justify-content: space-between;
-    padding: 0.75rem 0.7rem;
-    font-size: 0.98rem;
+    justify-content: flex-start;
+    padding: 0.55rem 0.7rem;
+    font-size: 1rem;
     align-items: flex-start;
     gap: 0.75rem;
+    pointer-events: none;
+    min-height: 44px;
+  }
+
+  .md-topnav-chevron {
+    display: none;
   }
 
   .md-topnav-label {
-    gap: 0.35rem;
+    gap: 0.25rem;
   }
 
   .md-topnav-submenu {
     position: static;
-    display: none;
+    display: flex;
     box-shadow: none;
     border: none;
-    border-radius: 16px;
-    padding: 0.85rem 0.65rem 0.85rem 0.85rem;
-    margin: 0.35rem 0 0.25rem 0.15rem;
-    background: var(--app-surface-elevated, rgba(248, 250, 255, 0.82));
-    gap: 0.6rem;
+    border-radius: 14px;
+    padding: 0.25rem 0.35rem 0.35rem;
+    margin: 0;
+    background: transparent;
+    gap: 0.45rem;
   }
 
   .md-topnav-item.is-open > .md-topnav-submenu {
@@ -3092,10 +3098,12 @@ body.theme-dark .md-button.md-secondary {
   }
 
   .md-topnav-link {
-    padding: 0.72rem 0.78rem;
-    font-size: 0.95rem;
+    padding: 0.78rem 0.82rem;
+    font-size: 0.96rem;
     justify-content: flex-start;
     align-items: flex-start;
+    min-height: 46px;
+    border-radius: 12px;
   }
 
   .md-topnav-link-icon {

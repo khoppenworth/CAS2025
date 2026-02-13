@@ -257,7 +257,6 @@
     const triggers = items.map((item) => item.querySelector('[data-topnav-trigger]')).filter((trigger) => trigger instanceof HTMLElement);
     const links = topnav.querySelectorAll('.md-topnav-link');
     const closeButtons = topnav.querySelectorAll('[data-topnav-close]');
-    const prefersHover = typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches;
 
     const setItemExpanded = (item, expanded) => {
       if (!(item instanceof HTMLElement)) {
@@ -288,6 +287,9 @@
       if (!(item instanceof HTMLElement)) {
         return;
       }
+      if (isMobileView()) {
+        return;
+      }
       closeSubmenus(item);
       setItemExpanded(item, true);
     };
@@ -296,12 +298,29 @@
       if (!(item instanceof HTMLElement)) {
         return;
       }
+      if (isMobileView()) {
+        return;
+      }
       const willOpen = !item.classList.contains('is-open');
       closeSubmenus(item);
       setItemExpanded(item, willOpen);
     };
 
     closeTopnavSubmenus = () => closeSubmenus();
+
+    const syncSubmenusForViewport = () => {
+      if (isMobileView()) {
+        items.forEach((item) => {
+          setItemExpanded(item, true);
+        });
+        return;
+      }
+      const activeItem = items.find((item) => item.classList.contains('is-active')) || null;
+      closeSubmenus(activeItem);
+      if (activeItem) {
+        setItemExpanded(activeItem, true);
+      }
+    };
 
     items.forEach((item, index) => {
       const trigger = item.querySelector('[data-topnav-trigger]');
@@ -329,18 +348,12 @@
       });
 
       trigger.addEventListener('focus', () => {
-        if (!isMobileView()) {
-          openSubmenuForItem(item);
-        }
+        openSubmenuForItem(item);
       });
 
-      if (prefersHover) {
-        item.addEventListener('mouseenter', () => {
-          if (!isMobileView()) {
-            openSubmenuForItem(item);
-          }
-        });
-      }
+      item.addEventListener('mouseenter', () => {
+        openSubmenuForItem(item);
+      });
     });
 
     const closeMenusIfOutside = (target) => {
@@ -355,14 +368,6 @@
       closeMenusIfOutside(event.target);
     });
 
-    if (prefersHover) {
-      topnav.addEventListener('mouseleave', () => {
-        if (!isMobileView()) {
-          closeSubmenus();
-        }
-      });
-    }
-
     topnav.addEventListener('focusout', (event) => {
       if (isMobileView()) {
         return;
@@ -374,25 +379,12 @@
       closeSubmenus();
     });
 
-    topnav.addEventListener('focusout', (event) => {
+    topnav.addEventListener('mouseleave', () => {
       if (isMobileView()) {
-        return;
-      }
-      const nextFocused = event.relatedTarget;
-      if (nextFocused instanceof Node && topnav.contains(nextFocused)) {
         return;
       }
       closeSubmenus();
     });
-
-    if (typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches) {
-      topnav.addEventListener('mouseleave', () => {
-        if (isMobileView()) {
-          return;
-        }
-        closeSubmenus();
-      });
-    }
 
     topnav.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
@@ -454,6 +446,8 @@
         closeTopnav();
       });
     });
+
+    syncSubmenusForViewport();
   }
 
 
@@ -483,8 +477,29 @@
       if (toggle) {
         toggle.setAttribute('aria-expanded', 'false');
       }
+      if (typeof closeTopnavSubmenus === 'function') {
+        closeTopnavSubmenus();
+      }
+      const activeItem = topnav.querySelector('[data-topnav-item].is-active');
+      if (activeItem instanceof HTMLElement) {
+        activeItem.classList.add('is-open');
+      }
       lastFocusedElement = null;
     } else {
+      topnav.querySelectorAll('[data-topnav-item]').forEach((item) => {
+        if (!(item instanceof HTMLElement)) {
+          return;
+        }
+        item.classList.add('is-open');
+        const trigger = item.querySelector('[data-topnav-trigger]');
+        const submenu = item.querySelector('.md-topnav-submenu');
+        if (trigger instanceof HTMLElement) {
+          trigger.setAttribute('aria-expanded', 'true');
+        }
+        if (submenu instanceof HTMLElement) {
+          submenu.setAttribute('aria-hidden', 'false');
+        }
+      });
       const isOpen = topnav.classList.contains('is-open');
       applyTopnavA11yState(isOpen);
       if (!isOpen) {
