@@ -66,7 +66,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
             $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE department_slug=?')->execute([$slug]);
-            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ?')->execute([$slug]);
+            $depLabel = (string)($departments[$slug]['label'] ?? '');
+            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
             $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department archived.');
@@ -99,7 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
-            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ?')->execute([$slug]);
+            $teamLabel = (string)($teams[$slug]['label'] ?? '');
+            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
             header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
         }
@@ -153,6 +155,18 @@ if ($assignStmt) {
         $qid = (int)($row['questionnaire_id'] ?? 0);
         if ($dep !== '' && $qid > 0) {
             $assignments[$dep][$qid] = true;
+        }
+    }
+}
+if ($assignments === []) {
+    $legacyStmt = $pdo->query('SELECT questionnaire_id, work_function FROM questionnaire_work_function');
+    if ($legacyStmt) {
+        foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
+            $qid = (int)($row['questionnaire_id'] ?? 0);
+            if ($dep !== '' && $qid > 0) {
+                $assignments[$dep][$qid] = true;
+            }
         }
     }
 }

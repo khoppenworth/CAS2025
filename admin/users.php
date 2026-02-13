@@ -34,6 +34,29 @@ try {
     $defaultAssignmentsByWorkFunction = [];
 }
 
+
+if ($defaultAssignmentsByWorkFunction === []) {
+    try {
+        $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
+        if ($legacyStmt) {
+            foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $defaultRow) {
+                $dep = resolve_department_slug($pdo, (string)($defaultRow['work_function'] ?? ''));
+                $qid = isset($defaultRow['id']) ? (int)$defaultRow['id'] : 0;
+                if ($dep === '' || $qid <= 0) {
+                    continue;
+                }
+                $defaultAssignmentsByWorkFunction[$dep][] = [
+                    'id' => $qid,
+                    'title' => trim((string)($defaultRow['title'] ?? '')),
+                    'description' => trim((string)($defaultRow['description'] ?? '')),
+                ];
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('Admin user legacy defaults failed: ' . $e->getMessage());
+    }
+}
+
 $msg = $_SESSION['admin_users_flash'] ?? '';
 $msgVariant = $msg !== '' ? 'success' : '';
 if ($msg !== '') {
@@ -301,7 +324,8 @@ foreach ($rows as $r) {
     $roleKey = $r['role'] ?? 'staff';
     $roleLabel = $roleLabels[$roleKey] ?? $roleKey;
     $userId = (int)$r['id'];
-    $defaultEntries = $defaultAssignmentsByWorkFunction[$workFunctionKey] ?? [];
+    $departmentKey = resolve_department_slug($pdo, (string)($r['department'] ?? ''));
+    $defaultEntries = $defaultAssignmentsByWorkFunction[$departmentKey] ?? [];
     $defaultTitles = [];
     foreach ($defaultEntries as $entry) {
         $title = trim((string)($entry['title'] ?? ''));

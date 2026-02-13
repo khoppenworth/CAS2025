@@ -77,13 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phoneCountry = $_POST['phone_country'] ?? $phoneCountryValue;
     $phoneLocalRaw = $_POST['phone_local'] ?? '';
     $phoneCombined = trim($_POST['phone'] ?? '');
-    $department = trim((string)($_POST['department'] ?? ''));
-    $teamSlug = trim((string)($_POST['cadre'] ?? ''));
-    $teamRecord = $teamCatalog[$teamSlug] ?? null;
-    $cadre = '';
-    if (is_array($teamRecord) && (($teamRecord['archived_at'] ?? null) === null) && ($teamRecord['department_slug'] ?? '') === $department) {
-        $cadre = trim((string)($teamRecord['slug'] ?? $teamSlug));
-    }
+    $departmentInput = trim((string)($_POST['department'] ?? ''));
+    $department = resolve_department_slug($pdo, $departmentInput);
+    $teamInput = trim((string)($_POST['cadre'] ?? ''));
+    $cadre = resolve_team_slug($pdo, $teamInput, $department);
     $workFunction = $_POST['work_function'] ?? '';
     $language = $_POST['language'] ?? ($_SESSION['lang'] ?? 'en');
     $password = $_POST['password'] ?? '';
@@ -244,7 +241,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <input type="hidden" name="phone" value="<?=htmlspecialchars($phoneCountryValue . $phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" data-phone-full>
         </div>
       </label>
-      <?php $currentDepartmentSlug = trim((string)($user['department'] ?? '')); ?>
+      <?php $currentDepartmentSlug = resolve_department_slug($pdo, (string)($user['department'] ?? '')); ?>
+<?php
+        if ($currentDepartmentSlug === '' && $currentTeamSlug !== '' && isset($teamCatalog[$currentTeamSlug])) {
+          $currentDepartmentSlug = (string)($teamCatalog[$currentTeamSlug]['department_slug'] ?? '');
+        }
+      ?>
       <label class="md-field md-field--required">
         <span><?=t($t,'department','Department')?></span>
         <select name="department" required data-department-select>
@@ -256,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <label class="md-field md-field--required">
         <span><?=t($t,'cadre','Team in the Department')?></span>
-        <?php $currentTeamSlug = trim((string)($user['cadre'] ?? '')); ?>
+        <?php $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug); ?>
         <select name="cadre" required data-team-select>
           <option value="" disabled <?= $currentTeamSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>

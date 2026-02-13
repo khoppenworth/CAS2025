@@ -27,6 +27,24 @@ try {
 } catch (PDOException $e) {
     error_log('questionnaire_assignments default fetch failed: ' . $e->getMessage());
 }
+
+
+if (!$assignmentsByDepartment) {
+    $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY qwf.work_function ASC, q.title ASC");
+    if ($legacyStmt) {
+        foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
+            if ($dep === '') {
+                continue;
+            }
+            $assignmentsByDepartment[$dep][] = [
+                'id' => (int)($row['id'] ?? 0),
+                'title' => trim((string)($row['title'] ?? '')),
+                'description' => trim((string)($row['description'] ?? '')),
+            ];
+        }
+    }
+}
 ?>
 <!doctype html>
 <html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>">
