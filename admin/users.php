@@ -14,10 +14,10 @@ $defaultWorkFunction = array_key_first($workFunctionOptions) ?? 'general_service
 
 $defaultAssignmentsByWorkFunction = [];
 try {
-    $defaultsStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
+    $defaultsStmt = $pdo->query("SELECT qd.department_slug, q.id, q.title, q.description FROM questionnaire_department qd JOIN questionnaire q ON q.id = qd.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
     if ($defaultsStmt) {
         foreach ($defaultsStmt->fetchAll(PDO::FETCH_ASSOC) as $defaultRow) {
-            $wf = trim((string)($defaultRow['work_function'] ?? ''));
+            $wf = trim((string)($defaultRow['department_slug'] ?? ''));
             $qid = isset($defaultRow['id']) ? (int)$defaultRow['id'] : 0;
             if ($wf === '' || $qid <= 0) {
                 continue;
@@ -444,7 +444,7 @@ foreach ($rows as $r) {
   </label>
 <label class="md-field"><span><?=t($t,'full_name','Full Name')?></span><input name="full_name"></label>
 <label class="md-field"><span><?=t($t,'email','Email')?></span><input name="email"></label>
-<label class="md-field"><span><?=t($t,'work_function','Work Function / Cadre')?></span>
+<label class="md-field"><span><?=t($t,'work_function','Work Role')?></span>
   <select name="work_function">
     <?php foreach ($workFunctionOptions as $function => $label): ?>
       <option value="<?=$function?>"><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
@@ -488,7 +488,7 @@ foreach ($rows as $r) {
               <dd><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
-              <dt><?=t($t,'work_function','Work Function / Cadre')?></dt>
+              <dt><?=t($t,'work_function','Work Role')?></dt>
               <dd><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
@@ -534,7 +534,7 @@ foreach ($rows as $r) {
                   </select>
                 </label>
                 <label class="md-field md-field--compact">
-                  <span><?=t($t,'work_function','Work Function / Cadre')?></span>
+                  <span><?=t($t,'work_function','Work Role')?></span>
                   <select name="work_function">
                     <?php foreach ($workFunctionOptions as $function => $label): ?>
                       <option value="<?=$function?>" <?=$record['work_function_key']===$function?'selected':''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
@@ -547,7 +547,7 @@ foreach ($rows as $r) {
                 </label>
                 <div class="md-user-assignment-defaults">
                   <?php if ($record['role_key'] === 'staff'): ?>
-                    <strong><?=t($t,'assignment_defaults_hint','These questionnaires are automatically available because of the staff member\'s work function. They cannot be removed here.')?></strong>
+                    <strong><?=t($t,'assignment_defaults_hint','These questionnaires are automatically available because of the staff member\'s department. They cannot be removed here.')?></strong>
                     <?php if ($record['default_titles']): ?>
                       <ul>
                         <?php foreach ($record['default_titles'] as $defaultTitle): ?>
@@ -555,7 +555,7 @@ foreach ($rows as $r) {
                         <?php endforeach; ?>
                       </ul>
                     <?php else: ?>
-                      <p class="md-user-assignment-empty"><?=t($t,'assignment_defaults_none','This work function does not have default questionnaires yet.')?></p>
+                      <p class="md-user-assignment-empty"><?=t($t,'assignment_defaults_none','This department does not have default questionnaires yet.')?></p>
                     <?php endif; ?>
                     <p class="md-user-assignment-empty"><?=t($t,'assignment_manage_from_defaults','Update the work function defaults to change which questionnaires appear here.')?></p>
                   <?php else: ?>
@@ -584,7 +584,7 @@ foreach ($rows as $r) {
             <th><?=t($t,'name','Name')?></th>
             <th><?=t($t,'username','Username')?></th>
             <th><?=t($t,'role','Role')?></th>
-            <th><?=t($t,'work_function','Work Function / Cadre')?></th>
+            <th><?=t($t,'work_function','Work Role')?></th>
             <th><?=t($t,'status','Status')?></th>
             <th><?=t($t,'next_assessment','Next Assessment Date')?></th>
             <th><?=t($t,'created','Created')?></th>
