@@ -156,10 +156,7 @@
       if (!(el instanceof HTMLElement)) {
         return false;
       }
-      if (el.hasAttribute('disabled')) {
-        return false;
-      }
-      if (el.getAttribute('aria-hidden') === 'true') {
+      if (el.hasAttribute('disabled') || el.getAttribute('aria-hidden') === 'true') {
         return false;
       }
       const rects = el.getClientRects();
@@ -173,26 +170,20 @@
     if (shouldShow) {
       backdrop.hidden = false;
       if (typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(() => {
-          backdrop.classList.add('is-visible');
-        });
+        window.requestAnimationFrame(() => backdrop.classList.add('is-visible'));
       } else {
         backdrop.classList.add('is-visible');
       }
-    } else {
-      backdrop.classList.remove('is-visible');
-      backdrop.hidden = true;
+      return;
     }
+    backdrop.classList.remove('is-visible');
+    backdrop.hidden = true;
   };
   const setBodyScrollLock = (shouldLock) => {
     if (!body) {
       return;
     }
-    if (shouldLock) {
-      body.classList.add('md-lock-scroll');
-    } else {
-      body.classList.remove('md-lock-scroll');
-    }
+    body.classList.toggle('md-lock-scroll', Boolean(shouldLock));
   };
   const applyTopnavA11yState = (isOpen) => {
     if (!topnav) {
@@ -206,6 +197,7 @@
       topnav.removeAttribute('tabindex');
     }
   };
+
   const setTopnavOpen = (isOpen) => {
     if (!topnav) {
       return;
@@ -218,28 +210,16 @@
     if (toggle) {
       toggle.setAttribute('aria-expanded', nextState ? 'true' : 'false');
     }
-    if (typeof closeTopnavSubmenus === 'function') {
-      closeTopnavSubmenus();
-    }
     const shouldLock = nextState && isMobileView();
     setBodyScrollLock(shouldLock);
     updateBackdrop(shouldLock);
     applyTopnavA11yState(nextState);
+
     if (shouldLock) {
-      const activeItem = topnav.querySelector('[data-topnav-item].is-active');
-      if (activeItem instanceof HTMLElement) {
-        const activeTrigger = activeItem.querySelector('[data-topnav-trigger]');
-        if (activeTrigger instanceof HTMLElement) {
-          activeTrigger.click();
-        }
-      }
-      const focusables = getTopnavFocusables();
-      const firstFocusable = focusables.length ? focusables[0] : null;
+      const firstFocusable = getTopnavFocusables()[0] || null;
       if (firstFocusable && typeof firstFocusable.focus === 'function') {
         if (typeof window.requestAnimationFrame === 'function') {
-          window.requestAnimationFrame(() => {
-            firstFocusable.focus();
-          });
+          window.requestAnimationFrame(() => firstFocusable.focus());
         } else {
           firstFocusable.focus();
         }
@@ -249,14 +229,16 @@
       lastFocusedElement = null;
     }
   };
-  const closeTopnav = () => {
-    setTopnavOpen(false);
-  };
+
+  const closeTopnav = () => setTopnavOpen(false);
+
   if (topnav) {
-    const items = Array.from(topnav.querySelectorAll('[data-topnav-item]'));
+    const items = Array.from(topnav.querySelectorAll('[data-topnav-item]')).filter((item) => item instanceof HTMLElement);
     const triggers = items.map((item) => item.querySelector('[data-topnav-trigger]')).filter((trigger) => trigger instanceof HTMLElement);
     const links = topnav.querySelectorAll('.md-topnav-link');
     const closeButtons = topnav.querySelectorAll('[data-topnav-close]');
+
+    let mobilePanel = null;
 
     const setItemExpanded = (item, expanded) => {
       if (!(item instanceof HTMLElement)) {
@@ -282,43 +264,70 @@
         setItemExpanded(item, false);
       });
     };
+    closeTopnavSubmenus = () => closeSubmenus();
 
     const openSubmenuForItem = (item) => {
-      if (!(item instanceof HTMLElement)) {
-        return;
-      }
-      if (isMobileView()) {
+      if (!(item instanceof HTMLElement) || isMobileView()) {
         return;
       }
       closeSubmenus(item);
       setItemExpanded(item, true);
     };
 
-    const toggleSubmenuForItem = (item) => {
-      if (!(item instanceof HTMLElement)) {
-        return;
+    const closeMobilePanel = () => {
+      topnav.classList.remove('md-mobile-panel-open');
+      topnav.removeAttribute('data-mobile-active');
+      if (mobilePanel instanceof HTMLElement) {
+        mobilePanel.classList.remove('is-active');
+        mobilePanel.innerHTML = '';
       }
-      if (isMobileView()) {
-        return;
-      }
-      const willOpen = !item.classList.contains('is-open');
-      closeSubmenus(item);
-      setItemExpanded(item, willOpen);
+      items.forEach((item) => {
+        const trigger = item.querySelector('[data-topnav-trigger]');
+        if (trigger instanceof HTMLElement) {
+          trigger.setAttribute('aria-expanded', 'false');
+        }
+      });
     };
 
-    closeTopnavSubmenus = () => closeSubmenus();
-
-    const syncSubmenusForViewport = () => {
-      if (isMobileView()) {
-        items.forEach((item) => {
-          setItemExpanded(item, true);
-        });
+    const openMobilePanel = (item) => {
+      if (!(item instanceof HTMLElement) || !isMobileView() || !(mobilePanel instanceof HTMLElement)) {
         return;
       }
-      const activeItem = items.find((item) => item.classList.contains('is-active')) || null;
-      closeSubmenus(activeItem);
-      if (activeItem) {
-        setItemExpanded(activeItem, true);
+      const trigger = item.querySelector('[data-topnav-trigger]');
+      const submenu = item.querySelector('.md-topnav-submenu');
+      const title = item.querySelector('.md-topnav-title');
+      if (!(submenu instanceof HTMLElement)) {
+        return;
+      }
+      const heading = title instanceof HTMLElement ? title.textContent.trim() : '';
+
+      items.forEach((candidate) => {
+        const candidateTrigger = candidate.querySelector('[data-topnav-trigger]');
+        if (candidateTrigger instanceof HTMLElement) {
+          candidateTrigger.setAttribute('aria-expanded', candidate === item ? 'true' : 'false');
+        }
+      });
+
+      mobilePanel.innerHTML = `
+        <button type="button" class="md-topnav-mobile-back" data-mobile-back>
+          <span aria-hidden="true">&larr;</span>
+          <span>${appStrings.mobile_menu_back || 'Back'}</span>
+        </button>
+        <p class="md-topnav-mobile-heading">${heading}</p>
+        <ul class="md-topnav-mobile-panel-list">${submenu.innerHTML}</ul>
+      `;
+      topnav.classList.add('md-mobile-panel-open');
+      topnav.setAttribute('data-mobile-active', heading || 'menu');
+      mobilePanel.classList.add('is-active');
+
+      const backButton = mobilePanel.querySelector('[data-mobile-back]');
+      if (backButton instanceof HTMLElement) {
+        backButton.addEventListener('click', () => {
+          closeMobilePanel();
+          if (trigger instanceof HTMLElement) {
+            trigger.focus();
+          }
+        });
       }
     };
 
@@ -328,14 +337,12 @@
       if (!(trigger instanceof HTMLElement) || !(submenu instanceof HTMLElement)) {
         return;
       }
-
       if (!submenu.id) {
         submenu.id = `topnav-submenu-${index + 1}`;
       }
       if (!trigger.id) {
         trigger.id = `topnav-trigger-${index + 1}`;
       }
-
       trigger.setAttribute('aria-controls', submenu.id);
       submenu.setAttribute('aria-labelledby', trigger.id);
       submenu.setAttribute('aria-hidden', 'true');
@@ -344,29 +351,34 @@
       trigger.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        toggleSubmenuForItem(item);
+        if (isMobileView()) {
+          openMobilePanel(item);
+          return;
+        }
+        const willOpen = !item.classList.contains('is-open');
+        closeSubmenus(item);
+        setItemExpanded(item, willOpen);
       });
 
-      trigger.addEventListener('focus', () => {
-        openSubmenuForItem(item);
-      });
-
-      item.addEventListener('mouseenter', () => {
-        openSubmenuForItem(item);
-      });
+      trigger.addEventListener('focus', () => openSubmenuForItem(item));
+      item.addEventListener('mouseenter', () => openSubmenuForItem(item));
     });
+
+    mobilePanel = document.createElement('div');
+    mobilePanel.className = 'md-topnav-mobile-panel';
+    mobilePanel.setAttribute('data-topnav-mobile-panel', '');
+    topnav.appendChild(mobilePanel);
 
     const closeMenusIfOutside = (target) => {
       if (target instanceof Node && (topnav.contains(target) || (toggle && toggle.contains(target)) || (backdrop && backdrop.contains(target)))) {
         return;
       }
       closeSubmenus();
+      closeMobilePanel();
       closeTopnav();
     };
 
-    document.addEventListener('pointerdown', (event) => {
-      closeMenusIfOutside(event.target);
-    });
+    document.addEventListener('pointerdown', (event) => closeMenusIfOutside(event.target));
 
     topnav.addEventListener('focusout', (event) => {
       if (isMobileView()) {
@@ -380,19 +392,18 @@
     });
 
     topnav.addEventListener('mouseleave', () => {
-      if (isMobileView()) {
-        return;
+      if (!isMobileView()) {
+        closeSubmenus();
       }
-      closeSubmenus();
     });
 
     topnav.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         closeSubmenus();
+        closeMobilePanel();
         closeTopnav();
         return;
       }
-
       if (!isMobileView() && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
         const activeTrigger = event.target instanceof HTMLElement ? event.target.closest('[data-topnav-trigger]') : null;
         if (!(activeTrigger instanceof HTMLElement)) {
@@ -404,14 +415,12 @@
         }
         event.preventDefault();
         const increment = event.key === 'ArrowRight' ? 1 : -1;
-        const nextIndex = (currentIndex + increment + triggers.length) % triggers.length;
-        const nextTrigger = triggers[nextIndex];
+        const nextTrigger = triggers[(currentIndex + increment + triggers.length) % triggers.length];
         if (nextTrigger && typeof nextTrigger.focus === 'function') {
           nextTrigger.focus();
         }
         return;
       }
-
       if (event.key === 'Tab' && isMobileView() && topnav.classList.contains('is-open')) {
         const focusables = getTopnavFocusables();
         if (!focusables.length) {
@@ -421,12 +430,10 @@
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
         const active = document.activeElement;
-        if (event.shiftKey) {
-          if (active === first) {
-            event.preventDefault();
-            last.focus();
-          }
-        } else if (active === last) {
+        if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
           event.preventDefault();
           first.focus();
         }
@@ -436,20 +443,64 @@
     links.forEach((link) => {
       link.addEventListener('click', () => {
         closeSubmenus();
+        closeMobilePanel();
         closeTopnav();
       });
     });
 
-    closeButtons.forEach((buttonEl) => {
-      buttonEl.addEventListener('click', () => {
+    topnav.addEventListener('click', (event) => {
+      const panelLink = event.target instanceof HTMLElement ? event.target.closest('.md-topnav-mobile-panel .md-topnav-link') : null;
+      if (panelLink) {
+        closeMobilePanel();
+        closeTopnav();
+      }
+    });
+
+    closeButtons.forEach((buttonEl) => buttonEl.addEventListener('click', () => {
+      closeMobilePanel();
+      closeTopnav();
+    }));
+
+    const syncTopnavForViewport = () => {
+      if (!topnav) {
+        return;
+      }
+      if (!isMobileView()) {
+        setBodyScrollLock(false);
+        updateBackdrop(false);
+        topnav.classList.remove('is-open');
+        applyTopnavA11yState(true);
+        closeMobilePanel();
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', 'false');
+        }
         closeSubmenus();
-        closeTopnav();
-      });
-    });
+        const activeItem = topnav.querySelector('[data-topnav-item].is-active');
+        if (activeItem instanceof HTMLElement) {
+          setItemExpanded(activeItem, true);
+        }
+        lastFocusedElement = null;
+        return;
+      }
+      const isOpen = topnav.classList.contains('is-open');
+      applyTopnavA11yState(isOpen);
+      if (!isOpen) {
+        closeMobilePanel();
+        setBodyScrollLock(false);
+        updateBackdrop(false);
+      }
+    };
 
-    syncSubmenusForViewport();
+    if (mobileMedia) {
+      if (typeof mobileMedia.addEventListener === 'function') {
+        mobileMedia.addEventListener('change', syncTopnavForViewport);
+      } else if (typeof mobileMedia.addListener === 'function') {
+        mobileMedia.addListener(syncTopnavForViewport);
+      }
+    }
+
+    syncTopnavForViewport();
   }
-
 
   if (topnav && toggle) {
     toggle.addEventListener('click', () => {
@@ -464,60 +515,6 @@
   if (backdrop) {
     backdrop.addEventListener('click', closeTopnav);
   }
-
-  const syncTopnavForViewport = () => {
-    if (!topnav) {
-      return;
-    }
-    if (!isMobileView()) {
-      setBodyScrollLock(false);
-      updateBackdrop(false);
-      topnav.classList.remove('is-open');
-      applyTopnavA11yState(true);
-      if (toggle) {
-        toggle.setAttribute('aria-expanded', 'false');
-      }
-      if (typeof closeTopnavSubmenus === 'function') {
-        closeTopnavSubmenus();
-      }
-      const activeItem = topnav.querySelector('[data-topnav-item].is-active');
-      if (activeItem instanceof HTMLElement) {
-        activeItem.classList.add('is-open');
-      }
-      lastFocusedElement = null;
-    } else {
-      topnav.querySelectorAll('[data-topnav-item]').forEach((item) => {
-        if (!(item instanceof HTMLElement)) {
-          return;
-        }
-        item.classList.add('is-open');
-        const trigger = item.querySelector('[data-topnav-trigger]');
-        const submenu = item.querySelector('.md-topnav-submenu');
-        if (trigger instanceof HTMLElement) {
-          trigger.setAttribute('aria-expanded', 'true');
-        }
-        if (submenu instanceof HTMLElement) {
-          submenu.setAttribute('aria-hidden', 'false');
-        }
-      });
-      const isOpen = topnav.classList.contains('is-open');
-      applyTopnavA11yState(isOpen);
-      if (!isOpen) {
-        setBodyScrollLock(false);
-        updateBackdrop(false);
-      }
-    }
-  };
-
-  if (mobileMedia) {
-    if (typeof mobileMedia.addEventListener === 'function') {
-      mobileMedia.addEventListener('change', syncTopnavForViewport);
-    } else if (typeof mobileMedia.addListener === 'function') {
-      mobileMedia.addListener(syncTopnavForViewport);
-    }
-  }
-
-  syncTopnavForViewport();
 
   if (!document.querySelector('link[rel="manifest"]')) {
     const manifest = document.createElement('link');
