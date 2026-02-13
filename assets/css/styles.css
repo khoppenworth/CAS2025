@@ -1637,6 +1637,10 @@ body.theme-dark .md-help-bubble::before {
   justify-content: center;
 }
 
+.md-required-popup[hidden] {
+  display: none;
+}
+
 .md-required-popup__backdrop {
   position: absolute;
   inset: 0;
@@ -3015,6 +3019,12 @@ body.theme-dark .md-button.md-secondary {
     gap: 0.45rem;
   }
 
+  .md-appbar-title span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .md-appbar-logo {
     width: 32px;
     height: 32px;
@@ -3022,7 +3032,29 @@ body.theme-dark .md-button.md-secondary {
   }
 
   .md-appbar-actions {
-    display: none;
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .md-appbar-link {
+    padding: 0 0.75rem;
+  }
+
+  .md-appbar-link.md-appbar-logout {
+    font-size: 0;
+    padding: 0;
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .md-appbar-link.md-appbar-logout::before {
+    content: "↪";
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .md-appbar-toggle {
@@ -3213,6 +3245,32 @@ body.theme-dark .md-button.md-secondary {
     justify-self: end;
     align-self: start;
     padding: 0 0.85rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .md-appbar-title span {
+    display: none;
+  }
+
+  .md-appbar-link {
+    min-height: 36px;
+    padding: 0 0.6rem;
+    font-size: 0.82rem;
+  }
+
+  .md-appbar-link.md-appbar-language,
+  .md-appbar-theme-toggle,
+  .md-appbar-link.md-appbar-logout {
+    flex-basis: 36px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .md-appbar-link.md-appbar-language .md-appbar-language-flag {
+    width: 20px;
+    height: 20px;
   }
 }
 
