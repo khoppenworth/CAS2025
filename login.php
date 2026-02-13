@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['pending_notice'] = true;
                 header('Location: ' . url_for('profile.php?pending=1'));
             } else {
-                header('Location: ' . url_for('my_performance.php'));
+                header('Location: ' . url_for('submit_assessment.php'));
             }
             exit;
         }
@@ -117,10 +117,10 @@ $signInSubheading = t(
     'Use your credentials to continue to your personalized workspace.'
 );
 $formAction = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
-$offlineRedirect = htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8');
+$offlineRedirect = htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8');
 $offlineWarmRoutes = htmlspecialchars(implode(',', [
-    url_for('my_performance.php'),
     url_for('submit_assessment.php'),
+    url_for('my_performance.php'),
     url_for('profile.php'),
     url_for('dashboard.php'),
 ]), ENT_QUOTES, 'UTF-8');

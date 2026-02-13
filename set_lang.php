@@ -9,7 +9,7 @@ if (!empty($_SESSION['user']['id'])) {
     $stmt->execute([$lang, $_SESSION['user']['id']]);
     refresh_current_user($pdo);
 }
-$redirect = cleanRedirect($_SERVER['HTTP_REFERER'] ?? '', url_for('my_performance.php'));
+$redirect = cleanRedirect($_SERVER['HTTP_REFERER'] ?? '', url_for('submit_assessment.php'));
 header('Location: ' . $redirect);
 exit;
 ?>

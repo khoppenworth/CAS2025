@@ -273,7 +273,7 @@ delivery workflow with ISO/IEC 12207 (software life cycle), ISO/IEC 25010
 ## Default navigation
 
 - `/index.php` – login
-- `/my_performance.php` – personal performance hub (default landing page after login)
+- `/my_performance.php` – personal performance hub for reviewing historical results
 - `/submit_assessment.php` – assessment submission
 - `/admin/*` – administration
 
