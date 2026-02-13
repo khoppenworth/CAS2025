@@ -1228,16 +1228,16 @@ function site_theme_tokens(array $cfg): array
 
     $bgGradient = sprintf('linear-gradient(140deg, %s 0%%, %s 45%%, %s 100%%)', $palette['bgStart'], $palette['bgMid'], $palette['bgEnd']);
 
-    $darkBackground = shade_color($primary, 0.88);
-    $darkSurface = shade_color($primary, 0.82);
-    $darkSurfaceAlt = shade_color($primary, 0.76);
-    $darkSurfaceMuted = shade_color($primary, 0.72);
-    $darkText = tint_color($primary, 0.68);
-    $darkTextSecondary = tint_color($primary, 0.58);
-    $darkTextMuted = tint_color($primary, 0.5);
-    $darkBorder = rgba_string($darkText, 0.24);
-    $darkBorderStrong = rgba_string($darkText, 0.32);
-    $darkDivider = rgba_string($darkText, 0.18);
+    $darkBackground = shade_color($primary, 0.94);
+    $darkSurface = shade_color($primary, 0.9);
+    $darkSurfaceAlt = shade_color($primary, 0.86);
+    $darkSurfaceMuted = shade_color($primary, 0.82);
+    $darkText = tint_color($primary, 0.88);
+    $darkTextSecondary = tint_color($primary, 0.78);
+    $darkTextMuted = tint_color($primary, 0.68);
+    $darkBorder = rgba_string($darkText, 0.38);
+    $darkBorderStrong = rgba_string($darkText, 0.5);
+    $darkDivider = rgba_string($darkText, 0.28);
     $darkShadow = '0 18px 46px ' . rgba_string(shade_color($primary, 0.74), 0.7);
     $darkShadowStrong = '0 22px 60px ' . rgba_string(shade_color($primary, 0.7), 0.78);
     $darkPrimarySoft = rgba_string($primaryLight, 0.22);
@@ -1272,8 +1272,8 @@ function site_theme_tokens(array $cfg): array
     $darkOnPrimary = contrast_color($primaryLight);
     $darkOnPrimarySoft = rgba_string($darkOnPrimary, 0.22);
     $darkOnPrimarySubtle = rgba_string($darkOnPrimary, 0.16);
-    $darkOnSurfaceMuted = tint_color($primary, 0.55);
-    $darkBgGradient = sprintf('radial-gradient(circle at top, %s 0%%, %s 45%%, %s 100%%)', shade_color($primary, 0.78), shade_color($primary, 0.82), shade_color($primary, 0.92));
+    $darkOnSurfaceMuted = tint_color($primary, 0.72);
+    $darkBgGradient = sprintf('radial-gradient(circle at top, %s 0%%, %s 45%%, %s 100%%)', shade_color($primary, 0.86), shade_color($primary, 0.9), shade_color($primary, 0.96));
 
     $root = [
         '--brand-primary' => $primary,
