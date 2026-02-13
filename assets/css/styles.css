@@ -2372,9 +2372,9 @@ body.theme-dark .md-floating-save-draft {
   padding: 0.85rem 1rem;
   border-radius: 12px;
   background: transparent;
-  color: var(--status-warning);
-  border: 1px solid var(--status-warning-border);
-  border-left: 5px solid var(--status-warning);
+  color: var(--status-warning, #f59e0b);
+  border: 1px solid var(--status-warning-border, rgba(245, 158, 11, 0.35));
+  border-left: 5px solid var(--status-warning, #f59e0b);
   margin-bottom: 1.1rem;
 }
 
@@ -2391,9 +2391,9 @@ body.theme-dark .md-floating-save-draft {
 }
 
 .md-alert.warning {
-  color: var(--status-warning);
-  border-color: var(--status-warning-border);
-  border-left-color: var(--status-warning);
+  color: var(--status-warning, #f59e0b);
+  border-color: var(--status-warning-border, rgba(245, 158, 11, 0.35));
+  border-left-color: var(--status-warning, #f59e0b);
 }
 
 .md-offline-banner {
@@ -2484,9 +2484,9 @@ body.theme-dark .md-offline-banner__dismiss:focus {
 
 .md-offline-draft[data-state="queued"],
 .md-offline-draft[data-state="reminder"] {
-  border-color: var(--status-warning-border);
-  border-left-color: var(--status-warning);
-  color: var(--status-warning);
+  border-color: var(--status-warning-border, rgba(245, 158, 11, 0.35));
+  border-left-color: var(--status-warning, #f59e0b);
+  color: var(--status-warning, #f59e0b);
 }
 
 .md-offline-draft[data-state="error"] {
@@ -2497,9 +2497,10 @@ body.theme-dark .md-offline-banner__dismiss:focus {
 
 .md-draft-alert {
   margin-top: 1rem;
-  border-color: var(--status-warning-border);
-  border-left-color: var(--status-warning);
-  color: var(--status-warning);
+  background: var(--status-warning-surface, #fef3c7);
+  border-color: var(--status-warning-border, rgba(245, 158, 11, 0.35));
+  border-left-color: var(--status-warning, #f59e0b);
+  color: var(--status-warning, #f59e0b);
 }
 
 .md-draft-list {
@@ -2512,17 +2513,17 @@ body.theme-dark .md-offline-banner__dismiss:focus {
 }
 
 .md-draft-list a {
-  color: var(--status-warning);
+  color: var(--status-warning, #f59e0b);
   font-weight: 600;
   text-decoration: none;
 }
 
 .md-draft-list a:visited {
-  color: var(--status-warning);
+  color: var(--status-warning, #f59e0b);
 }
 
 .md-draft-alert strong {
-  color: var(--status-warning);
+  color: var(--status-warning, #f59e0b);
 }
 
 .md-draft-list a:hover,
@@ -3784,7 +3785,7 @@ body.theme-dark .md-upgrade-progress__message {
 
 body.theme-dark .md-work-function-card {
   background: color-mix(in srgb, var(--md-surface) 90%, transparent);
-  border-color: color-mix(in srgb, var(--app-text-secondary, #d1d5f9) 18%, transparent);
+  border-color: color-mix(in srgb, var(--app-text-secondary, #94a3b8) 18%, transparent);
 }
 
 .md-work-function-heading h3 {
