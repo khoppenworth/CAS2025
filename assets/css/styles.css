@@ -1637,6 +1637,10 @@ body.theme-dark .md-help-bubble::before {
   justify-content: center;
 }
 
+.md-required-popup[hidden] {
+  display: none;
+}
+
 .md-required-popup__backdrop {
   position: absolute;
   inset: 0;
