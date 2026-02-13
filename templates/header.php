@@ -123,7 +123,12 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
         decoding="async"
       >
     </a>
-    <a href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>" class="md-appbar-link">
+    <a
+      href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>"
+      class="md-appbar-link md-appbar-logout"
+      aria-label="<?=htmlspecialchars(t($t, 'logout', 'Logout'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'logout', 'Logout'), ENT_QUOTES, 'UTF-8')?>"
+    >
       <?=t($t, 'logout', 'Logout')?>
     </a>
   </div>
