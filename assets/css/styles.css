@@ -3019,6 +3019,12 @@ body.theme-dark .md-button.md-secondary {
     gap: 0.45rem;
   }
 
+  .md-appbar-title span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .md-appbar-logo {
     width: 32px;
     height: 32px;
@@ -3034,6 +3040,21 @@ body.theme-dark .md-button.md-secondary {
 
   .md-appbar-link {
     padding: 0 0.75rem;
+  }
+
+  .md-appbar-link.md-appbar-logout {
+    font-size: 0;
+    padding: 0;
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .md-appbar-link.md-appbar-logout::before {
+    content: "↪";
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .md-appbar-toggle {
@@ -3239,7 +3260,8 @@ body.theme-dark .md-button.md-secondary {
   }
 
   .md-appbar-link.md-appbar-language,
-  .md-appbar-theme-toggle {
+  .md-appbar-theme-toggle,
+  .md-appbar-link.md-appbar-logout {
     flex-basis: 36px;
     width: 36px;
     min-width: 36px;
