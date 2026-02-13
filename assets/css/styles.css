@@ -2879,8 +2879,8 @@ body.theme-dark .md-button.md-secondary {
 
 .md-footer {
   padding: 2.8rem 1.35rem 2.5rem;
-  background: linear-gradient(160deg, var(--footer-bg-start) 0%, var(--footer-bg-mid) 55%, var(--footer-bg-end) 100%);
-  color: var(--footer-text);
+  background: linear-gradient(160deg, var(--app-on-surface-strong) 0%, var(--app-on-surface-strong) 55%, var(--app-on-surface-muted) 100%);
+  color: var(--app-surface-alt);
   position: relative;
   overflow: hidden;
 }
@@ -2907,14 +2907,14 @@ body.theme-dark .md-button.md-secondary {
 }
 
 .md-footer a {
-  color: var(--footer-link);
+  color: var(--app-surface-highlight);
   text-decoration: none;
   font-weight: 500;
 }
 
 .md-footer a:hover,
 .md-footer a:focus {
-  color: var(--footer-link-hover);
+  color: var(--app-text-inverse);
   text-decoration: underline;
 }
 
