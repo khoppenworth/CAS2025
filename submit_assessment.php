@@ -575,7 +575,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/templates/header.php'; ?>
 <section class="md-section">
-<div class="md-card md-elev-2">
+<div class="md-card md-elev-2 md-assessment-shell">
   <h2 class="md-card-title"><?=t($t,'submit_assessment','Submit Assessment')?></h2>
   <?php if ($flashNotice): ?><div class="md-alert success"><?=htmlspecialchars($flashNotice, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
   <?php if (!empty($err)): ?><div class="md-alert error"><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
