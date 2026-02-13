@@ -97,16 +97,6 @@ $featureItems = [
     ],
 ];
 
-$navItems = [
-    ['label' => htmlspecialchars(t($t, 'nav_home', 'Home'), ENT_QUOTES, 'UTF-8'), 'href' => '#home'],
-    ['label' => htmlspecialchars(t($t, 'nav_about', 'About'), ENT_QUOTES, 'UTF-8'), 'href' => '#about'],
-    ['label' => htmlspecialchars(t($t, 'nav_procurement', 'Procurement'), ENT_QUOTES, 'UTF-8'), 'href' => '#services'],
-    ['label' => htmlspecialchars(t($t, 'nav_marketing', 'Marketing'), ENT_QUOTES, 'UTF-8'), 'href' => '#news'],
-    ['label' => htmlspecialchars(t($t, 'nav_resources', 'Resources'), ENT_QUOTES, 'UTF-8'), 'href' => '#gallery'],
-    ['label' => htmlspecialchars(t($t, 'nav_news', 'News'), ENT_QUOTES, 'UTF-8'), 'href' => '#news'],
-    ['label' => htmlspecialchars(t($t, 'nav_contact', 'Contact'), ENT_QUOTES, 'UTF-8'), 'href' => '#contact'],
-];
-
 $statTiles = [
     ['value' => '12K+', 'label' => htmlspecialchars(t($t, 'stat_registered_users', 'Registered professionals'), ENT_QUOTES, 'UTF-8')],
     ['value' => '97%', 'label' => htmlspecialchars(t($t, 'stat_timely_reviews', 'On-time review completion'), ENT_QUOTES, 'UTF-8')],
@@ -203,11 +193,6 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
           <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">
           <span class="landing-brand__name"><?= $siteName ?></span>
         </a>
-        <nav class="landing-nav" aria-label="<?= htmlspecialchars(t($t, 'main_navigation', 'Main navigation'), ENT_QUOTES, 'UTF-8') ?>">
-          <?php foreach ($navItems as $item): ?>
-            <a href="<?= $item['href'] ?>"><?= $item['label'] ?></a>
-          <?php endforeach; ?>
-        </nav>
         <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
       </div>
     </header>
