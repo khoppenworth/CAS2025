@@ -140,7 +140,7 @@ if ($status === 'pending') {
     exit;
 }
 
-header('Location: ' . url_for('my_performance.php'));
+header('Location: ' . url_for('submit_assessment.php'));
 exit;
 
 function oauth_fail(string $message, string $provider): void
