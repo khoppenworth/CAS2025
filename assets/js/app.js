@@ -20,6 +20,7 @@
     : {};
   const themeToggleButton = document.querySelector('[data-theme-toggle]');
   const themeOverrideStorageKey = 'hrassess:theme:override';
+  const darkModeDisabled = body && body.getAttribute('data-disable-dark-mode') === '1';
 
   const applyTheme = (theme) => {
     const next = theme === 'dark' ? 'dark' : 'light';
@@ -116,24 +117,31 @@
   };
 
   let manualThemeOverride = getStoredThemeOverride();
-  applyThemeMode(manualThemeOverride);
+  if (darkModeDisabled) {
+    applyTheme('light');
+    if (themeToggleButton) {
+      themeToggleButton.hidden = true;
+    }
+  } else {
+    applyThemeMode(manualThemeOverride);
 
-  if (!manualThemeOverride && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
-    navigator.geolocation.getCurrentPosition((position) => {
-      applyThemeMode(null, position && position.coords ? position.coords : null);
-    }, () => {
-      // Ignore geolocation errors and keep time-based fallback.
-    }, { maximumAge: 30 * 60 * 1000, timeout: 3000, enableHighAccuracy: false });
-  }
+    if (!manualThemeOverride && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
+      navigator.geolocation.getCurrentPosition((position) => {
+        applyThemeMode(null, position && position.coords ? position.coords : null);
+      }, () => {
+        // Ignore geolocation errors and keep time-based fallback.
+      }, { maximumAge: 30 * 60 * 1000, timeout: 3000, enableHighAccuracy: false });
+    }
 
-  if (themeToggleButton) {
-    themeToggleButton.addEventListener('click', () => {
-      const currentTheme = document.body.classList.contains('theme-dark') ? 'dark' : 'light';
-      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      manualThemeOverride = nextTheme;
-      saveThemeOverride(nextTheme);
-      applyThemeMode(manualThemeOverride);
-    });
+    if (themeToggleButton) {
+      themeToggleButton.addEventListener('click', () => {
+        const currentTheme = document.body.classList.contains('theme-dark') ? 'dark' : 'light';
+        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        manualThemeOverride = nextTheme;
+        saveThemeOverride(nextTheme);
+        applyThemeMode(manualThemeOverride);
+      });
+    }
   }
 
   const isMobileView = () => (mobileMedia ? mobileMedia.matches : window.innerWidth <= 900);

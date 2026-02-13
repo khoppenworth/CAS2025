@@ -150,7 +150,7 @@ render_login:
     <style id="md-brand-style"><?= htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8') ?></style>
   <?php endif; ?>
 </head>
-<body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>">
+<body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>" data-disable-dark-mode="1">
   <div class="login-shell">
     <div class="login-tile">
       <div class="login-visual">

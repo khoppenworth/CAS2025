@@ -97,7 +97,7 @@ $featureItems = [
     <style id="md-brand-style"><?= htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8') ?></style>
   <?php endif; ?>
 </head>
-<body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>">
+<body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>" data-disable-dark-mode="1">
   <div class="landing-page">
     <header class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
       <div class="landing-hero__content" aria-labelledby="landing-title">
