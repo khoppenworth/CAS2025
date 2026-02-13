@@ -34,6 +34,47 @@ body.landing-body {
   color: inherit;
 }
 
+.landing-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--md-surface) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+}
+
+.landing-topbar__inner {
+  width: min(1200px, 100% - 2rem);
+  margin: 0 auto;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.landing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.9rem;
+}
+
+.landing-nav a {
+  text-decoration: none;
+  color: var(--app-text-primary, #10213d);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+}
+
+.landing-nav a:hover,
+.landing-nav a:focus-visible {
+  color: var(--landing-primary);
+  background: color-mix(in srgb, var(--landing-primary) 10%, transparent);
+}
+
 
 .landing-hero {
   position: relative;
@@ -145,6 +186,7 @@ body.landing-body {
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   box-shadow: var(--landing-shadow-sm);
+  text-decoration: none;
 }
 
 .landing-brand__logo {
@@ -291,6 +333,87 @@ body.landing-body {
   gap: clamp(1.5rem, 3vw, 2.5rem);
 }
 
+.landing-stats-grid,
+.landing-events-grid,
+.landing-news-grid,
+.landing-partners-grid {
+  width: var(--landing-container-width);
+  margin: 0 auto;
+  display: grid;
+  gap: 1.2rem;
+}
+
+.landing-stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.landing-stat-card {
+  padding: 1.4rem;
+  border-radius: var(--landing-radius-md);
+  background: color-mix(in srgb, var(--md-surface) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border) 65%, transparent);
+  box-shadow: var(--landing-shadow-sm);
+}
+
+.landing-stat-card h3 {
+  margin: 0;
+  color: var(--landing-primary-dark);
+  font-size: 1.9rem;
+}
+
+.landing-stat-card p {
+  margin: 0.45rem 0 0;
+  color: var(--app-text-secondary, #4b5a6b);
+}
+
+.landing-events-grid,
+.landing-news-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.landing-event-card,
+.landing-news-card {
+  padding: 1.35rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--md-surface) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border) 65%, transparent);
+}
+
+.landing-event-card h3 {
+  margin: 0;
+  color: var(--landing-primary-dark);
+  font-size: 1.06rem;
+}
+
+.landing-event-card p,
+.landing-news-card p {
+  margin: 0.6rem 0 0;
+  color: var(--app-text-secondary, #4b5a6b);
+}
+
+.landing-gallery-band {
+  width: var(--landing-container-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.landing-gallery-band span,
+.landing-partners-grid span {
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+  text-align: center;
+  border: 1px dashed color-mix(in srgb, var(--landing-primary) 28%, transparent);
+  background: color-mix(in srgb, var(--landing-primary) 7%, transparent);
+  font-weight: 600;
+  color: var(--landing-primary-dark);
+}
+
+.landing-partners-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
 .landing-feature-card {
   padding: 1.85rem;
   border-radius: var(--landing-radius-md);
@@ -385,6 +508,28 @@ body.landing-body {
   align-items: flex-start;
 }
 
+.landing-footer h3 {
+  margin: 0 0 0.7rem;
+  color: #1d2939;
+  font-size: 1rem;
+}
+
+.landing-footer__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.landing-footer__links a {
+  text-decoration: none;
+  color: var(--app-text-secondary, #4f5b66);
+}
+
+.landing-footer__links a:hover,
+.landing-footer__links a:focus-visible {
+  text-decoration: underline;
+}
+
 .landing-footer__languages {
   display: flex;
   flex-wrap: wrap;
@@ -426,6 +571,12 @@ body.landing-body {
 }
 
 @media (max-width: 720px) {
+  .landing-topbar__inner {
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.75rem 0;
+  }
+
   .landing-hero {
     text-align: center;
   }
