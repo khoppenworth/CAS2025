@@ -50,6 +50,7 @@ $clientStrings = [
     'theme_mode_manual' => t($t, 'theme_mode_manual', 'Manual'),
     'theme_switch_to_light' => t($t, 'theme_switch_to_light', 'Switch to light theme'),
     'theme_switch_to_dark' => t($t, 'theme_switch_to_dark', 'Switch to dark theme'),
+    'mobile_menu_back' => t($t, 'mobile_menu_back', 'Back'),
 ];
 $isActiveNav = static function (string ...$keys) use ($drawerKey): bool {
     if ($drawerKey === null) {
