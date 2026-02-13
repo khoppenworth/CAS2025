@@ -1067,9 +1067,11 @@ function site_brand_palette(array $cfg): array
     $secondary = tint_color($base, 0.45);
     $muted = shade_color($base, 0.6);
     $mutedLight = tint_color($base, 0.55);
-    $bgStart = tint_color($primaryLight, 0.35);
-    $bgMid = tint_color($secondary, 0.2);
-    $bgEnd = tint_color($base, 0.55);
+    // Keep application surfaces on a very light brand-tinted gradient,
+    // matching the softer treatment used on the login experience.
+    $bgStart = tint_color($primaryLight, 0.78);
+    $bgMid = tint_color($secondary, 0.82);
+    $bgEnd = tint_color($base, 0.9);
 
     return [
         'primary' => $base,
