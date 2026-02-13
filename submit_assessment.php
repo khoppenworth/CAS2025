@@ -17,18 +17,27 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 $user = current_user();
 try {
     if (($user['role'] ?? '') !== 'admin') {
-        $workFunction = canonical(trim((string)($user['work_function'] ?? '')));
+        $definitions = work_function_definitions($pdo);
+        $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
         $assigned = [];
 
         if ($workFunction !== '') {
-            $stmt = $pdo->prepare(
-                "SELECT q.id AS id, q.title AS title FROM questionnaire_work_function qwf " .
-                "JOIN questionnaire q ON q.id = qwf.questionnaire_id " .
-                "WHERE qwf.work_function = :wf AND q.status='published' ORDER BY q.title"
+            $workFunctionAssignments = work_function_assignments($pdo);
+            $assignedQuestionnaireIds = array_map(
+                'intval',
+                $workFunctionAssignments[$workFunction] ?? []
             );
-            $stmt->execute([':wf' => $workFunction]);
-            foreach ($stmt->fetchAll() as $row) {
-                $assigned[(int)$row['id']] = $row;
+
+            if ($assignedQuestionnaireIds) {
+                $placeholders = implode(',', array_fill(0, count($assignedQuestionnaireIds), '?'));
+                $stmt = $pdo->prepare(
+                    "SELECT q.id AS id, q.title AS title FROM questionnaire q " .
+                    "WHERE q.id IN ($placeholders) AND q.status='published' ORDER BY q.title"
+                );
+                $stmt->execute($assignedQuestionnaireIds);
+                foreach ($stmt->fetchAll() as $row) {
+                    $assigned[(int)$row['id']] = $row;
+                }
             }
         }
 
