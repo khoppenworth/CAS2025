@@ -716,7 +716,7 @@ foreach ($questionnaires as $qRow) {
 if ($selectedQuestionnaireId) {
     $responseStmt = $pdo->prepare(
         'SELECT qr.id, qr.status, qr.score, qr.created_at, qr.review_comment, '
-        . 'u.id AS user_id, u.username, u.full_name, u.work_function, pp.label AS period_label '
+        . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, pp.label AS period_label '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id '
@@ -727,14 +727,14 @@ if ($selectedQuestionnaireId) {
     $selectedResponses = $responseStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $userStmt = $pdo->prepare(
-        'SELECT u.id AS user_id, u.username, u.full_name, u.work_function, '
+        'SELECT u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, '
         . 'COUNT(*) AS total_responses, '
         . 'SUM(qr.status="approved") AS approved_count, '
         . 'AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'WHERE qr.questionnaire_id = ? '
-        . 'GROUP BY u.id, u.username, u.full_name, u.work_function '
+        . 'GROUP BY u.id, u.username, u.full_name, u.department, u.cadre, u.work_function '
         . 'ORDER BY avg_score DESC'
     );
     $userStmt->execute([$selectedQuestionnaireId]);
@@ -972,6 +972,8 @@ if ($selectedQuestionnaireId) {
 }
 
 $workFunctionOptions = work_function_choices($pdo);
+$departmentOptions = department_options($pdo);
+$teamCatalog = department_team_catalog($pdo);
 $workFunctionStmt = $pdo->query(
     "SELECT u.work_function, COUNT(*) AS total_responses, "
     . "SUM(qr.status='approved') AS approved_count, "
@@ -982,6 +984,28 @@ $workFunctionStmt = $pdo->query(
     . "ORDER BY total_responses DESC"
 );
 $workFunctionSummary = $workFunctionStmt ? $workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+$departmentSummaryStmt = $pdo->query(
+    "SELECT u.department, COUNT(*) AS total_responses, "
+    . "SUM(qr.status='approved') AS approved_count, "
+    . "AVG(qr.score) AS avg_score "
+    . "FROM questionnaire_response qr "
+    . "JOIN users u ON u.id = qr.user_id "
+    . "GROUP BY u.department "
+    . "ORDER BY total_responses DESC"
+);
+$departmentSummary = $departmentSummaryStmt ? $departmentSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+$teamSummaryStmt = $pdo->query(
+    "SELECT u.cadre, COUNT(*) AS total_responses, "
+    . "SUM(qr.status='approved') AS approved_count, "
+    . "AVG(qr.score) AS avg_score "
+    . "FROM questionnaire_response qr "
+    . "JOIN users u ON u.id = qr.user_id "
+    . "GROUP BY u.cadre "
+    . "ORDER BY total_responses DESC"
+);
+$teamSummary = $teamSummaryStmt ? $teamSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 foreach ($workFunctionSummary as &$wfRow) {
     $wfKey = (string)($wfRow['work_function'] ?? '');
     if ($wfRow['avg_score'] !== null) {
@@ -1791,7 +1815,9 @@ $pageHelpKey = 'team.analytics';
           <thead>
             <tr>
               <th><?=t($t, 'user', 'User')?></th>
-              <th><?=t($t, 'work_function', 'Work Function / Cadre')?></th>
+              <th><?=t($t, 'department', 'Department')?></th>
+              <th><?=t($t, 'cadre', 'Team in the Department')?></th>
+              <th><?=t($t, 'work_function', 'Work Role')?></th>
               <th><?=t($t, 'count', 'Responses')?></th>
               <th><?=t($t, 'approved', 'Approved')?></th>
               <th><?=t($t, 'average_score', 'Average score (%)')?></th>
@@ -1807,6 +1833,8 @@ $pageHelpKey = 'team.analytics';
                     <br><span class="md-muted"><?=htmlspecialchars($row['full_name'], ENT_QUOTES, 'UTF-8')?></span>
                   <?php endif; ?>
                 </td>
+                <td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
+                <td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td>
                 <td><?=htmlspecialchars($workFunctionOptions[$workFunctionKey] ?? $workFunctionKey ?? '', ENT_QUOTES, 'UTF-8')?></td>
                 <td><?= (int)$row['total_responses'] ?></td>
                 <td><?= (int)$row['approved_count'] ?></td>
@@ -1822,7 +1850,27 @@ $pageHelpKey = 'team.analytics';
   <?php endif; ?>
 
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'work_function_performance', 'Work Function Performance')?></h2>
+    <h2 class="md-card-title"><?=t($t, 'department_performance', 'Department Performance')?></h2>
+    <?php if ($departmentSummary): ?>
+      <table class="md-table"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+      <?php foreach ($departmentSummary as $row): ?>
+        <tr><td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?: t($t,'unknown','Unknown')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
+      <?php endforeach; ?></tbody></table>
+    <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+  </div>
+
+  <div class="md-card md-elev-2">
+    <h2 class="md-card-title"><?=t($t, 'team_performance', 'Team Performance')?></h2>
+    <?php if ($teamSummary): ?>
+      <table class="md-table"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+      <?php foreach ($teamSummary as $row): ?>
+        <tr><td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
+      <?php endforeach; ?></tbody></table>
+    <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+  </div>
+
+  <div class="md-card md-elev-2">
+    <h2 class="md-card-title"><?=t($t, 'work_function_performance', 'Work Role Performance')?></h2>
     <?php if ($workFunctionSummary): ?>
       <?php if ($workFunctionChartData): ?>
         <div
@@ -1837,7 +1885,7 @@ $pageHelpKey = 'team.analytics';
       <table class="md-table">
         <thead>
           <tr>
-            <th><?=t($t, 'work_function', 'Work Function / Cadre')?></th>
+            <th><?=t($t, 'work_function', 'Work Role')?></th>
             <th><?=t($t, 'count', 'Responses')?></th>
             <th><?=t($t, 'approved', 'Approved')?></th>
             <th><?=t($t, 'average_score', 'Average score (%)')?></th>
