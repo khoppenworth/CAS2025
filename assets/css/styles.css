@@ -2539,6 +2539,62 @@ body.theme-dark .md-appbar-logo {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
 }
 
+body.theme-dark .md-topnav {
+  background: color-mix(in srgb, var(--app-surface) 92%, #ffffff 8%);
+  border-color: var(--app-border);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.4);
+}
+
+body.theme-dark .md-topnav:hover,
+body.theme-dark .md-topnav:focus-within {
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.5);
+}
+
+body.theme-dark .md-topnav-trigger {
+  color: var(--app-text-primary);
+}
+
+body.theme-dark .md-topnav-trigger:hover,
+body.theme-dark .md-topnav-trigger:focus-visible,
+body.theme-dark .md-topnav-item.is-active > .md-topnav-trigger,
+body.theme-dark .md-topnav-item.is-open > .md-topnav-trigger {
+  background: var(--app-primary-soft);
+  color: var(--app-text-primary);
+  border-color: var(--app-border-strong);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-dark .md-topnav-submenu {
+  background: color-mix(in srgb, var(--app-surface-alt) 94%, #ffffff 6%);
+  border-color: var(--app-border);
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.45);
+}
+
+body.theme-dark .md-topnav-link {
+  color: var(--app-text-primary);
+}
+
+body.theme-dark .md-topnav-link:hover,
+body.theme-dark .md-topnav-link:focus-visible,
+body.theme-dark .md-topnav-link.active {
+  background: var(--app-primary-soft);
+  color: var(--app-text-primary);
+}
+
+body.theme-dark .md-topnav-link-desc,
+body.theme-dark .md-topnav-link-icon,
+body.theme-dark .md-topnav-desc {
+  color: var(--app-text-secondary);
+}
+
+body.theme-dark .md-topnav-link.active .md-topnav-link-desc,
+body.theme-dark .md-topnav-link:hover .md-topnav-link-desc,
+body.theme-dark .md-topnav-link:focus-visible .md-topnav-link-desc,
+body.theme-dark .md-topnav-trigger:hover .md-topnav-desc,
+body.theme-dark .md-topnav-trigger:focus-visible .md-topnav-desc {
+  color: var(--app-text-primary);
+}
+
 body.theme-dark .md-drawer {
   background: var(--app-surface);
   box-shadow: 14px 0 38px var(--app-shadow-strong);
@@ -2800,8 +2856,8 @@ body.theme-dark .md-button.md-secondary {
 
 .md-footer {
   padding: 2.8rem 1.35rem 2.5rem;
-  background: linear-gradient(160deg, var(--app-on-surface-strong) 0%, var(--app-on-surface-strong) 55%, var(--app-on-surface-muted) 100%);
-  color: var(--app-surface-alt);
+  background: linear-gradient(160deg, var(--footer-bg-start) 0%, var(--footer-bg-mid) 55%, var(--footer-bg-end) 100%);
+  color: var(--footer-text);
   position: relative;
   overflow: hidden;
 }
@@ -2828,14 +2884,14 @@ body.theme-dark .md-button.md-secondary {
 }
 
 .md-footer a {
-  color: var(--app-surface-highlight);
+  color: var(--footer-link);
   text-decoration: none;
   font-weight: 500;
 }
 
 .md-footer a:hover,
 .md-footer a:focus {
-  color: var(--app-text-inverse);
+  color: var(--footer-link-hover);
   text-decoration: underline;
 }
 
