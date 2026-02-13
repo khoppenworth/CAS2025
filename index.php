@@ -96,6 +96,46 @@ $featureItems = [
         ), ENT_QUOTES, 'UTF-8'),
     ],
 ];
+
+$navItems = [
+    ['label' => htmlspecialchars(t($t, 'nav_home', 'Home'), ENT_QUOTES, 'UTF-8'), 'href' => '#home'],
+    ['label' => htmlspecialchars(t($t, 'nav_about', 'About'), ENT_QUOTES, 'UTF-8'), 'href' => '#about'],
+    ['label' => htmlspecialchars(t($t, 'nav_procurement', 'Procurement'), ENT_QUOTES, 'UTF-8'), 'href' => '#services'],
+    ['label' => htmlspecialchars(t($t, 'nav_marketing', 'Marketing'), ENT_QUOTES, 'UTF-8'), 'href' => '#news'],
+    ['label' => htmlspecialchars(t($t, 'nav_resources', 'Resources'), ENT_QUOTES, 'UTF-8'), 'href' => '#gallery'],
+    ['label' => htmlspecialchars(t($t, 'nav_news', 'News'), ENT_QUOTES, 'UTF-8'), 'href' => '#news'],
+    ['label' => htmlspecialchars(t($t, 'nav_contact', 'Contact'), ENT_QUOTES, 'UTF-8'), 'href' => '#contact'],
+];
+
+$statTiles = [
+    ['value' => '12K+', 'label' => htmlspecialchars(t($t, 'stat_registered_users', 'Registered professionals'), ENT_QUOTES, 'UTF-8')],
+    ['value' => '97%', 'label' => htmlspecialchars(t($t, 'stat_timely_reviews', 'On-time review completion'), ENT_QUOTES, 'UTF-8')],
+    ['value' => '350+', 'label' => htmlspecialchars(t($t, 'stat_active_programs', 'Active development programmes'), ENT_QUOTES, 'UTF-8')],
+    ['value' => '24/7', 'label' => htmlspecialchars(t($t, 'stat_portal_access', 'Portal availability'), ENT_QUOTES, 'UTF-8')],
+];
+
+$eventCards = [
+    [
+        'title' => htmlspecialchars(t($t, 'event_one_title', 'Leadership coaching workshop'), ENT_QUOTES, 'UTF-8'),
+        'meta' => htmlspecialchars(t($t, 'event_one_meta', '12 May 2026 · Addis Ababa'), ENT_QUOTES, 'UTF-8'),
+    ],
+    [
+        'title' => htmlspecialchars(t($t, 'event_two_title', 'Digital appraisal rollout briefing'), ENT_QUOTES, 'UTF-8'),
+        'meta' => htmlspecialchars(t($t, 'event_two_meta', '18 May 2026 · Virtual session'), ENT_QUOTES, 'UTF-8'),
+    ],
+    [
+        'title' => htmlspecialchars(t($t, 'event_three_title', 'Performance data quality clinic'), ENT_QUOTES, 'UTF-8'),
+        'meta' => htmlspecialchars(t($t, 'event_three_meta', '26 May 2026 · Hawassa'), ENT_QUOTES, 'UTF-8'),
+    ],
+];
+
+$newsCards = [
+    htmlspecialchars(t($t, 'news_one', 'New quarterly performance framework and templates are now available.'), ENT_QUOTES, 'UTF-8'),
+    htmlspecialchars(t($t, 'news_two', 'Regional managers can now submit consolidated reports in a single workflow.'), ENT_QUOTES, 'UTF-8'),
+    htmlspecialchars(t($t, 'news_three', 'Supervisor scorecards include stronger competency benchmarking insights.'), ENT_QUOTES, 'UTF-8'),
+];
+
+$partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR Council'];
 ?>
 <!doctype html>
 <html lang="<?= $langAttr ?>" data-base-url="<?= $baseUrl ?>">
@@ -157,8 +197,23 @@ $featureItems = [
 </head>
 <body class="<?= $bodyClass ?>" style="<?= $bodyStyle ?>" data-disable-dark-mode="1">
   <div class="landing-page">
-    <header class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
-      <div class="landing-hero__content" aria-labelledby="landing-title">
+    <header class="landing-topbar" id="home">
+      <div class="landing-topbar__inner">
+        <a class="landing-brand" href="#home">
+          <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">
+          <span class="landing-brand__name"><?= $siteName ?></span>
+        </a>
+        <nav class="landing-nav" aria-label="<?= htmlspecialchars(t($t, 'main_navigation', 'Main navigation'), ENT_QUOTES, 'UTF-8') ?>">
+          <?php foreach ($navItems as $item): ?>
+            <a href="<?= $item['href'] ?>"><?= $item['label'] ?></a>
+          <?php endforeach; ?>
+        </nav>
+        <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
+      </div>
+    </header>
+
+    <section class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
+      <div class="landing-hero__content" aria-labelledby="landing-title" id="about">
         <div class="landing-brand">
           <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">
           <span class="landing-brand__name"><?= $siteName ?></span>
@@ -190,10 +245,21 @@ $featureItems = [
           <?php endforeach; ?>
         </ul>
       </div>
-    </header>
+    </section>
 
     <main class="landing-main" aria-labelledby="features-heading">
-      <section class="landing-section landing-section--features">
+      <section class="landing-section landing-section--stats">
+        <div class="landing-stats-grid">
+          <?php foreach ($statTiles as $tile): ?>
+            <article class="landing-stat-card">
+              <h3><?= $tile['value'] ?></h3>
+              <p><?= $tile['label'] ?></p>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--features" id="services">
         <div class="landing-section__header">
           <h2 id="features-heading"><?= htmlspecialchars(t($t, 'features_heading', 'What sets the experience apart'), ENT_QUOTES, 'UTF-8') ?></h2>
           <p><?= htmlspecialchars(t($t, 'features_subheading', 'Every element of the portal is crafted to elevate employee growth and organisational performance.'), ENT_QUOTES, 'UTF-8') ?></p>
@@ -208,10 +274,66 @@ $featureItems = [
         </div>
       </section>
 
+      <section class="landing-section landing-section--events" id="events">
+        <div class="landing-section__header">
+          <h2><?= htmlspecialchars(t($t, 'events_heading', 'Upcoming events'), ENT_QUOTES, 'UTF-8') ?></h2>
+        </div>
+        <div class="landing-events-grid">
+          <?php foreach ($eventCards as $event): ?>
+            <article class="landing-event-card">
+              <h3><?= $event['title'] ?></h3>
+              <p><?= $event['meta'] ?></p>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--news" id="news">
+        <div class="landing-section__header">
+          <h2><?= htmlspecialchars(t($t, 'latest_news', 'Latest news'), ENT_QUOTES, 'UTF-8') ?></h2>
+        </div>
+        <div class="landing-news-grid">
+          <?php foreach ($newsCards as $news): ?>
+            <article class="landing-news-card"><p><?= $news ?></p></article>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--gallery" id="gallery">
+        <div class="landing-section__header">
+          <h2><?= htmlspecialchars(t($t, 'gallery_heading', 'Resources and highlights'), ENT_QUOTES, 'UTF-8') ?></h2>
+        </div>
+        <div class="landing-gallery-band">
+          <span><?= htmlspecialchars(t($t, 'gallery_one', 'Policy templates'), ENT_QUOTES, 'UTF-8') ?></span>
+          <span><?= htmlspecialchars(t($t, 'gallery_two', 'Training playbooks'), ENT_QUOTES, 'UTF-8') ?></span>
+          <span><?= htmlspecialchars(t($t, 'gallery_three', 'Assessment guides'), ENT_QUOTES, 'UTF-8') ?></span>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--partners">
+        <div class="landing-section__header">
+          <h2><?= htmlspecialchars(t($t, 'partners_heading', 'Trusted partners'), ENT_QUOTES, 'UTF-8') ?></h2>
+        </div>
+        <div class="landing-partners-grid">
+          <?php foreach ($partners as $partner): ?>
+            <span><?= htmlspecialchars($partner, ENT_QUOTES, 'UTF-8') ?></span>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--cta">
+        <div class="landing-section__content">
+          <h2><?= htmlspecialchars(t($t, 'cta_heading', 'Start your next performance cycle with confidence'), ENT_QUOTES, 'UTF-8') ?></h2>
+          <p><?= htmlspecialchars(t($t, 'cta_description', 'Access evaluations, insights, and resources from one secure platform.'), ENT_QUOTES, 'UTF-8') ?></p>
+          <a class="landing-button landing-button--accent" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
+        </div>
+      </section>
+
     </main>
 
-    <footer class="landing-footer">
+    <footer class="landing-footer" id="contact">
       <div class="landing-footer__contact" aria-label="<?= htmlspecialchars(t($t, 'contact_details_label', 'Contact details'), ENT_QUOTES, 'UTF-8') ?>">
+        <h3><?= htmlspecialchars(t($t, 'contact_us', 'Contact us'), ENT_QUOTES, 'UTF-8') ?></h3>
         <?php if ($address !== ''): ?>
           <div><strong><?= $addressLabel ?>:</strong> <?= $address ?></div>
         <?php endif; ?>
@@ -219,7 +341,14 @@ $featureItems = [
           <div><strong><?= $contactLabel ?>:</strong> <?= $contact ?></div>
         <?php endif; ?>
       </div>
+      <div class="landing-footer__links">
+        <h3><?= htmlspecialchars(t($t, 'quick_links', 'Quick links'), ENT_QUOTES, 'UTF-8') ?></h3>
+        <a href="#services"><?= htmlspecialchars(t($t, 'services', 'Services'), ENT_QUOTES, 'UTF-8') ?></a>
+        <a href="#events"><?= htmlspecialchars(t($t, 'events', 'Events'), ENT_QUOTES, 'UTF-8') ?></a>
+        <a href="#news"><?= htmlspecialchars(t($t, 'news', 'News'), ENT_QUOTES, 'UTF-8') ?></a>
+      </div>
       <div class="landing-footer__meta">
+        <h3><?= htmlspecialchars(t($t, 'languages', 'Languages'), ENT_QUOTES, 'UTF-8') ?></h3>
         <div class="landing-footer__languages" aria-label="<?= htmlspecialchars(t($t, 'language_switch_label', 'Change language'), ENT_QUOTES, 'UTF-8') ?>">
           <?php
           $links = [];
