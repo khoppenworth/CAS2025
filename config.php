@@ -1230,9 +1230,9 @@ function site_theme_tokens(array $cfg): array
     $darkSurface = shade_color($primary, 0.82);
     $darkSurfaceAlt = shade_color($primary, 0.76);
     $darkSurfaceMuted = shade_color($primary, 0.72);
-    $darkText = adjust_hsl($primary, 0.0, 0.32, 0.9);
-    $darkTextSecondary = adjust_hsl($primary, 0.0, 0.25, 0.8);
-    $darkTextMuted = adjust_hsl($primary, 0.0, 0.22, 0.72);
+    $darkText = tint_color($primary, 0.68);
+    $darkTextSecondary = tint_color($primary, 0.58);
+    $darkTextMuted = tint_color($primary, 0.5);
     $darkBorder = rgba_string($darkText, 0.24);
     $darkBorderStrong = rgba_string($darkText, 0.32);
     $darkDivider = rgba_string($darkText, 0.18);
@@ -1270,7 +1270,7 @@ function site_theme_tokens(array $cfg): array
     $darkOnPrimary = contrast_color($primaryLight);
     $darkOnPrimarySoft = rgba_string($darkOnPrimary, 0.22);
     $darkOnPrimarySubtle = rgba_string($darkOnPrimary, 0.16);
-    $darkOnSurfaceMuted = rgba_string(shade_color($darkText, 0.35), 1.0);
+    $darkOnSurfaceMuted = tint_color($primary, 0.55);
     $darkBgGradient = sprintf('radial-gradient(circle at top, %s 0%%, %s 45%%, %s 100%%)', shade_color($primary, 0.78), shade_color($primary, 0.82), shade_color($primary, 0.92));
 
     $root = [
@@ -1378,6 +1378,12 @@ function site_theme_tokens(array $cfg): array
         '--app-chart-surface' => $lightSurface,
         '--app-chip-bg' => rgba_string($primary, 0.08),
         '--app-chip-border' => $lightBorder,
+        '--footer-bg-start' => $onSurfaceStrong,
+        '--footer-bg-mid' => $onSurfaceStrong,
+        '--footer-bg-end' => $onSurfaceMuted,
+        '--footer-text' => $lightSurfaceAlt,
+        '--footer-link' => $lightSurfaceHighlight,
+        '--footer-link-hover' => $inverseText,
         'color' => $lightText,
     ];
 
