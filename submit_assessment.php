@@ -60,13 +60,41 @@ try {
     $fallback = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title");
     $q = $fallback ? $fallback->fetchAll() : [];
 }
-$periods = $pdo->query("SELECT id, label FROM performance_period ORDER BY period_start DESC")->fetchAll();
+$periods = $pdo->query("SELECT id, label, period_start, period_end FROM performance_period ORDER BY period_start DESC")->fetchAll();
 $qid = (int)($_GET['qid'] ?? ($q[0]['id'] ?? 0));
 $availableQuestionnaireIds = array_map(static fn($row) => (int)$row['id'], $q);
 if ($qid && !in_array($qid, $availableQuestionnaireIds, true)) {
     $qid = $availableQuestionnaireIds[0] ?? 0;
 }
-$periodId = (int)($_GET['performance_period_id'] ?? ($periods[0]['id'] ?? 0));
+$findBestPeriodId = static function (array $periodRows, ?string $targetDate): int {
+    if (!$periodRows) {
+        return 0;
+    }
+    $fallbackId = (int)($periodRows[0]['id'] ?? 0);
+    if (!$targetDate) {
+        return $fallbackId;
+    }
+    $targetTs = strtotime($targetDate);
+    if ($targetTs === false) {
+        return $fallbackId;
+    }
+    foreach ($periodRows as $periodRow) {
+        $start = isset($periodRow['period_start']) ? strtotime((string)$periodRow['period_start']) : false;
+        $end = isset($periodRow['period_end']) ? strtotime((string)$periodRow['period_end']) : false;
+        if ($start === false || $end === false) {
+            continue;
+        }
+        if ($targetTs >= $start && $targetTs <= $end) {
+            return (int)$periodRow['id'];
+        }
+    }
+    return $fallbackId;
+};
+$periodTargetDate = trim((string)($user['next_assessment_date'] ?? ''));
+if ($periodTargetDate === '') {
+    $periodTargetDate = date('Y-m-d');
+}
+$periodId = (int)($_GET['performance_period_id'] ?? $findBestPeriodId($periods, $periodTargetDate));
 
 $draftSaved = $_GET['saved'] ?? '';
 if ($draftSaved === 'draft') {
