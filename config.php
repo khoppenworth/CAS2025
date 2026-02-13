@@ -8,6 +8,7 @@ if ($isBootstrapRequested) {
 
 require_once __DIR__ . '/lib/email_templates.php';
 require_once __DIR__ . '/lib/work_functions.php';
+require_once __DIR__ . '/lib/department_teams.php';
 require_once __DIR__ . '/lib/rate_limiter.php';
 require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/lib/path.php';
@@ -444,6 +445,8 @@ function initialize_database_schema(PDO $pdo): void
     ensure_questionnaire_item_schema($pdo);
     ensure_questionnaire_work_function_schema($pdo);
     ensure_work_function_catalog($pdo);
+    ensure_department_team_catalog($pdo);
+    ensure_questionnaire_department_schema($pdo);
     ensure_questionnaire_assignment_schema($pdo);
     ensure_biannual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
