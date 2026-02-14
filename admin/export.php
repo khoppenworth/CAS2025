@@ -122,7 +122,7 @@ if ($latestSubmission) {
             ['full_name', t($t, 'col_full_name', 'Full name, if provided')],
             ['email', t($t, 'col_email', 'Email address on record')],
             ['role', t($t, 'col_role', 'User role at the time of submission')],
-            ['work_function', t($t, 'col_work_function', 'Assigned work function / cadre')],
+            ['work_function', t($t, 'col_work_function', 'Assigned work role')],
             ['account_status', t($t, 'col_account_status', 'Account status when the export was generated')],
             ['questionnaire_id', t($t, 'col_questionnaire_id', 'Identifier of the questionnaire template')],
             ['questionnaire_title', t($t, 'col_questionnaire_title', 'Title of the questionnaire')],

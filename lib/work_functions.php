@@ -14,24 +14,8 @@ define('APP_WORK_FUNCTIONS_LOADED', true);
 function built_in_work_function_definitions(): array
 {
     return [
-        'cmd' => 'Change Management & Development',
-        'communication' => 'Communications & Partnerships',
-        'dfm' => 'Demand Forecasting & Management',
-        'driver' => 'Driver Services',
-        'ethics' => 'Ethics & Compliance',
-        'finance' => 'Finance & Grants',
-        'general_service' => 'General Services',
-        'hrm' => 'Human Resources Management',
-        'ict' => 'Information & Communication Technology',
-        'leadership_tn' => 'Leadership & Team Nurturing',
-        'legal_service' => 'Legal Services',
-        'pme' => 'Planning, Monitoring & Evaluation',
-        'quantification' => 'Quantification & Procurement',
-        'records_documentation' => 'Records & Documentation',
-        'security' => 'Security Operations',
-        'security_driver' => 'Security & Driver Management',
-        'tmd' => 'Training & Mentorship Development',
-        'wim' => 'Warehouse & Inventory Management',
+        'expert' => 'Expert',
+        'director_manager' => 'Director / Manager',
     ];
 }
 
@@ -63,7 +47,6 @@ function ensure_work_function_catalog(PDO $pdo): void
             try {
                 $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
             } catch (Throwable $e) {
-                // Ignore duplicate index errors.
             }
         }
     } catch (PDOException $e) {
@@ -71,33 +54,34 @@ function ensure_work_function_catalog(PDO $pdo): void
         return;
     }
 
-    $count = 0;
+    $defaults = built_in_work_function_definitions();
     try {
-        $stmt = $pdo->query('SELECT COUNT(*) FROM work_function_catalog');
-        if ($stmt) {
-            $count = (int) $stmt->fetchColumn();
+        $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order, archived_at) VALUES (?, ?, ?, NULL)');
+        $update = $pdo->prepare('UPDATE work_function_catalog SET label = ?, sort_order = ?, archived_at = NULL WHERE slug = ?');
+        $sort = 1;
+        foreach ($defaults as $slug => $label) {
+            $check = $pdo->prepare('SELECT COUNT(*) FROM work_function_catalog WHERE slug = ?');
+            $check->execute([$slug]);
+            if ((int)$check->fetchColumn() > 0) {
+                $update->execute([$label, $sort, $slug]);
+            } else {
+                $insert->execute([$slug, $label, $sort]);
+            }
+            $sort++;
         }
-    } catch (PDOException $e) {
-        error_log('ensure_work_function_catalog count failed: ' . $e->getMessage());
-        return;
-    }
-
-    if ($count === 0) {
-        $defaults = built_in_work_function_definitions();
-        $sortOrder = 1;
-        try {
-            $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order) VALUES (?, ?, ?)');
-            foreach ($defaults as $slug => $label) {
-                try {
-                    $insert->execute([$slug, $label, $sortOrder]);
-                    $sortOrder++;
-                } catch (PDOException $e) {
-                    error_log('ensure_work_function_catalog insert failed: ' . $e->getMessage());
+        $allowed = array_fill_keys(array_keys($defaults), true);
+        $stmt = $pdo->query('SELECT slug FROM work_function_catalog');
+        if ($stmt) {
+            $archive = $pdo->prepare('UPDATE work_function_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ?');
+            while ($slug = $stmt->fetchColumn()) {
+                $slug = (string)$slug;
+                if (!isset($allowed[$slug])) {
+                    $archive->execute([$slug]);
                 }
             }
-        } catch (PDOException $e) {
-            error_log('ensure_work_function_catalog prepare failed: ' . $e->getMessage());
         }
+    } catch (Throwable $e) {
+        error_log('ensure_work_function_catalog sync failed: ' . $e->getMessage());
     }
 }
 
@@ -404,7 +388,7 @@ function canonical_work_function_key(string $value, ?array $definitions = null):
         return $normalizedDefinitions[$normalized];
     }
 
-    return $normalized;
+    return 'expert';
 }
 
 function canonical(string $value, ?array $definitions = null): string
