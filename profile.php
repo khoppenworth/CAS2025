@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/lib/department_teams.php';
+}
+
 auth_required();
 refresh_current_user($pdo);
 $locale = ensure_locale();
@@ -9,6 +13,8 @@ $user = current_user();
 $message = '';
 $error = '';
 $workFunctionOptions = work_function_choices($pdo);
+$departmentOptions = department_options($pdo);
+$teamCatalog = department_team_catalog($pdo);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
 $forcePasswordReset = !empty($user['must_reset_password']);
@@ -75,8 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phoneCountry = $_POST['phone_country'] ?? $phoneCountryValue;
     $phoneLocalRaw = $_POST['phone_local'] ?? '';
     $phoneCombined = trim($_POST['phone'] ?? '');
-    $department = trim($_POST['department'] ?? '');
-    $cadre = trim($_POST['cadre'] ?? '');
+    $departmentInput = trim((string)($_POST['department'] ?? ''));
+    $department = resolve_department_slug($pdo, $departmentInput);
+    $teamInput = trim((string)($_POST['cadre'] ?? ''));
+    $cadre = resolve_team_slug($pdo, $teamInput, $department);
     $workFunction = $_POST['work_function'] ?? '';
     $language = $_POST['language'] ?? ($_SESSION['lang'] ?? 'en');
     $password = $_POST['password'] ?? '';
@@ -105,6 +113,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t($t,'invalid_email','Provide a valid email address.');
     } elseif (!in_array($gender, ['female','male','other','prefer_not_say'], true)) {
         $error = t($t,'invalid_gender','Select a valid gender option.');
+    } elseif (!isset($departmentOptions[$department])) {
+        $error = t($t,'invalid_department','Select a valid department.');
+    } elseif ($cadre === '') {
+        $error = t($t,'invalid_team_department','Select a valid team in the department.');
     } elseif (!isset($workFunctionOptions[$workFunction])) {
         $error = t($t,'invalid_work_function','Select a valid work function.');
     } elseif (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12) {
@@ -233,16 +245,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <input type="hidden" name="phone" value="<?=htmlspecialchars($phoneCountryValue . $phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" data-phone-full>
         </div>
       </label>
+      <?php $currentDepartmentSlug = resolve_department_slug($pdo, (string)($user['department'] ?? '')); ?>
+      <?php $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug); ?>
+      <?php
+        if ($currentDepartmentSlug === '' && $currentTeamSlug !== '' && isset($teamCatalog[$currentTeamSlug])) {
+          $currentDepartmentSlug = (string)($teamCatalog[$currentTeamSlug]['department_slug'] ?? '');
+          $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug);
+        }
+      ?>
       <label class="md-field md-field--required">
         <span><?=t($t,'department','Department')?></span>
-        <input name="department" value="<?=htmlspecialchars($user['department'] ?? '')?>" required>
+        <select name="department" required data-department-select>
+          <option value="" disabled <?= $currentDepartmentSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
+          <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
+            <option value="<?=htmlspecialchars($departmentSlug, ENT_QUOTES, 'UTF-8')?>" <?=$currentDepartmentSlug===$departmentSlug?'selected':''?>><?=htmlspecialchars($departmentLabel, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
       </label>
       <label class="md-field md-field--required">
-        <span><?=t($t,'cadre','Cadre')?></span>
-        <input name="cadre" value="<?=htmlspecialchars($user['cadre'] ?? '')?>" required>
+        <span><?=t($t,'cadre','Team in the Department')?></span>
+        <select name="cadre" required data-team-select>
+          <option value="" disabled <?= $currentTeamSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
+          <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>
+            <?php if (($teamRecord['archived_at'] ?? null) !== null) { continue; } ?>
+            <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=$currentTeamSlug===$teamSlug?'selected':''?>><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
       </label>
       <label class="md-field md-field--required">
-        <span><?=t($t,'work_function','Work Function / Cadre')?></span>
+        <span><?=t($t,'work_function','Work Role')?></span>
         <select name="work_function" required>
           <?php $wval = $user['work_function'] ?? ''; ?>
           <option value="" disabled <?= $wval ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
@@ -270,6 +301,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
   </div>
 </section>
+
+<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
+document.addEventListener('DOMContentLoaded', () => {
+  const departmentSelect = document.querySelector('[data-department-select]');
+  const teamSelect = document.querySelector('[data-team-select]');
+  if (!departmentSelect || !teamSelect) return;
+  const syncTeams = () => {
+    const dep = departmentSelect.value;
+    let hasVisibleSelected = false;
+    [...teamSelect.options].forEach((opt) => {
+      if (!opt.value) return;
+      const show = opt.dataset.department === dep;
+      opt.hidden = !show;
+      if (!show && opt.selected) {
+        opt.selected = false;
+      }
+      if (show && opt.selected) hasVisibleSelected = true;
+    });
+    if (!hasVisibleSelected) {
+      teamSelect.value = '';
+    }
+  };
+  departmentSelect.addEventListener('change', syncTeams);
+  syncTeams();
+});
+</script>
+
 <?php include __DIR__.'/templates/footer.php'; ?>
 <script type="module" src="<?=asset_url('assets/js/phone-input.js')?>"></script>
 <script>
