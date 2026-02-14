@@ -449,3 +449,10 @@ function team_label(PDO $pdo, string $teamSlug): string
 
     return $teamSlug;
 }
+
+
+/** @return array<string,array{label:string,sort_order:int,archived_at:?string}> */
+function department_catalogue(PDO $pdo): array
+{
+    return department_catalog($pdo);
+}

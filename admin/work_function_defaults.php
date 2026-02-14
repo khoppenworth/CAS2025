@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
+}
+
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -18,14 +22,18 @@ $metadataErrors = [];
 
 $questionnaires = [];
 $questionnaireIds = [];
-$stmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
-if ($stmt) {
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $id = (int)($row['id'] ?? 0);
-        if ($id <= 0) continue;
-        $questionnaires[] = $row;
-        $questionnaireIds[$id] = true;
+try {
+    $stmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
+    if ($stmt) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = (int)($row['id'] ?? 0);
+            if ($id <= 0) continue;
+            $questionnaires[] = $row;
+            $questionnaireIds[$id] = true;
+        }
     }
+} catch (PDOException $e) {
+    error_log('work_function_defaults questionnaire fetch failed: ' . $e->getMessage());
 }
 
 $departments = department_catalog($pdo);
@@ -159,15 +167,19 @@ if ($assignStmt) {
     }
 }
 if ($assignments === []) {
-    $legacyStmt = $pdo->query('SELECT questionnaire_id, work_function FROM questionnaire_work_function');
-    if ($legacyStmt) {
-        foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
-            $qid = (int)($row['questionnaire_id'] ?? 0);
-            if ($dep !== '' && $qid > 0) {
-                $assignments[$dep][$qid] = true;
+    try {
+        $legacyStmt = $pdo->query('SELECT questionnaire_id, work_function FROM questionnaire_work_function');
+        if ($legacyStmt) {
+            foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
+                $qid = (int)($row['questionnaire_id'] ?? 0);
+                if ($dep !== '' && $qid > 0) {
+                    $assignments[$dep][$qid] = true;
+                }
             }
         }
+    } catch (PDOException $e) {
+        error_log('work_function_defaults legacy fallback failed: ' . $e->getMessage());
     }
 }
 ?>

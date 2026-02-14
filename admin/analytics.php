@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
+}
+
 if (!function_exists('available_work_functions')) {
     require_once __DIR__ . '/../lib/work_functions.php';
 }
@@ -475,40 +479,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$summaryStmt = $pdo->query(
-    "SELECT COUNT(*) AS total_responses, "
-    . "SUM(status='approved') AS approved_count, "
-    . "SUM(status='submitted') AS submitted_count, "
-    . "SUM(status='draft') AS draft_count, "
-    . "SUM(status='rejected') AS rejected_count, "
-    . "AVG(score) AS avg_score, "
-    . "MAX(created_at) AS latest_at "
-    . "FROM questionnaire_response"
-);
-$summary = $summaryStmt ? $summaryStmt->fetch(PDO::FETCH_ASSOC) : [];
+$summary = [];
+$totalParticipants = 0;
+$questionnaires = [];
+$responseMetaRows = [];
+try {
+    $summaryStmt = $pdo->query(
+        "SELECT COUNT(*) AS total_responses, "
+        . "SUM(status='approved') AS approved_count, "
+        . "SUM(status='submitted') AS submitted_count, "
+        . "SUM(status='draft') AS draft_count, "
+        . "SUM(status='rejected') AS rejected_count, "
+        . "AVG(score) AS avg_score, "
+        . "MAX(created_at) AS latest_at "
+        . "FROM questionnaire_response"
+    );
+    $summary = $summaryStmt ? $summaryStmt->fetch(PDO::FETCH_ASSOC) : [];
 
-$totalParticipants = (int)($pdo->query('SELECT COUNT(DISTINCT user_id) FROM questionnaire_response')->fetchColumn() ?: 0);
+    $participantStmt = $pdo->query('SELECT COUNT(DISTINCT user_id) FROM questionnaire_response');
+    $totalParticipants = (int)($participantStmt ? $participantStmt->fetchColumn() : 0);
 
-$questionnaireStmt = $pdo->query(
-    "SELECT q.id, q.title, COUNT(*) AS total_responses, "
-    . "SUM(qr.status='approved') AS approved_count, "
-    . "SUM(qr.status='submitted') AS submitted_count, "
-    . "SUM(qr.status='draft') AS draft_count, "
-    . "SUM(qr.status='rejected') AS rejected_count, "
-    . "AVG(qr.score) AS avg_score "
-    . "FROM questionnaire_response qr "
-    . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
-    . "GROUP BY q.id, q.title "
-    . "ORDER BY q.title"
-);
-$questionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $questionnaireStmt = $pdo->query(
+        "SELECT q.id, q.title, COUNT(*) AS total_responses, "
+        . "SUM(qr.status='approved') AS approved_count, "
+        . "SUM(qr.status='submitted') AS submitted_count, "
+        . "SUM(qr.status='draft') AS draft_count, "
+        . "SUM(qr.status='rejected') AS rejected_count, "
+        . "AVG(qr.score) AS avg_score "
+        . "FROM questionnaire_response qr "
+        . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
+        . "GROUP BY q.id, q.title "
+        . "ORDER BY q.title"
+    );
+    $questionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-$responseMetaStmt = $pdo->query(
-    'SELECT qr.id, qr.questionnaire_id, qr.user_id, qr.score, qr.status, u.work_function '
-    . 'FROM questionnaire_response qr '
-    . 'JOIN users u ON u.id = qr.user_id'
-);
-$responseMetaRows = $responseMetaStmt ? $responseMetaStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $responseMetaStmt = $pdo->query(
+        'SELECT qr.id, qr.questionnaire_id, qr.user_id, qr.score, qr.status, u.work_function '
+        . 'FROM questionnaire_response qr '
+        . 'JOIN users u ON u.id = qr.user_id'
+    );
+    $responseMetaRows = $responseMetaStmt ? $responseMetaStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+} catch (PDOException $e) {
+    error_log('analytics base summary queries failed: ' . $e->getMessage());
+}
 [$computedResponseScores, $questionnaireFallbackAverages, $workFunctionFallbackAverages, $overallFallbackAverage]
     = analytics_resolve_score_fallbacks($pdo, $responseMetaRows);
 if (($summary['avg_score'] ?? null) === null && $overallFallbackAverage !== null) {
@@ -714,6 +727,7 @@ foreach ($questionnaires as $qRow) {
     ];
 }
 if ($selectedQuestionnaireId) {
+    try {
     $responseStmt = $pdo->prepare(
         'SELECT qr.id, qr.status, qr.score, qr.created_at, qr.review_comment, '
         . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, pp.label AS period_label '
@@ -729,7 +743,7 @@ if ($selectedQuestionnaireId) {
     $userStmt = $pdo->prepare(
         'SELECT u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, '
         . 'COUNT(*) AS total_responses, '
-        . 'SUM(qr.status="approved") AS approved_count, '
+        . 'SUM(qr.status=\'approved\') AS approved_count, '
         . 'AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
@@ -969,43 +983,59 @@ if ($selectedQuestionnaireId) {
             }
         }
     }
+    } catch (PDOException $e) {
+        error_log('analytics questionnaire detail queries failed: ' . $e->getMessage());
+        $selectedResponses = [];
+        $selectedUserBreakdown = [];
+        $sectionColumns = [];
+        $sectionScoresByResponse = [];
+        $sectionAggregates = [];
+    }
 }
 
 $workFunctionOptions = work_function_choices($pdo);
 $departmentOptions = department_options($pdo);
 $teamCatalog = department_team_catalog($pdo);
-$workFunctionStmt = $pdo->query(
-    "SELECT u.work_function, COUNT(*) AS total_responses, "
-    . "SUM(qr.status='approved') AS approved_count, "
-    . "AVG(qr.score) AS avg_score "
-    . "FROM questionnaire_response qr "
-    . "JOIN users u ON u.id = qr.user_id "
-    . "GROUP BY u.work_function "
-    . "ORDER BY total_responses DESC"
-);
-$workFunctionSummary = $workFunctionStmt ? $workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+$workFunctionSummary = [];
+$departmentSummary = [];
+$teamSummary = [];
+try {
+    $workFunctionStmt = $pdo->query(
+        "SELECT u.work_function, COUNT(*) AS total_responses, "
+        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "AVG(qr.score) AS avg_score "
+        . "FROM questionnaire_response qr "
+        . "JOIN users u ON u.id = qr.user_id "
+        . "GROUP BY u.work_function "
+        . "ORDER BY total_responses DESC"
+    );
+    $workFunctionSummary = $workFunctionStmt ? $workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-$departmentSummaryStmt = $pdo->query(
-    "SELECT u.department, COUNT(*) AS total_responses, "
-    . "SUM(qr.status='approved') AS approved_count, "
-    . "AVG(qr.score) AS avg_score "
-    . "FROM questionnaire_response qr "
-    . "JOIN users u ON u.id = qr.user_id "
-    . "GROUP BY u.department "
-    . "ORDER BY total_responses DESC"
-);
-$departmentSummary = $departmentSummaryStmt ? $departmentSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $departmentSummaryStmt = $pdo->query(
+        "SELECT u.department, COUNT(*) AS total_responses, "
+        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "AVG(qr.score) AS avg_score "
+        . "FROM questionnaire_response qr "
+        . "JOIN users u ON u.id = qr.user_id "
+        . "GROUP BY u.department "
+        . "ORDER BY total_responses DESC"
+    );
+    $departmentSummary = $departmentSummaryStmt ? $departmentSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-$teamSummaryStmt = $pdo->query(
-    "SELECT u.cadre, COUNT(*) AS total_responses, "
-    . "SUM(qr.status='approved') AS approved_count, "
-    . "AVG(qr.score) AS avg_score "
-    . "FROM questionnaire_response qr "
-    . "JOIN users u ON u.id = qr.user_id "
-    . "GROUP BY u.cadre "
-    . "ORDER BY total_responses DESC"
-);
-$teamSummary = $teamSummaryStmt ? $teamSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $teamSummaryStmt = $pdo->query(
+        "SELECT u.cadre, COUNT(*) AS total_responses, "
+        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "AVG(qr.score) AS avg_score "
+        . "FROM questionnaire_response qr "
+        . "JOIN users u ON u.id = qr.user_id "
+        . "GROUP BY u.cadre "
+        . "ORDER BY total_responses DESC"
+    );
+    $teamSummary = $teamSummaryStmt ? $teamSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+} catch (PDOException $e) {
+    error_log('analytics summary queries failed: ' . $e->getMessage());
+}
+
 foreach ($workFunctionSummary as &$wfRow) {
     $wfKey = (string)($wfRow['work_function'] ?? '');
     if ($wfRow['avg_score'] !== null) {

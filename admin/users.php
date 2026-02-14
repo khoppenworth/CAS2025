@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
+}
+
 if (!function_exists('available_work_functions')) {
     require_once __DIR__ . '/../lib/work_functions.php';
 }

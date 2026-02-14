@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
+}
+
 auth_required(['admin','supervisor']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -30,19 +34,23 @@ try {
 
 
 if (!$assignmentsByDepartment) {
-    $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY qwf.work_function ASC, q.title ASC");
-    if ($legacyStmt) {
-        foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
-            if ($dep === '') {
-                continue;
+    try {
+        $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY qwf.work_function ASC, q.title ASC");
+        if ($legacyStmt) {
+            foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
+                if ($dep === '') {
+                    continue;
+                }
+                $assignmentsByDepartment[$dep][] = [
+                    'id' => (int)($row['id'] ?? 0),
+                    'title' => trim((string)($row['title'] ?? '')),
+                    'description' => trim((string)($row['description'] ?? '')),
+                ];
             }
-            $assignmentsByDepartment[$dep][] = [
-                'id' => (int)($row['id'] ?? 0),
-                'title' => trim((string)($row['title'] ?? '')),
-                'description' => trim((string)($row['description'] ?? '')),
-            ];
         }
+    } catch (PDOException $e) {
+        error_log('questionnaire_assignments legacy fallback failed: ' . $e->getMessage());
     }
 }
 ?>

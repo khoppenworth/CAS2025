@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/lib/department_teams.php';
+}
+
 auth_required();
 refresh_current_user($pdo);
 $locale = ensure_locale();
@@ -242,9 +246,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
       </label>
       <?php $currentDepartmentSlug = resolve_department_slug($pdo, (string)($user['department'] ?? '')); ?>
-<?php
+      <?php $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug); ?>
+      <?php
         if ($currentDepartmentSlug === '' && $currentTeamSlug !== '' && isset($teamCatalog[$currentTeamSlug])) {
           $currentDepartmentSlug = (string)($teamCatalog[$currentTeamSlug]['department_slug'] ?? '');
+          $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug);
         }
       ?>
       <label class="md-field md-field--required">
@@ -258,7 +264,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <label class="md-field md-field--required">
         <span><?=t($t,'cadre','Team in the Department')?></span>
-        <?php $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug); ?>
         <select name="cadre" required data-team-select>
           <option value="" disabled <?= $currentTeamSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>
