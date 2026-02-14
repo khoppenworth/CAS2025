@@ -58,6 +58,12 @@ function unique_slug(string $candidate, array $existing): string
 
 function ensure_department_catalog(PDO $pdo): void
 {
+    static $initialized = [];
+    $cacheKey = spl_object_id($pdo);
+    if (isset($initialized[$cacheKey])) {
+        return;
+    }
+
     $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
     try {
         if ($driver === 'sqlite') {
@@ -140,10 +146,18 @@ function ensure_department_catalog(PDO $pdo): void
     } catch (Throwable $e) {
         error_log('ensure_department_catalog seed failed: ' . $e->getMessage());
     }
+
+    $initialized[$cacheKey] = true;
 }
 
 function ensure_department_team_catalog(PDO $pdo): void
 {
+    static $initialized = [];
+    $cacheKey = spl_object_id($pdo);
+    if (isset($initialized[$cacheKey])) {
+        return;
+    }
+
     ensure_department_catalog($pdo);
     $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
     try {
@@ -251,6 +265,8 @@ function ensure_department_team_catalog(PDO $pdo): void
     } catch (Throwable $e) {
         error_log('ensure_department_team_catalog seed failed: ' . $e->getMessage());
     }
+
+    $initialized[$cacheKey] = true;
 }
 
 function ensure_questionnaire_department_schema(PDO $pdo): void
@@ -279,6 +295,12 @@ function ensure_questionnaire_department_schema(PDO $pdo): void
 /** @return array<string,array{label:string,sort_order:int,archived_at:?string}> */
 function department_catalog(PDO $pdo): array
 {
+    static $cache = [];
+    $cacheKey = spl_object_id($pdo);
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
+    }
+
     ensure_department_catalog($pdo);
     $rows = [];
     try {
@@ -299,6 +321,8 @@ function department_catalog(PDO $pdo): array
     } catch (PDOException $e) {
         error_log('department_catalog query failed: ' . $e->getMessage());
     }
+
+    $cache[$cacheKey] = $rows;
     return $rows;
 }
 
@@ -352,6 +376,12 @@ function department_label(PDO $pdo, string $slug): string
 /** @return array<string,array{department_slug:string,label:string,sort_order:int,archived_at:?string}> */
 function department_team_catalog(PDO $pdo): array
 {
+    static $cache = [];
+    $cacheKey = spl_object_id($pdo);
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
+    }
+
     ensure_department_team_catalog($pdo);
     $rows = [];
     try {
@@ -373,6 +403,8 @@ function department_team_catalog(PDO $pdo): array
     } catch (PDOException $e) {
         error_log('department_team_catalog query failed: ' . $e->getMessage());
     }
+
+    $cache[$cacheKey] = $rows;
     return $rows;
 }
 

@@ -277,6 +277,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $rows = $pdo->query("SELECT * FROM users ORDER BY id DESC")->fetchAll();
+$departmentOptions = department_options($pdo);
+$departmentCatalog = department_catalog($pdo);
+$teamCatalog = department_team_catalog($pdo);
+$workFunctionDefinitions = work_function_definitions($pdo);
+
+$departmentSlugByLabel = [];
+foreach ($departmentCatalog as $slug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $label = trim((string)($record['label'] ?? ''));
+    if ($label !== '') {
+        $departmentSlugByLabel[mb_strtolower($label, 'UTF-8')] = (string)$slug;
+    }
+}
+
+$teamLabelBySlug = [];
+$teamSlugByLabel = [];
+foreach ($teamCatalog as $slug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $label = trim((string)($record['label'] ?? ''));
+    if ($label === '') {
+        continue;
+    }
+    $teamLabelBySlug[(string)$slug] = $label;
+    $teamSlugByLabel[mb_strtolower($label, 'UTF-8')] = (string)$slug;
+}
+
 $roleLabels = [];
 foreach ($roleOptions as $option) {
     $label = (string)($option['label'] ?? $option['role_key']);
@@ -312,7 +342,10 @@ foreach ($rows as $r) {
     $initials = mb_strtoupper(mb_substr($initials, 0, 2, 'UTF-8'), 'UTF-8');
     $email = trim((string)($r['email'] ?? ''));
     $workFunctionKey = (string)($r['work_function'] ?? '');
-    $workFunctionLabel = work_function_label($pdo, $workFunctionKey);
+    $workFunctionCanonical = canonical_work_function_key($workFunctionKey, $workFunctionDefinitions);
+    $workFunctionLabel = $workFunctionOptions[$workFunctionCanonical]
+        ?? $workFunctionDefinitions[$workFunctionCanonical]
+        ?? ($workFunctionCanonical !== '' ? ucwords(str_replace('_', ' ', $workFunctionCanonical)) : '');
     $nextAssessment = $r['next_assessment_date'] ?? '';
     $nextAssessmentDisplay = '—';
     if ($nextAssessment !== '') {
@@ -328,7 +361,42 @@ foreach ($rows as $r) {
     $roleKey = $r['role'] ?? 'staff';
     $roleLabel = $roleLabels[$roleKey] ?? $roleKey;
     $userId = (int)$r['id'];
-    $departmentKey = resolve_department_slug($pdo, (string)($r['department'] ?? ''));
+    $departmentValue = trim((string)($r['department'] ?? ''));
+    $departmentKey = '';
+    if ($departmentValue !== '') {
+        if (isset($departmentOptions[$departmentValue])) {
+            $departmentKey = $departmentValue;
+        } else {
+            $canonicalDepartment = canonical_department_slug($departmentValue);
+            if ($canonicalDepartment !== '' && isset($departmentOptions[$canonicalDepartment])) {
+                $departmentKey = $canonicalDepartment;
+            } else {
+                $departmentKey = $departmentSlugByLabel[mb_strtolower($departmentValue, 'UTF-8')] ?? '';
+            }
+        }
+    }
+    $departmentLabel = $departmentKey !== ''
+        ? ((string)($departmentOptions[$departmentKey] ?? $departmentValue))
+        : ($departmentValue !== '' ? $departmentValue : '—');
+
+    $teamValue = trim((string)($r['cadre'] ?? ''));
+    $teamKey = '';
+    if ($teamValue !== '') {
+        if (isset($teamLabelBySlug[$teamValue])) {
+            $teamKey = $teamValue;
+        } else {
+            $canonicalTeam = canonical_department_team_slug($teamValue);
+            if ($canonicalTeam !== '' && isset($teamLabelBySlug[$canonicalTeam])) {
+                $teamKey = $canonicalTeam;
+            } else {
+                $teamKey = $teamSlugByLabel[mb_strtolower($teamValue, 'UTF-8')] ?? '';
+            }
+        }
+    }
+    $teamLabel = $teamKey !== ''
+        ? ((string)($teamLabelBySlug[$teamKey] ?? $teamValue))
+        : ($teamValue !== '' ? $teamValue : '—');
+
     $defaultEntries = $defaultAssignmentsByWorkFunction[$departmentKey] ?? [];
     $defaultTitles = [];
     foreach ($defaultEntries as $entry) {
@@ -368,6 +436,8 @@ foreach ($rows as $r) {
         'initials' => $initials,
         'email' => $email,
         'work_function_label' => $workFunctionLabel,
+        'department_label' => $departmentLabel,
+        'team_label' => $teamLabel,
         'next_assessment' => $nextAssessment,
         'next_assessment_display' => $nextAssessmentDisplay,
         'created_display' => $createdDisplay,
@@ -516,6 +586,14 @@ foreach ($rows as $r) {
               <dd><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
+              <dt><?=t($t,'department','Department')?></dt>
+              <dd><?=htmlspecialchars($record['department_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></dd>
+            </div>
+            <div>
+              <dt><?=t($t,'team_catalog_label','Team')?></dt>
+              <dd><?=htmlspecialchars($record['team_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></dd>
+            </div>
+            <div>
               <dt><?=t($t,'work_function','Work Role')?></dt>
               <dd><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></dd>
             </div>
@@ -612,6 +690,8 @@ foreach ($rows as $r) {
             <th><?=t($t,'name','Name')?></th>
             <th><?=t($t,'username','Username')?></th>
             <th><?=t($t,'role','Role')?></th>
+            <th><?=t($t,'department','Department')?></th>
+            <th><?=t($t,'team_catalog_label','Team')?></th>
             <th><?=t($t,'work_function','Work Role')?></th>
             <th><?=t($t,'status','Status')?></th>
             <th><?=t($t,'next_assessment','Next Assessment Date')?></th>
@@ -633,6 +713,8 @@ foreach ($rows as $r) {
               </td>
               <td><?=htmlspecialchars($record['username'], ENT_QUOTES, 'UTF-8')?></td>
               <td><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></td>
+              <td><?=htmlspecialchars($record['department_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></td>
+              <td><?=htmlspecialchars($record['team_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></td>
               <td><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
               <td><span class="md-user-chip <?=$record['status_class']?>"><?=htmlspecialchars($record['status_label'], ENT_QUOTES, 'UTF-8')?></span></td>
               <td><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></td>
