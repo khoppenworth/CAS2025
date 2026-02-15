@@ -135,6 +135,14 @@ function ensure_department_catalog(PDO $pdo): void
 
         // Backfill any custom/legacy department labels in users table.
         $seen = array_fill_keys(array_keys($existing), true);
+        $labelToSlug = [];
+        foreach ($existing as $existingSlug => $existingLabel) {
+            $normalizedLabel = strtolower(trim((string)$existingLabel));
+            if ($normalizedLabel !== '' && !isset($labelToSlug[$normalizedLabel])) {
+                $labelToSlug[$normalizedLabel] = $existingSlug;
+            }
+        }
+
         $userStmt = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND TRIM(department) <> ''");
         if ($userStmt) {
             while ($value = $userStmt->fetchColumn()) {
@@ -142,15 +150,23 @@ function ensure_department_catalog(PDO $pdo): void
                 if ($label === '' || is_placeholder_department_value($label)) {
                     continue;
                 }
+
                 $slug = canonical_department_slug($label);
                 if ($slug === '') {
                     continue;
                 }
+
+                if (isset($existing[$slug])) {
+                    $labelToSlug[$normalizedLabel] = $slug;
+                    continue;
+                }
+
                 $slug = unique_slug($slug, $seen);
                 if (!isset($existing[$slug])) {
                     $insert->execute([$slug, $label, $sort]);
                     $existing[$slug] = $label;
                     $seen[$slug] = true;
+                    $labelToSlug[$normalizedLabel] = $slug;
                     $sort++;
                 }
             }
