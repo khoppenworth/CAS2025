@@ -566,6 +566,23 @@ foreach ($rows as $r) {
   </label>
 <label class="md-field"><span><?=t($t,'full_name','Full Name')?></span><input name="full_name"></label>
 <label class="md-field"><span><?=t($t,'email','Email')?></span><input name="email"></label>
+<label class="md-field"><span><?=t($t,'department','Department')?></span>
+  <select name="department" required data-department-select>
+    <option value="" disabled selected><?=t($t,'select_option','Select')?></option>
+    <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
+      <option value="<?=htmlspecialchars($departmentSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($departmentLabel, ENT_QUOTES, 'UTF-8')?></option>
+    <?php endforeach; ?>
+  </select>
+</label>
+<label class="md-field"><span><?=t($t,'team_catalog_label','Team')?></span>
+  <select name="cadre" required data-team-select>
+    <option value="" disabled selected><?=t($t,'select_option','Select')?></option>
+    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>
+      <?php if (($teamRecord['archived_at'] ?? null) !== null) { continue; } ?>
+      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
+    <?php endforeach; ?>
+  </select>
+</label>
 <label class="md-field"><span><?=t($t,'work_function','Work Role')?></span>
   <select name="work_function">
     <?php foreach ($workFunctionOptions as $function => $label): ?>
@@ -668,6 +685,25 @@ foreach ($rows as $r) {
                   <select name="work_function">
                     <?php foreach ($workFunctionOptions as $function => $label): ?>
                       <option value="<?=$function?>" <?=$record['work_function_key']===$function?'selected':''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </label>
+                <label class="md-field md-field--compact">
+                  <span><?=t($t,'department','Department')?></span>
+                  <select name="department" required data-department-select>
+                    <option value="" disabled <?=$record['department_key'] === '' ? 'selected' : ''?>><?=t($t,'select_option','Select')?></option>
+                    <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
+                      <option value="<?=htmlspecialchars($departmentSlug, ENT_QUOTES, 'UTF-8')?>" <?=$record['department_key']===$departmentSlug?'selected':''?>><?=htmlspecialchars($departmentLabel, ENT_QUOTES, 'UTF-8')?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </label>
+                <label class="md-field md-field--compact">
+                  <span><?=t($t,'team_catalog_label','Team')?></span>
+                  <select name="cadre" required data-team-select>
+                    <option value="" disabled <?=$record['team_key'] === '' ? 'selected' : ''?>><?=t($t,'select_option','Select')?></option>
+                    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>
+                      <?php if (($teamRecord['archived_at'] ?? null) !== null) { continue; } ?>
+                      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=$record['team_key']===$teamSlug?'selected':''?>><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
                     <?php endforeach; ?>
                   </select>
                 </label>
