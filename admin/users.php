@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
+}
+
 if (!function_exists('available_work_functions')) {
     require_once __DIR__ . '/../lib/work_functions.php';
 }
@@ -14,10 +18,10 @@ $defaultWorkFunction = array_key_first($workFunctionOptions) ?? 'general_service
 
 $defaultAssignmentsByWorkFunction = [];
 try {
-    $defaultsStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
+    $defaultsStmt = $pdo->query("SELECT qd.department_slug, q.id, q.title, q.description FROM questionnaire_department qd JOIN questionnaire q ON q.id = qd.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
     if ($defaultsStmt) {
         foreach ($defaultsStmt->fetchAll(PDO::FETCH_ASSOC) as $defaultRow) {
-            $wf = trim((string)($defaultRow['work_function'] ?? ''));
+            $wf = trim((string)($defaultRow['department_slug'] ?? ''));
             $qid = isset($defaultRow['id']) ? (int)$defaultRow['id'] : 0;
             if ($wf === '' || $qid <= 0) {
                 continue;
@@ -32,6 +36,29 @@ try {
 } catch (PDOException $e) {
     error_log('Admin user questionnaire defaults failed: ' . $e->getMessage());
     $defaultAssignmentsByWorkFunction = [];
+}
+
+
+if ($defaultAssignmentsByWorkFunction === []) {
+    try {
+        $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY q.title ASC");
+        if ($legacyStmt) {
+            foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $defaultRow) {
+                $dep = resolve_department_slug($pdo, (string)($defaultRow['work_function'] ?? ''));
+                $qid = isset($defaultRow['id']) ? (int)$defaultRow['id'] : 0;
+                if ($dep === '' || $qid <= 0) {
+                    continue;
+                }
+                $defaultAssignmentsByWorkFunction[$dep][] = [
+                    'id' => $qid,
+                    'title' => trim((string)($defaultRow['title'] ?? '')),
+                    'description' => trim((string)($defaultRow['description'] ?? '')),
+                ];
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('Admin user legacy defaults failed: ' . $e->getMessage());
+    }
 }
 
 $msg = $_SESSION['admin_users_flash'] ?? '';
@@ -59,6 +86,10 @@ foreach ($roleOptions as $roleRow) {
     $roleMap[$key] = $roleRow;
 }
 $defaultRoleKey = isset($roleMap['staff']) ? 'staff' : ($roleOptions ? (string)$roleOptions[0]['role_key'] : 'staff');
+$departmentOptions = department_options($pdo);
+$departmentCatalog = department_catalog($pdo);
+$teamCatalog = department_team_catalog($pdo);
+$workFunctionDefinitions = work_function_definitions($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -68,6 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = $_POST['role'] ?? 'staff';
         $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
         $accountStatus = $_POST['account_status'] ?? 'active';
+        $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
+        $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
@@ -91,17 +124,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($department === '' || !isset($departmentOptions[$department])) {
+                $msg = t($t,'invalid_department','Select a valid department.');
+                $msgVariant = 'error';
+            } elseif ($cadre === '') {
+                $msg = t($t,'invalid_team_department','Select a valid team in the department.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 try {
-                    $stm = $pdo->prepare("INSERT INTO users (username,password,role,full_name,email,work_function,account_status,must_reset_password,next_assessment_date) VALUES (?,?,?,?,?,?,?,?,?)");
+                    $stm = $pdo->prepare("INSERT INTO users (username,password,role,full_name,email,department,cadre,work_function,account_status,must_reset_password,next_assessment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
                     $stm->execute([
                         $username,
                         $hash,
                         $role,
                         $_POST['full_name'] ?? null,
                         $_POST['email'] ?? null,
+                        $department,
+                        $cadre,
                         $workFunction,
                         $accountStatus,
                         1,
@@ -144,6 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = $_POST['role'] ?? 'staff';
         $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
         $accountStatus = $_POST['account_status'] ?? 'active';
+        $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
+        $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
@@ -167,6 +210,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($department === '' || !isset($departmentOptions[$department])) {
+                $msg = t($t,'invalid_department','Select a valid department.');
+                $msgVariant = 'error';
+            } elseif ($cadre === '') {
+                $msg = t($t,'invalid_team_department','Select a valid team in the department.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $existingUser = null;
@@ -179,8 +228,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         error_log('Admin user existing fetch failed: ' . $e->getMessage());
                     }
                 }
-                $fields = ['role = ?', 'work_function = ?', 'account_status = ?', 'next_assessment_date = ?'];
-                $params = [$role, $workFunction, $accountStatus, $nextAssessment, $id];
+                $fields = ['role = ?', 'department = ?', 'cadre = ?', 'work_function = ?', 'account_status = ?', 'next_assessment_date = ?'];
+                $params = [$role, $department, $cadre, $workFunction, $accountStatus, $nextAssessment, $id];
                 $profileReset = '';
                 if (is_string($newPassword) && trim($newPassword) !== '') {
                     $hash = password_hash($newPassword, PASSWORD_DEFAULT);
@@ -250,6 +299,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $rows = $pdo->query("SELECT * FROM users ORDER BY id DESC")->fetchAll();
+$departmentSlugByLabel = [];
+foreach ($departmentCatalog as $slug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $label = trim((string)($record['label'] ?? ''));
+    if ($label !== '') {
+        $departmentSlugByLabel[mb_strtolower($label, 'UTF-8')] = (string)$slug;
+    }
+}
+
+$teamLabelBySlug = [];
+$teamSlugByLabel = [];
+foreach ($teamCatalog as $slug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $label = trim((string)($record['label'] ?? ''));
+    if ($label === '') {
+        continue;
+    }
+    $teamLabelBySlug[(string)$slug] = $label;
+    $teamSlugByLabel[mb_strtolower($label, 'UTF-8')] = (string)$slug;
+}
+
 $roleLabels = [];
 foreach ($roleOptions as $option) {
     $label = (string)($option['label'] ?? $option['role_key']);
@@ -285,7 +359,10 @@ foreach ($rows as $r) {
     $initials = mb_strtoupper(mb_substr($initials, 0, 2, 'UTF-8'), 'UTF-8');
     $email = trim((string)($r['email'] ?? ''));
     $workFunctionKey = (string)($r['work_function'] ?? '');
-    $workFunctionLabel = work_function_label($pdo, $workFunctionKey);
+    $workFunctionCanonical = canonical_work_function_key($workFunctionKey, $workFunctionDefinitions);
+    $workFunctionLabel = $workFunctionOptions[$workFunctionCanonical]
+        ?? $workFunctionDefinitions[$workFunctionCanonical]
+        ?? ($workFunctionCanonical !== '' ? ucwords(str_replace('_', ' ', $workFunctionCanonical)) : '');
     $nextAssessment = $r['next_assessment_date'] ?? '';
     $nextAssessmentDisplay = '—';
     if ($nextAssessment !== '') {
@@ -301,7 +378,43 @@ foreach ($rows as $r) {
     $roleKey = $r['role'] ?? 'staff';
     $roleLabel = $roleLabels[$roleKey] ?? $roleKey;
     $userId = (int)$r['id'];
-    $defaultEntries = $defaultAssignmentsByWorkFunction[$workFunctionKey] ?? [];
+    $departmentValue = trim((string)($r['department'] ?? ''));
+    $departmentKey = '';
+    if ($departmentValue !== '') {
+        if (isset($departmentOptions[$departmentValue])) {
+            $departmentKey = $departmentValue;
+        } else {
+            $canonicalDepartment = canonical_department_slug($departmentValue);
+            if ($canonicalDepartment !== '' && isset($departmentOptions[$canonicalDepartment])) {
+                $departmentKey = $canonicalDepartment;
+            } else {
+                $departmentKey = $departmentSlugByLabel[mb_strtolower($departmentValue, 'UTF-8')] ?? '';
+            }
+        }
+    }
+    $departmentLabel = $departmentKey !== ''
+        ? ((string)($departmentOptions[$departmentKey] ?? $departmentValue))
+        : ($departmentValue !== '' ? $departmentValue : '—');
+
+    $teamValue = trim((string)($r['cadre'] ?? ''));
+    $teamKey = '';
+    if ($teamValue !== '') {
+        if (isset($teamLabelBySlug[$teamValue])) {
+            $teamKey = $teamValue;
+        } else {
+            $canonicalTeam = canonical_department_team_slug($teamValue);
+            if ($canonicalTeam !== '' && isset($teamLabelBySlug[$canonicalTeam])) {
+                $teamKey = $canonicalTeam;
+            } else {
+                $teamKey = $teamSlugByLabel[mb_strtolower($teamValue, 'UTF-8')] ?? '';
+            }
+        }
+    }
+    $teamLabel = $teamKey !== ''
+        ? ((string)($teamLabelBySlug[$teamKey] ?? $teamValue))
+        : ($teamValue !== '' ? $teamValue : '—');
+
+    $defaultEntries = $defaultAssignmentsByWorkFunction[$departmentKey] ?? [];
     $defaultTitles = [];
     foreach ($defaultEntries as $entry) {
         $title = trim((string)($entry['title'] ?? ''));
@@ -340,12 +453,16 @@ foreach ($rows as $r) {
         'initials' => $initials,
         'email' => $email,
         'work_function_label' => $workFunctionLabel,
+        'department_label' => $departmentLabel,
+        'team_label' => $teamLabel,
         'next_assessment' => $nextAssessment,
         'next_assessment_display' => $nextAssessmentDisplay,
         'created_display' => $createdDisplay,
         'created_at' => $createdAt,
         'role_key' => $roleKey,
         'role_label' => $roleLabel,
+        'department_key' => $departmentKey,
+        'team_key' => $teamKey,
         'work_function_key' => $workFunctionKey,
         'default_titles' => $defaultTitles,
         'search_last' => $searchLast,
@@ -444,7 +561,23 @@ foreach ($rows as $r) {
   </label>
 <label class="md-field"><span><?=t($t,'full_name','Full Name')?></span><input name="full_name"></label>
 <label class="md-field"><span><?=t($t,'email','Email')?></span><input name="email"></label>
-<label class="md-field"><span><?=t($t,'work_function','Work Function / Cadre')?></span>
+<label class="md-field"><span><?=t($t,'department','Department')?></span>
+  <select name="department" required data-department-select>
+    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
+    <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+      <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
+    <?php endforeach; ?>
+  </select>
+</label>
+<label class="md-field"><span><?=t($t,'cadre','Team in the Department')?></span>
+  <select name="cadre" required data-team-select>
+    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
+    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): if (($teamRecord['archived_at'] ?? null) !== null) continue; ?>
+      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
+    <?php endforeach; ?>
+  </select>
+</label>
+<label class="md-field"><span><?=t($t,'work_function','Work Role')?></span>
   <select name="work_function">
     <?php foreach ($workFunctionOptions as $function => $label): ?>
       <option value="<?=$function?>"><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
@@ -488,7 +621,15 @@ foreach ($rows as $r) {
               <dd><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
-              <dt><?=t($t,'work_function','Work Function / Cadre')?></dt>
+              <dt><?=t($t,'department','Department')?></dt>
+              <dd><?=htmlspecialchars($record['department_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></dd>
+            </div>
+            <div>
+              <dt><?=t($t,'team_catalog_label','Team')?></dt>
+              <dd><?=htmlspecialchars($record['team_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></dd>
+            </div>
+            <div>
+              <dt><?=t($t,'work_function','Work Role')?></dt>
               <dd><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
@@ -534,7 +675,25 @@ foreach ($rows as $r) {
                   </select>
                 </label>
                 <label class="md-field md-field--compact">
-                  <span><?=t($t,'work_function','Work Function / Cadre')?></span>
+                  <span><?=t($t,'department','Department')?></span>
+                  <select name="department" required data-department-select>
+                    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
+                    <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                      <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$record['department_key']===$depSlug?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </label>
+                <label class="md-field md-field--compact">
+                  <span><?=t($t,'cadre','Team in the Department')?></span>
+                  <select name="cadre" required data-team-select>
+                    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
+                    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): if (($teamRecord['archived_at'] ?? null) !== null) continue; ?>
+                      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=$record['team_key']===$teamSlug?'selected':''?>><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </label>
+                <label class="md-field md-field--compact">
+                  <span><?=t($t,'work_function','Work Role')?></span>
                   <select name="work_function">
                     <?php foreach ($workFunctionOptions as $function => $label): ?>
                       <option value="<?=$function?>" <?=$record['work_function_key']===$function?'selected':''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
@@ -547,7 +706,7 @@ foreach ($rows as $r) {
                 </label>
                 <div class="md-user-assignment-defaults">
                   <?php if ($record['role_key'] === 'staff'): ?>
-                    <strong><?=t($t,'assignment_defaults_hint','These questionnaires are automatically available because of the staff member\'s work function. They cannot be removed here.')?></strong>
+                    <strong><?=t($t,'assignment_defaults_hint','These questionnaires are automatically available because of the staff member\'s department. They cannot be removed here.')?></strong>
                     <?php if ($record['default_titles']): ?>
                       <ul>
                         <?php foreach ($record['default_titles'] as $defaultTitle): ?>
@@ -555,7 +714,7 @@ foreach ($rows as $r) {
                         <?php endforeach; ?>
                       </ul>
                     <?php else: ?>
-                      <p class="md-user-assignment-empty"><?=t($t,'assignment_defaults_none','This work function does not have default questionnaires yet.')?></p>
+                      <p class="md-user-assignment-empty"><?=t($t,'assignment_defaults_none','This department does not have default questionnaires yet.')?></p>
                     <?php endif; ?>
                     <p class="md-user-assignment-empty"><?=t($t,'assignment_manage_from_defaults','Update the work function defaults to change which questionnaires appear here.')?></p>
                   <?php else: ?>
@@ -584,7 +743,9 @@ foreach ($rows as $r) {
             <th><?=t($t,'name','Name')?></th>
             <th><?=t($t,'username','Username')?></th>
             <th><?=t($t,'role','Role')?></th>
-            <th><?=t($t,'work_function','Work Function / Cadre')?></th>
+            <th><?=t($t,'department','Department')?></th>
+            <th><?=t($t,'team_catalog_label','Team')?></th>
+            <th><?=t($t,'work_function','Work Role')?></th>
             <th><?=t($t,'status','Status')?></th>
             <th><?=t($t,'next_assessment','Next Assessment Date')?></th>
             <th><?=t($t,'created','Created')?></th>
@@ -605,6 +766,8 @@ foreach ($rows as $r) {
               </td>
               <td><?=htmlspecialchars($record['username'], ENT_QUOTES, 'UTF-8')?></td>
               <td><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></td>
+              <td><?=htmlspecialchars($record['department_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></td>
+              <td><?=htmlspecialchars($record['team_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></td>
               <td><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
               <td><span class="md-user-chip <?=$record['status_class']?>"><?=htmlspecialchars($record['status_label'], ENT_QUOTES, 'UTF-8')?></span></td>
               <td><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></td>
@@ -639,6 +802,47 @@ foreach ($rows as $r) {
         event.preventDefault();
       }
     });
+  });
+
+  function syncTeamOptions(form) {
+    const departmentSelect = form.querySelector('[data-department-select]');
+    const teamSelect = form.querySelector('[data-team-select]');
+    if (!departmentSelect || !teamSelect) {
+      return;
+    }
+    const dep = departmentSelect.value;
+    let selectedVisible = false;
+    Array.from(teamSelect.options).forEach((opt, index) => {
+      if (index === 0) {
+        opt.hidden = false;
+        return;
+      }
+      const show = (opt.dataset.department || '') === dep;
+      opt.hidden = !show;
+      if (!show && opt.selected) {
+        opt.selected = false;
+      }
+      if (show && opt.selected) {
+        selectedVisible = true;
+      }
+    });
+    if (!selectedVisible && teamSelect.value) {
+      const selectedOption = teamSelect.selectedOptions[0];
+      if (selectedOption && selectedOption.hidden) {
+        teamSelect.value = '';
+      }
+    }
+  }
+
+  document.querySelectorAll('form').forEach((form) => {
+    const dep = form.querySelector('[data-department-select]');
+    const team = form.querySelector('[data-team-select]');
+    if (!dep || !team) {
+      return;
+    }
+    const handle = () => syncTeamOptions(form);
+    dep.addEventListener('change', handle);
+    handle();
   });
 
   const searchInput = document.querySelector('[data-user-search]');

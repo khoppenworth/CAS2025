@@ -1,8 +1,9 @@
 <?php
 require_once __DIR__ . '/../config.php';
-if (!function_exists('available_work_functions')) {
-    require_once __DIR__ . '/../lib/work_functions.php';
+if (!function_exists('resolve_department_slug')) {
+    require_once __DIR__ . '/../lib/department_teams.php';
 }
+
 auth_required(['admin','supervisor']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -10,128 +11,120 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 
-$workFunctionChoices = work_function_choices($pdo);
+$flashKey = 'questionnaire_assignments_flash';
+$msg = $_SESSION[$flashKey] ?? '';
+unset($_SESSION[$flashKey]);
+$errors = [];
 
-$assignmentsByWorkFunction = [];
+$departmentChoices = department_options($pdo);
+$questionnaires = [];
+$questionnaireIds = [];
+
 try {
-    $assignmentStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY qwf.work_function ASC, q.title ASC");
-    if ($assignmentStmt) {
-        foreach ($assignmentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $wf = canonical_work_function_key((string)($row['work_function'] ?? ''));
-            if ($wf === '') {
+    $stmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
+    if ($stmt) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = (int)($row['id'] ?? 0);
+            if ($id <= 0) {
                 continue;
             }
-            $assignmentsByWorkFunction[$wf][] = [
-                'id' => (int)($row['id'] ?? 0),
-                'title' => trim((string)($row['title'] ?? '')),
-                'description' => trim((string)($row['description'] ?? '')),
-            ];
+            $questionnaires[] = $row;
+            $questionnaireIds[$id] = true;
         }
     }
 } catch (PDOException $e) {
-    error_log('questionnaire_assignments default fetch failed: ' . $e->getMessage());
-    $assignmentsByWorkFunction = [];
+    error_log('questionnaire_assignments questionnaire fetch failed: ' . $e->getMessage());
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) {
+    csrf_check();
+    $submitted = $_POST['assignments'] ?? [];
+    if (!is_array($submitted)) {
+        $submitted = [];
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $pdo->exec('DELETE FROM questionnaire_department');
+        $insert = $pdo->prepare('INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES (?, ?)');
+        foreach ($submitted as $depSlug => $qidList) {
+            if (!isset($departmentChoices[$depSlug]) || !is_array($qidList)) {
+                continue;
+            }
+            foreach ($qidList as $qidRaw) {
+                $qid = (int)$qidRaw;
+                if ($qid <= 0 || !isset($questionnaireIds[$qid])) {
+                    continue;
+                }
+                $insert->execute([$qid, $depSlug]);
+            }
+        }
+        $pdo->commit();
+        $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
+        header('Location: ' . url_for('admin/questionnaire_assignments.php'));
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('questionnaire_assignments save failed: ' . $e->getMessage());
+        $errors[] = t($t,'work_function_defaults_save_failed','Unable to save defaults. Please try again.');
+    }
+}
+
+$assignments = [];
+try {
+    $assignStmt = $pdo->query('SELECT questionnaire_id, department_slug FROM questionnaire_department');
+    if ($assignStmt) {
+        while ($row = $assignStmt->fetch(PDO::FETCH_ASSOC)) {
+            $dep = trim((string)($row['department_slug'] ?? ''));
+            $qid = (int)($row['questionnaire_id'] ?? 0);
+            if ($dep === '' || $qid <= 0) {
+                continue;
+            }
+            $assignments[$dep][$qid] = true;
+        }
+    }
+} catch (PDOException $e) {
+    error_log('questionnaire_assignments assignment fetch failed: ' . $e->getMessage());
+}
 ?>
 <!doctype html>
-<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
+<html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>">
 <head>
   <meta charset="utf-8">
   <title><?=htmlspecialchars(t($t,'assign_questionnaires','Assign Questionnaires'), ENT_QUOTES, 'UTF-8')?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="app-base-url" content="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
-  <link rel="manifest" href="<?=asset_url('manifest.webmanifest')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
-  <style>
-    .md-assignment-intro {
-      margin-bottom: 1rem;
-      padding: 0.85rem 1rem;
-      border-radius: 8px;
-      border: 1px solid rgba(37, 99, 235, 0.35);
-      background: rgba(37, 99, 235, 0.08);
-      color: var(--app-text-primary, #1f2937);
-    }
-    .md-work-function-list {
-      margin-top: 2rem;
-    }
-    .md-work-function-list table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .md-work-function-list th,
-    .md-work-function-list td {
-      padding: 0.65rem 0.75rem;
-      text-align: left;
-      border-bottom: 1px solid var(--app-border, #d0d5dd);
-      vertical-align: top;
-    }
-    .md-work-function-list th {
-      font-weight: 600;
-      background: var(--app-surface-alt, rgba(229, 231, 235, 0.45));
-    }
-    .md-work-function-empty {
-      margin: 0;
-      color: var(--app-muted, #6b7280);
-      font-style: italic;
-    }
-  </style>
 </head>
 <body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/../templates/header.php'; ?>
 <section class="md-section">
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'assign_questionnaires','Assign Questionnaires')?></h2>
-    <div class="md-assignment-intro">
-      <p><?=t($t,'assignment_work_function_only','Assign questionnaires by work function. Update the defaults to control which questionnaires each team receives.')?></p>
-      <p>
-        <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'work_function_defaults_title','Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></a>
-        ·
-        <a href="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'manage_users','Manage users'), ENT_QUOTES, 'UTF-8')?></a>
-      </p>
-    </div>
+    <p class="md-hint"><?=t($t,'assignment_work_function_only','Questionnaire defaults are configured at department level.')?></p>
+    <p><a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'work_function_defaults_title','Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></a></p>
 
-    <div class="md-work-function-list">
-      <h3><?=t($t,'assignment_overview','Work function overview')?></h3>
-      <?php if (!$workFunctionChoices): ?>
-        <p class="md-work-function-empty"><?=t($t,'work_function_defaults_none','No work functions are available yet. Staff members can continue to receive questionnaires assigned directly to them.')?></p>
-      <?php else: ?>
-        <table>
-          <thead>
-            <tr>
-              <th><?=t($t,'work_function','Work Function / Cadre')?></th>
-              <th><?=t($t,'questionnaires','Questionnaires')?></th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($workFunctionChoices as $wfKey => $wfLabel): ?>
-              <?php $items = $assignmentsByWorkFunction[$wfKey] ?? []; ?>
-              <tr>
-                <td><?=htmlspecialchars($wfLabel ?? $wfKey, ENT_QUOTES, 'UTF-8')?></td>
-                <td>
-                  <?php if (!$items): ?>
-                    <span class="md-work-function-empty"><?=t($t,'assignment_no_defaults_for_function','No questionnaires are assigned to this work function yet.')?></span>
-                  <?php else: ?>
-                    <ul>
-                      <?php foreach ($items as $item): ?>
-                        <?php
-                          $title = $item['title'] !== '' ? $item['title'] : t($t,'questionnaire','Questionnaire');
-                          $description = $item['description'];
-                        ?>
-                        <li><?=htmlspecialchars($title, ENT_QUOTES, 'UTF-8')?><?php if ($description !== ''): ?> — <?=htmlspecialchars($description, ENT_QUOTES, 'UTF-8')?><?php endif; ?></li>
-                      <?php endforeach; ?>
-                    </ul>
-                  <?php endif; ?>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      <?php endif; ?>
-    </div>
+    <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+    <?php if ($errors): ?><div class="md-alert error"><?php foreach ($errors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
+
+    <form method="post">
+      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+      <?php foreach ($departmentChoices as $depSlug => $depLabel): ?>
+        <fieldset style="margin-bottom:1rem">
+          <legend><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></legend>
+          <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
+            <label>
+              <input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>>
+              <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?>
+            </label><br>
+          <?php endforeach; ?>
+        </fieldset>
+      <?php endforeach; ?>
+      <button name="save_assignments" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+    </form>
   </div>
 </section>
-<?php include __DIR__.'/../templates/footer.php'; ?>
 </body>
 </html>

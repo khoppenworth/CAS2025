@@ -20,7 +20,7 @@ This guide explains how administrators can import questionnaires using the EPSS 
    - `<repeats value="true">` to allow multiple selections for `choice` items.
    - `<answerOption>` values for `likert` or `choice` items, using either `<valueString>` or `<valueCoding>` with `display` or `code`.
 4. Use `<type value="display">` for headings or instructional text you do not want stored; these entries are skipped during import.
-5. Validate that the XML or JSON is well-formed before uploading. Work functions are applied to all available cadres by default and can be refined after import in the builder.
+5. Validate that the XML or JSON is well-formed before uploading. Work functions are applied to all available teams in the department by default and can be refined after import in the builder.
 
 ## Using the Excel Planning Template
 
@@ -30,7 +30,7 @@ The downloadable Excel workbook contains a single sheet with the following colum
 - **Section Title** and **Section Description** — create or update named sections. Leave blank to assign items to the questionnaire root.
 - **Item LinkId**, **Item Text**, **Item Type**, **Allow Multiple**, and **Weight (%)** — define question prompts and scoring metadata.
 - **Options (semicolon separated)** — supply response options for `likert` or `choice` items.
-- **Work Functions (semicolon separated)** — list the cadres that should receive the questionnaire (e.g., `general_service;hrm`).
+- **Work Functions (semicolon separated)** — list the teams in the department that should receive the questionnaire (e.g., `general_service;hrm`).
 
 Each row represents a single questionnaire item. Duplicate the questionnaire and section details across rows as needed. After the structure is reviewed, translate the entries into the XML format described above so the importer can create the questionnaire and its related sections automatically.
 

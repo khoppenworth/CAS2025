@@ -8,12 +8,112 @@ if ($isBootstrapRequested) {
 
 require_once __DIR__ . '/lib/email_templates.php';
 require_once __DIR__ . '/lib/work_functions.php';
+require_once __DIR__ . '/lib/department_teams.php';
 require_once __DIR__ . '/lib/rate_limiter.php';
 require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/lib/path.php';
 require_once __DIR__ . '/lib/security.php';
 require_once __DIR__ . '/lib/mailer.php';
 require_once __DIR__ . '/lib/notifications.php';
+
+
+// Compatibility safety net: keep pages loading even if department helper library
+// fails to load in partially-upgraded environments.
+
+if (!function_exists('canonical_department_slug')) {
+    function canonical_department_slug(string $value): string
+    {
+        $normalized = preg_replace('/[^a-z0-9]+/i', '_', strtolower(trim($value))) ?? '';
+        return trim($normalized, '_');
+    }
+}
+
+if (!function_exists('canonical_department_team_slug')) {
+    function canonical_department_team_slug(string $value): string
+    {
+        return canonical_department_slug($value);
+    }
+}
+
+if (!function_exists('ensure_department_catalog')) {
+    function ensure_department_catalog(PDO $pdo): void
+    {
+    }
+}
+
+if (!function_exists('ensure_department_team_catalog')) {
+    function ensure_department_team_catalog(PDO $pdo): void
+    {
+    }
+}
+
+if (!function_exists('ensure_questionnaire_department_schema')) {
+    function ensure_questionnaire_department_schema(PDO $pdo): void
+    {
+    }
+}
+if (!function_exists('department_catalog')) {
+    function department_catalog(PDO $pdo): array
+    {
+        return [];
+    }
+}
+
+if (!function_exists('department_catalogue')) {
+    function department_catalogue(PDO $pdo): array
+    {
+        return department_catalog($pdo);
+    }
+}
+
+if (!function_exists('department_options')) {
+    function department_options(PDO $pdo): array
+    {
+        return [];
+    }
+}
+
+if (!function_exists('department_team_catalog')) {
+    function department_team_catalog(PDO $pdo): array
+    {
+        return [];
+    }
+}
+
+if (!function_exists('department_team_options')) {
+    function department_team_options(PDO $pdo, ?string $departmentSlug = null): array
+    {
+        return [];
+    }
+}
+
+if (!function_exists('resolve_department_slug')) {
+    function resolve_department_slug(PDO $pdo, string $value): string
+    {
+        return trim($value);
+    }
+}
+
+if (!function_exists('resolve_team_slug')) {
+    function resolve_team_slug(PDO $pdo, string $value, ?string $departmentSlug = null): string
+    {
+        return trim($value);
+    }
+}
+
+if (!function_exists('department_label')) {
+    function department_label(PDO $pdo, string $slug): string
+    {
+        return $slug;
+    }
+}
+
+if (!function_exists('team_label')) {
+    function team_label(PDO $pdo, string $teamSlug): string
+    {
+        return $teamSlug;
+    }
+}
 
 $appDebug = filter_var(getenv('APP_DEBUG') ?: '0', FILTER_VALIDATE_BOOLEAN);
 ini_set('display_errors', $appDebug ? '1' : '0');
@@ -444,6 +544,8 @@ function initialize_database_schema(PDO $pdo): void
     ensure_questionnaire_item_schema($pdo);
     ensure_questionnaire_work_function_schema($pdo);
     ensure_work_function_catalog($pdo);
+    ensure_department_team_catalog($pdo);
+    ensure_questionnaire_department_schema($pdo);
     ensure_questionnaire_assignment_schema($pdo);
     ensure_biannual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
