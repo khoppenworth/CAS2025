@@ -122,17 +122,7 @@ function ensure_department_catalog(PDO $pdo): void
         }
 
         // Backfill any custom/legacy department labels in users table.
-        // Important: avoid generating an unbounded set of slug_2/slug_3/... rows
-        // for values that already resolve to existing slugs or labels.
         $seen = array_fill_keys(array_keys($existing), true);
-        $labelToSlug = [];
-        foreach ($existing as $existingSlug => $existingLabel) {
-            $existingLabel = trim((string)$existingLabel);
-            if ($existingLabel !== '') {
-                $labelToSlug[mb_strtolower($existingLabel, 'UTF-8')] = (string)$existingSlug;
-            }
-        }
-
         $userStmt = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND TRIM(department) <> ''");
         if ($userStmt) {
             while ($value = $userStmt->fetchColumn()) {
@@ -140,31 +130,17 @@ function ensure_department_catalog(PDO $pdo): void
                 if ($label === '') {
                     continue;
                 }
-
-                $canonical = canonical_department_slug($label);
-                if ($canonical === '') {
+                $slug = canonical_department_slug($label);
+                if ($slug === '') {
                     continue;
                 }
-
-                $labelKey = mb_strtolower($label, 'UTF-8');
-                if (isset($existing[$canonical]) || isset($labelToSlug[$labelKey])) {
-                    continue;
+                $slug = unique_slug($slug, $seen);
+                if (!isset($existing[$slug])) {
+                    $insert->execute([$slug, $label, $sort]);
+                    $existing[$slug] = $label;
+                    $seen[$slug] = true;
+                    $sort++;
                 }
-
-                $slug = $canonical;
-                if (isset($seen[$slug])) {
-                    $slug = unique_slug($slug, $seen);
-                }
-
-                if (isset($existing[$slug])) {
-                    continue;
-                }
-
-                $insert->execute([$slug, $label, $sort]);
-                $existing[$slug] = $label;
-                $seen[$slug] = true;
-                $labelToSlug[$labelKey] = $slug;
-                $sort++;
             }
         }
     } catch (Throwable $e) {

@@ -11,82 +11,47 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 
-$flashKey = 'questionnaire_assignments_flash';
-$msg = $_SESSION[$flashKey] ?? '';
-unset($_SESSION[$flashKey]);
-$errors = [];
-
 $departmentChoices = department_options($pdo);
-$questionnaires = [];
-$questionnaireIds = [];
-
+$assignmentsByDepartment = [];
 try {
-    $stmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
-    if ($stmt) {
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $id = (int)($row['id'] ?? 0);
-            if ($id <= 0) {
+    $assignmentStmt = $pdo->query("SELECT qd.department_slug, q.id, q.title, q.description FROM questionnaire_department qd JOIN questionnaire q ON q.id = qd.questionnaire_id WHERE q.status='published' ORDER BY qd.department_slug ASC, q.title ASC");
+    if ($assignmentStmt) {
+        foreach ($assignmentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $dep = trim((string)($row['department_slug'] ?? ''));
+            if ($dep === '') {
                 continue;
             }
-            $questionnaires[] = $row;
-            $questionnaireIds[$id] = true;
+            $assignmentsByDepartment[$dep][] = [
+                'id' => (int)($row['id'] ?? 0),
+                'title' => trim((string)($row['title'] ?? '')),
+                'description' => trim((string)($row['description'] ?? '')),
+            ];
         }
     }
 } catch (PDOException $e) {
-    error_log('questionnaire_assignments questionnaire fetch failed: ' . $e->getMessage());
+    error_log('questionnaire_assignments default fetch failed: ' . $e->getMessage());
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) {
-    csrf_check();
-    $submitted = $_POST['assignments'] ?? [];
-    if (!is_array($submitted)) {
-        $submitted = [];
-    }
 
+if (!$assignmentsByDepartment) {
     try {
-        $pdo->beginTransaction();
-        $pdo->exec('DELETE FROM questionnaire_department');
-        $insert = $pdo->prepare('INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES (?, ?)');
-        foreach ($submitted as $depSlug => $qidList) {
-            if (!isset($departmentChoices[$depSlug]) || !is_array($qidList)) {
-                continue;
-            }
-            foreach ($qidList as $qidRaw) {
-                $qid = (int)$qidRaw;
-                if ($qid <= 0 || !isset($questionnaireIds[$qid])) {
+        $legacyStmt = $pdo->query("SELECT qwf.work_function, q.id, q.title, q.description FROM questionnaire_work_function qwf JOIN questionnaire q ON q.id = qwf.questionnaire_id WHERE q.status='published' ORDER BY qwf.work_function ASC, q.title ASC");
+        if ($legacyStmt) {
+            foreach ($legacyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $dep = resolve_department_slug($pdo, (string)($row['work_function'] ?? ''));
+                if ($dep === '') {
                     continue;
                 }
-                $insert->execute([$qid, $depSlug]);
+                $assignmentsByDepartment[$dep][] = [
+                    'id' => (int)($row['id'] ?? 0),
+                    'title' => trim((string)($row['title'] ?? '')),
+                    'description' => trim((string)($row['description'] ?? '')),
+                ];
             }
         }
-        $pdo->commit();
-        $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
-        header('Location: ' . url_for('admin/questionnaire_assignments.php'));
-        exit;
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        error_log('questionnaire_assignments save failed: ' . $e->getMessage());
-        $errors[] = t($t,'work_function_defaults_save_failed','Unable to save defaults. Please try again.');
+    } catch (PDOException $e) {
+        error_log('questionnaire_assignments legacy fallback failed: ' . $e->getMessage());
     }
-}
-
-$assignments = [];
-try {
-    $assignStmt = $pdo->query('SELECT questionnaire_id, department_slug FROM questionnaire_department');
-    if ($assignStmt) {
-        while ($row = $assignStmt->fetch(PDO::FETCH_ASSOC)) {
-            $dep = trim((string)($row['department_slug'] ?? ''));
-            $qid = (int)($row['questionnaire_id'] ?? 0);
-            if ($dep === '' || $qid <= 0) {
-                continue;
-            }
-            $assignments[$dep][$qid] = true;
-        }
-    }
-} catch (PDOException $e) {
-    error_log('questionnaire_assignments assignment fetch failed: ' . $e->getMessage());
 }
 ?>
 <!doctype html>
@@ -104,26 +69,37 @@ try {
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'assign_questionnaires','Assign Questionnaires')?></h2>
     <p class="md-hint"><?=t($t,'assignment_work_function_only','Questionnaire defaults are configured at department level.')?></p>
-    <p><a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'work_function_defaults_title','Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></a></p>
+    <p>
+      <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'work_function_defaults_title','Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></a>
+    </p>
 
-    <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
-    <?php if ($errors): ?><div class="md-alert error"><?php foreach ($errors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
-
-    <form method="post">
-      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+    <table class="md-table">
+      <thead>
+        <tr>
+          <th><?=t($t,'department','Department')?></th>
+          <th><?=t($t,'questionnaires','Questionnaires')?></th>
+        </tr>
+      </thead>
+      <tbody>
       <?php foreach ($departmentChoices as $depSlug => $depLabel): ?>
-        <fieldset style="margin-bottom:1rem">
-          <legend><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></legend>
-          <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
-            <label>
-              <input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>>
-              <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?>
-            </label><br>
-          <?php endforeach; ?>
-        </fieldset>
+        <?php $items = $assignmentsByDepartment[$depSlug] ?? []; ?>
+        <tr>
+          <td><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></td>
+          <td>
+            <?php if (!$items): ?>
+              <span class="md-muted"><?=t($t,'assignment_no_defaults_for_function','No questionnaires are assigned yet.')?></span>
+            <?php else: ?>
+              <ul>
+                <?php foreach ($items as $item): ?>
+                  <li><strong><?=htmlspecialchars($item['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?></strong></li>
+                <?php endforeach; ?>
+              </ul>
+            <?php endif; ?>
+          </td>
+        </tr>
       <?php endforeach; ?>
-      <button name="save_assignments" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
-    </form>
+      </tbody>
+    </table>
   </div>
 </section>
 </body>

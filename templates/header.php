@@ -103,6 +103,23 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
   <div class="md-appbar-actions">
     <button
       type="button"
+      class="md-appbar-link md-appbar-theme-toggle md-appbar-connectivity md-status-indicator"
+      data-status-indicator
+      data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
+      data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
+      role="switch"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-checked="true"
+      data-status="online"
+      aria-label="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
+    >
+      <span class="md-status-dot" aria-hidden="true"></span>
+      <span class="md-status-label visually-hidden"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
+    </button>
+    <button
+      type="button"
       class="md-appbar-link md-appbar-theme-toggle"
       data-theme-toggle
       aria-label="<?=htmlspecialchars(t($t, 'theme_switch_to_dark', 'Switch to dark theme'), ENT_QUOTES, 'UTF-8')?>"
@@ -576,27 +593,6 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
               <span class="md-topnav-link-desc"><?=t($t, 'install_app_summary', 'Add this app to your device for quick access.')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">↓</span>
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            class="md-topnav-link"
-            data-status-indicator
-            data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
-            data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
-            role="switch"
-            aria-live="polite"
-            aria-atomic="true"
-            aria-checked="true"
-            data-status="online"
-            title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-          >
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=t($t, 'connectivity_status', 'Connectivity')?></span>
-              <span class="md-topnav-link-desc md-status-label"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
-            </span>
-            <span class="md-topnav-link-icon md-status-dot" aria-hidden="true"></span>
           </button>
         </li>
         <li>

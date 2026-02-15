@@ -299,6 +299,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $rows = $pdo->query("SELECT * FROM users ORDER BY id DESC")->fetchAll();
+$departmentOptions = department_options($pdo);
+$departmentCatalog = department_catalog($pdo);
+$teamCatalog = department_team_catalog($pdo);
+$workFunctionDefinitions = work_function_definitions($pdo);
+
 $departmentSlugByLabel = [];
 foreach ($departmentCatalog as $slug => $record) {
     if (($record['archived_at'] ?? null) !== null) {
@@ -561,22 +566,6 @@ foreach ($rows as $r) {
   </label>
 <label class="md-field"><span><?=t($t,'full_name','Full Name')?></span><input name="full_name"></label>
 <label class="md-field"><span><?=t($t,'email','Email')?></span><input name="email"></label>
-<label class="md-field"><span><?=t($t,'department','Department')?></span>
-  <select name="department" required data-department-select>
-    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
-    <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
-      <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
-    <?php endforeach; ?>
-  </select>
-</label>
-<label class="md-field"><span><?=t($t,'cadre','Team in the Department')?></span>
-  <select name="cadre" required data-team-select>
-    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
-    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): if (($teamRecord['archived_at'] ?? null) !== null) continue; ?>
-      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
-    <?php endforeach; ?>
-  </select>
-</label>
 <label class="md-field"><span><?=t($t,'work_function','Work Role')?></span>
   <select name="work_function">
     <?php foreach ($workFunctionOptions as $function => $label): ?>
@@ -672,24 +661,6 @@ foreach ($rows as $r) {
                     <option value="active" <?=$record['status_key']==='active'?'selected':''?>><?=t($t,'status_active','Active')?></option>
                     <option value="pending" <?=$record['status_key']==='pending'?'selected':''?>><?=t($t,'status_pending','Pending approval')?></option>
                     <option value="disabled" <?=$record['status_key']==='disabled'?'selected':''?>><?=t($t,'status_disabled','Disabled')?></option>
-                  </select>
-                </label>
-                <label class="md-field md-field--compact">
-                  <span><?=t($t,'department','Department')?></span>
-                  <select name="department" required data-department-select>
-                    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
-                    <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
-                      <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$record['department_key']===$depSlug?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
-                    <?php endforeach; ?>
-                  </select>
-                </label>
-                <label class="md-field md-field--compact">
-                  <span><?=t($t,'cadre','Team in the Department')?></span>
-                  <select name="cadre" required data-team-select>
-                    <option value=""><?=htmlspecialchars(t($t,'select_option','Select…'), ENT_QUOTES, 'UTF-8')?></option>
-                    <?php foreach ($teamCatalog as $teamSlug => $teamRecord): if (($teamRecord['archived_at'] ?? null) !== null) continue; ?>
-                      <option value="<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>" data-department="<?=htmlspecialchars((string)($teamRecord['department_slug'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=$record['team_key']===$teamSlug?'selected':''?>><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></option>
-                    <?php endforeach; ?>
                   </select>
                 </label>
                 <label class="md-field md-field--compact">
