@@ -86,6 +86,10 @@ foreach ($roleOptions as $roleRow) {
     $roleMap[$key] = $roleRow;
 }
 $defaultRoleKey = isset($roleMap['staff']) ? 'staff' : ($roleOptions ? (string)$roleOptions[0]['role_key'] : 'staff');
+$departmentOptions = department_options($pdo);
+$departmentCatalog = department_catalog($pdo);
+$teamCatalog = department_team_catalog($pdo);
+$workFunctionDefinitions = work_function_definitions($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -95,6 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = $_POST['role'] ?? 'staff';
         $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
         $accountStatus = $_POST['account_status'] ?? 'active';
+        $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
+        $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
@@ -118,17 +124,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($department === '' || !isset($departmentOptions[$department])) {
+                $msg = t($t,'invalid_department','Select a valid department.');
+                $msgVariant = 'error';
+            } elseif ($cadre === '') {
+                $msg = t($t,'invalid_team_department','Select a valid team in the department.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 try {
-                    $stm = $pdo->prepare("INSERT INTO users (username,password,role,full_name,email,work_function,account_status,must_reset_password,next_assessment_date) VALUES (?,?,?,?,?,?,?,?,?)");
+                    $stm = $pdo->prepare("INSERT INTO users (username,password,role,full_name,email,department,cadre,work_function,account_status,must_reset_password,next_assessment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
                     $stm->execute([
                         $username,
                         $hash,
                         $role,
                         $_POST['full_name'] ?? null,
                         $_POST['email'] ?? null,
+                        $department,
+                        $cadre,
                         $workFunction,
                         $accountStatus,
                         1,
@@ -171,6 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = $_POST['role'] ?? 'staff';
         $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
         $accountStatus = $_POST['account_status'] ?? 'active';
+        $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
+        $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
@@ -194,6 +210,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($department === '' || !isset($departmentOptions[$department])) {
+                $msg = t($t,'invalid_department','Select a valid department.');
+                $msgVariant = 'error';
+            } elseif ($cadre === '') {
+                $msg = t($t,'invalid_team_department','Select a valid team in the department.');
+                $msgVariant = 'error';
             } else {
                 if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $existingUser = null;
@@ -206,8 +228,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         error_log('Admin user existing fetch failed: ' . $e->getMessage());
                     }
                 }
-                $fields = ['role = ?', 'work_function = ?', 'account_status = ?', 'next_assessment_date = ?'];
-                $params = [$role, $workFunction, $accountStatus, $nextAssessment, $id];
+                $fields = ['role = ?', 'department = ?', 'cadre = ?', 'work_function = ?', 'account_status = ?', 'next_assessment_date = ?'];
+                $params = [$role, $department, $cadre, $workFunction, $accountStatus, $nextAssessment, $id];
                 $profileReset = '';
                 if (is_string($newPassword) && trim($newPassword) !== '') {
                     $hash = password_hash($newPassword, PASSWORD_DEFAULT);
@@ -444,6 +466,8 @@ foreach ($rows as $r) {
         'created_at' => $createdAt,
         'role_key' => $roleKey,
         'role_label' => $roleLabel,
+        'department_key' => $departmentKey,
+        'team_key' => $teamKey,
         'work_function_key' => $workFunctionKey,
         'default_titles' => $defaultTitles,
         'search_last' => $searchLast,
@@ -749,6 +773,47 @@ foreach ($rows as $r) {
         event.preventDefault();
       }
     });
+  });
+
+  function syncTeamOptions(form) {
+    const departmentSelect = form.querySelector('[data-department-select]');
+    const teamSelect = form.querySelector('[data-team-select]');
+    if (!departmentSelect || !teamSelect) {
+      return;
+    }
+    const dep = departmentSelect.value;
+    let selectedVisible = false;
+    Array.from(teamSelect.options).forEach((opt, index) => {
+      if (index === 0) {
+        opt.hidden = false;
+        return;
+      }
+      const show = (opt.dataset.department || '') === dep;
+      opt.hidden = !show;
+      if (!show && opt.selected) {
+        opt.selected = false;
+      }
+      if (show && opt.selected) {
+        selectedVisible = true;
+      }
+    });
+    if (!selectedVisible && teamSelect.value) {
+      const selectedOption = teamSelect.selectedOptions[0];
+      if (selectedOption && selectedOption.hidden) {
+        teamSelect.value = '';
+      }
+    }
+  }
+
+  document.querySelectorAll('form').forEach((form) => {
+    const dep = form.querySelector('[data-department-select]');
+    const team = form.querySelector('[data-team-select]');
+    if (!dep || !team) {
+      return;
+    }
+    const handle = () => syncTeamOptions(form);
+    dep.addEventListener('change', handle);
+    handle();
   });
 
   const searchInput = document.querySelector('[data-user-search]');

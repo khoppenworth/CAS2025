@@ -177,6 +177,10 @@ if ($assignments === []) {
                     $assignments[$dep][$qid] = true;
                 }
             }
+            $pdo->prepare('UPDATE work_function_catalog SET label=? WHERE slug=?')->execute([$label, $slug]);
+            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
+            header('Location: ' . url_for('admin/work_function_defaults.php'));
+            exit;
         }
     } catch (PDOException $e) {
         error_log('work_function_defaults legacy fallback failed: ' . $e->getMessage());
