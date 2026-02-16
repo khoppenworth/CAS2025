@@ -10,6 +10,7 @@ $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, department
 
 $pdo->exec("INSERT INTO users (department, cadre) VALUES
     ('none', 'none'),
+    ('none_2', 'none_7'),
     ('None', 'N/A'),
     ('Finance & Grants', 'Logistics'),
     ('finance', 'logistics'),
@@ -19,6 +20,11 @@ $pdo->exec("INSERT INTO users (department, cadre) VALUES
 $catalog = department_catalog($pdo);
 if (isset($catalog['none'])) {
     fwrite(STDERR, "Placeholder department 'none' should not be backfilled into catalog.\n");
+    exit(1);
+}
+
+if (isset($catalog['none_2'])) {
+    fwrite(STDERR, "Placeholder department variants like 'none_2' should not be backfilled into catalog.\n");
     exit(1);
 }
 
@@ -35,6 +41,10 @@ foreach ($teams as $row) {
     }
     if (strcasecmp((string)($row['label'] ?? ''), 'none') === 0) {
         fwrite(STDERR, "Placeholder team 'none' should not be backfilled into catalog.\n");
+        exit(1);
+    }
+    if (strcasecmp((string)($row['label'] ?? ''), 'none_7') === 0) {
+        fwrite(STDERR, "Placeholder team variants like 'none_7' should not be backfilled into catalog.\n");
         exit(1);
     }
 }

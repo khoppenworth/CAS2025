@@ -45,13 +45,27 @@ function canonical_department_team_slug(string $value): string
 function is_placeholder_department_value(string $value): bool
 {
     $canonical = canonical_department_slug($value);
-    return in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true);
+    if ($canonical === '') {
+        return false;
+    }
+    if (in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
 }
 
 function is_placeholder_team_value(string $value): bool
 {
     $canonical = canonical_department_team_slug($value);
-    return in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true);
+    if ($canonical === '') {
+        return false;
+    }
+    if (in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
 }
 
 function unique_slug(string $candidate, array $existing): string
@@ -148,6 +162,11 @@ function ensure_department_catalog(PDO $pdo): void
             while ($value = $userStmt->fetchColumn()) {
                 $label = trim((string)$value);
                 if ($label === '' || is_placeholder_department_value($label)) {
+                    continue;
+                }
+
+                $normalizedLabel = strtolower($label);
+                if (isset($labelToSlug[$normalizedLabel])) {
                     continue;
                 }
 
