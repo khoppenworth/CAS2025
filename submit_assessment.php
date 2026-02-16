@@ -23,7 +23,10 @@ try {
         $isStaff = (($user['role'] ?? '') === 'staff');
 
         if ($isStaff) {
-            $department = resolve_department_slug($pdo, trim((string)($user['department'] ?? '')));
+            $rawDepartment = trim((string)($user['department'] ?? ''));
+            $department = function_exists('resolve_department_slug')
+                ? resolve_department_slug($pdo, $rawDepartment)
+                : $rawDepartment;
             if ($department !== '') {
                 $departmentStmt = $pdo->prepare(
                     "SELECT q.id AS id, q.title AS title FROM questionnaire_department qd " .
