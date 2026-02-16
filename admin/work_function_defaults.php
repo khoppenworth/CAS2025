@@ -201,7 +201,9 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-defaults-group-body { padding: .35rem .9rem .85rem; }
   .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; margin-left: .6rem; }
   .md-work-function-row { margin-bottom: .6rem; }
-  .md-work-function-row .md-button, .md-compact-actions .md-button { padding: .38rem .68rem; min-height: 32px; line-height: 1.1; font-size: .88rem; }
+  .md-compact-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: flex-end; }
+  .md-compact-actions .md-field { margin: 0; flex: 1 1 220px; }
+  .md-work-function-row .md-button, .md-compact-actions .md-button { padding: .38rem .68rem; min-height: 32px; line-height: 1.1; font-size: .88rem; white-space: nowrap; align-self: flex-end; }
   .md-assignment-picker details { border: 1px dashed rgba(0,0,0,.14); border-radius: 8px; margin-bottom: .55rem; }
   .md-assignment-picker summary { padding: .5rem .7rem; cursor: pointer; font-weight: 600; }
   .md-assignment-options { max-height: 220px; overflow: auto; padding: .2rem .7rem .6rem; }
