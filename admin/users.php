@@ -819,6 +819,7 @@ foreach ($rows as $r) {
     }
     const dep = departmentSelect.value;
     let selectedVisible = false;
+    let firstVisibleTeamValue = '';
     Array.from(teamSelect.options).forEach((opt, index) => {
       if (index === 0) {
         opt.hidden = false;
@@ -826,6 +827,9 @@ foreach ($rows as $r) {
       }
       const show = (opt.dataset.department || '') === dep;
       opt.hidden = !show;
+      if (show && firstVisibleTeamValue === '') {
+        firstVisibleTeamValue = opt.value;
+      }
       if (!show && opt.selected) {
         opt.selected = false;
       }
@@ -833,9 +837,10 @@ foreach ($rows as $r) {
         selectedVisible = true;
       }
     });
-    if (!selectedVisible && teamSelect.value) {
-      const selectedOption = teamSelect.selectedOptions[0];
-      if (selectedOption && selectedOption.hidden) {
+    if (!selectedVisible) {
+      if (firstVisibleTeamValue !== '') {
+        teamSelect.value = firstVisibleTeamValue;
+      } else {
         teamSelect.value = '';
       }
     }
