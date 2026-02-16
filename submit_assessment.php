@@ -23,13 +23,7 @@ try {
         $isStaff = (($user['role'] ?? '') === 'staff');
 
         if ($isStaff) {
-            $rawDepartment = trim((string)($user['department'] ?? ''));
-            $department = resolve_department_slug($pdo, $rawDepartment);
-            if ($department === '' && $rawDepartment !== '' && !is_placeholder_department_value($rawDepartment)) {
-                // Resilient fallback: allow canonical slug lookup even if catalog rows were manually removed.
-                // This keeps staff questionnaire access functional while admins rebuild/restore department catalog metadata.
-                $department = canonical_department_slug($rawDepartment);
-            }
+            $department = resolve_department_slug($pdo, trim((string)($user['department'] ?? '')));
             if ($department !== '') {
                 $departmentStmt = $pdo->prepare(
                     "SELECT q.id AS id, q.title AS title FROM questionnaire_department qd " .
