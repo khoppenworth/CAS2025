@@ -278,4 +278,5 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     </details>
   </div>
 </section>
+<?php include __DIR__ . '/../templates/footer.php'; ?>
 </body></html>
