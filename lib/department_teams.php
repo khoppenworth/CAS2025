@@ -42,6 +42,32 @@ function canonical_department_team_slug(string $value): string
     return canonical_department_slug($value);
 }
 
+function is_placeholder_department_value(string $value): bool
+{
+    $canonical = canonical_department_slug($value);
+    if ($canonical === '') {
+        return false;
+    }
+    if (in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
+}
+
+function is_placeholder_team_value(string $value): bool
+{
+    $canonical = canonical_department_team_slug($value);
+    if ($canonical === '') {
+        return false;
+    }
+    if (in_array($canonical, ['none', 'na', 'n_a', 'null', 'unknown', 'not_applicable'], true)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
+}
+
 function unique_slug(string $candidate, array $existing): string
 {
     $base = $candidate;
@@ -123,22 +149,43 @@ function ensure_department_catalog(PDO $pdo): void
 
         // Backfill any custom/legacy department labels in users table.
         $seen = array_fill_keys(array_keys($existing), true);
+        $labelToSlug = [];
+        foreach ($existing as $existingSlug => $existingLabel) {
+            $normalizedLabel = strtolower(trim((string)$existingLabel));
+            if ($normalizedLabel !== '' && !isset($labelToSlug[$normalizedLabel])) {
+                $labelToSlug[$normalizedLabel] = $existingSlug;
+            }
+        }
+
         $userStmt = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND TRIM(department) <> ''");
         if ($userStmt) {
             while ($value = $userStmt->fetchColumn()) {
                 $label = trim((string)$value);
-                if ($label === '') {
+                if ($label === '' || is_placeholder_department_value($label)) {
                     continue;
                 }
+
+                $normalizedLabel = strtolower($label);
+                if (isset($labelToSlug[$normalizedLabel])) {
+                    continue;
+                }
+
                 $slug = canonical_department_slug($label);
                 if ($slug === '') {
                     continue;
                 }
+
+                if (isset($existing[$slug])) {
+                    $labelToSlug[$normalizedLabel] = $slug;
+                    continue;
+                }
+
                 $slug = unique_slug($slug, $seen);
                 if (!isset($existing[$slug])) {
                     $insert->execute([$slug, $label, $sort]);
                     $existing[$slug] = $label;
                     $seen[$slug] = true;
+                    $labelToSlug[$normalizedLabel] = $slug;
                     $sort++;
                 }
             }
@@ -222,13 +269,22 @@ function ensure_department_team_catalog(PDO $pdo): void
 
         $insert = $pdo->prepare('INSERT INTO department_team_catalog (slug, department_slug, label, sort_order, archived_at) VALUES (?, ?, ?, ?, NULL)');
         $seenSlugs = array_fill_keys(array_keys($teamRows), true);
+        $seenLabelsByDepartment = [];
+        foreach ($teamRows as $existingRow) {
+            $existingDepartment = trim((string)($existingRow['department_slug'] ?? ''));
+            $existingLabel = trim((string)($existingRow['label'] ?? ''));
+            if ($existingDepartment === '' || $existingLabel === '') {
+                continue;
+            }
+            $seenLabelsByDepartment[$existingDepartment][strtolower($existingLabel)] = true;
+        }
         $sort = count($teamRows) + 1;
 
         $sourceStmt = $pdo->query("SELECT DISTINCT department, cadre FROM users WHERE cadre IS NOT NULL AND TRIM(cadre) <> '' ORDER BY department, cadre");
         if ($sourceStmt) {
             while ($row = $sourceStmt->fetch(PDO::FETCH_ASSOC)) {
                 $teamLabel = trim((string)($row['cadre'] ?? ''));
-                if ($teamLabel === '') {
+                if ($teamLabel === '' || is_placeholder_team_value($teamLabel)) {
                     continue;
                 }
                 $dep = resolve_department_slug($pdo, (string)($row['department'] ?? ''));
@@ -237,14 +293,7 @@ function ensure_department_team_catalog(PDO $pdo): void
                 }
 
                 // If a row already exists by exact label+department, skip.
-                $exists = false;
-                foreach ($teamRows as $r) {
-                    if (strcasecmp($r['label'], $teamLabel) === 0 && $r['department_slug'] === $dep) {
-                        $exists = true;
-                        break;
-                    }
-                }
-                if ($exists) {
+                if (isset($seenLabelsByDepartment[$dep][strtolower($teamLabel)])) {
                     continue;
                 }
 
@@ -259,6 +308,7 @@ function ensure_department_team_catalog(PDO $pdo): void
                 $insert->execute([$slug, $dep, $teamLabel, $sort]);
                 $seenSlugs[$slug] = true;
                 $teamRows[$slug] = ['department_slug' => $dep, 'label' => $teamLabel];
+                $seenLabelsByDepartment[$dep][strtolower($teamLabel)] = true;
                 $sort++;
             }
         }
@@ -341,7 +391,7 @@ function department_options(PDO $pdo): array
 function resolve_department_slug(PDO $pdo, string $value): string
 {
     $value = trim($value);
-    if ($value === '') {
+    if ($value === '' || is_placeholder_department_value($value)) {
         return '';
     }
 

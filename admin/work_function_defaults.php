@@ -177,14 +177,16 @@ if ($assignments === []) {
                     $assignments[$dep][$qid] = true;
                 }
             }
-            $pdo->prepare('UPDATE work_function_catalog SET label=? WHERE slug=?')->execute([$label, $slug]);
-            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
-            header('Location: ' . url_for('admin/work_function_defaults.php'));
-            exit;
         }
     } catch (PDOException $e) {
         error_log('work_function_defaults legacy fallback failed: ' . $e->getMessage());
     }
+}
+
+
+$assignmentCounts = [];
+foreach ($departmentOptions as $depSlug => $_depLabel) {
+    $assignmentCounts[$depSlug] = isset($assignments[$depSlug]) ? count($assignments[$depSlug]) : 0;
 }
 ?>
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
@@ -192,6 +194,19 @@ if ($assignments === []) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
+<style>
+  .md-defaults-group { margin-bottom: .9rem; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: rgba(255,255,255,.72); }
+  .md-defaults-group > summary { cursor: pointer; padding: .7rem .9rem; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .md-defaults-group > summary::-webkit-details-marker { display: none; }
+  .md-defaults-group-body { padding: .35rem .9rem .85rem; }
+  .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; margin-left: .6rem; }
+  .md-work-function-row { margin-bottom: .6rem; }
+  .md-work-function-row .md-button, .md-compact-actions .md-button { padding: .38rem .68rem; min-height: 32px; line-height: 1.1; font-size: .88rem; }
+  .md-assignment-picker details { border: 1px dashed rgba(0,0,0,.14); border-radius: 8px; margin-bottom: .55rem; }
+  .md-assignment-picker summary { padding: .5rem .7rem; cursor: pointer; font-weight: 600; }
+  .md-assignment-options { max-height: 220px; overflow: auto; padding: .2rem .7rem .6rem; }
+  .md-assignment-options label { display: block; margin-bottom: .28rem; font-size: .92rem; }
+</style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
 <section class="md-section">
@@ -201,35 +216,66 @@ if ($assignments === []) {
     <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
-    <h3><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></h3>
-    <form method="post"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
-    <?php foreach ($departments as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-      <form method="post" class="md-work-function-row"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button class="md-button md-outline" name="mode" value="department_archive"><?=t($t,'archive','Archive')?></button></form>
-    <?php endforeach; ?>
+    <details class="md-defaults-group" open>
+      <summary>
+        <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($departmentOptions)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+      </summary>
+      <div class="md-defaults-group-body">
+        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
+        <?php foreach ($departments as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="department_archive"><?=t($t,'archive','Archive')?></button></form>
+        <?php endforeach; ?>
+      </div>
+    </details>
 
-    <h3><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></h3>
-    <form method="post"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
-    <?php foreach ($teams as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-      <form method="post" class="md-work-function-row"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button class="md-button md-outline" name="mode" value="team_archive"><?=t($t,'archive','Archive')?></button></form>
-    <?php endforeach; ?>
+    <details class="md-defaults-group">
+      <summary>
+        <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($teams)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+      </summary>
+      <div class="md-defaults-group-body">
+        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
+        <?php foreach ($teams as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="team_archive"><?=t($t,'archive','Archive')?></button></form>
+        <?php endforeach; ?>
+      </div>
+    </details>
 
-    <h3><?=htmlspecialchars(t($t,'work_function','Work Role'), ENT_QUOTES, 'UTF-8')?></h3>
-    <?php foreach ($workRoles as $slug => $record): if (($record['archived_at'] ?? null)!==null) continue; ?>
-      <form method="post" class="md-work-function-row"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="role_update"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button class="md-button md-primary"><?=t($t,'save','Save Changes')?></button></form>
-    <?php endforeach; ?>
+    <details class="md-defaults-group">
+      <summary>
+        <span><?=htmlspecialchars(t($t,'work_function','Work Role'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($workRoles)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+      </summary>
+      <div class="md-defaults-group-body">
+        <?php foreach ($workRoles as $slug => $record): if (($record['archived_at'] ?? null)!==null) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="role_update"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button></form>
+        <?php endforeach; ?>
+      </div>
+    </details>
 
-    <h3><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></h3>
-    <form method="post">
-      <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
-      <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
-        <fieldset style="margin-bottom:1rem"><legend><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></legend>
-          <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
-            <label><input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>> <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></label><br>
+    <details class="md-defaults-group" open>
+      <summary>
+        <span><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
+      </summary>
+      <div class="md-defaults-group-body md-assignment-picker">
+        <form method="post" class="md-compact-actions">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
+          <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+            <details>
+              <summary><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?> <span class="md-defaults-meta">(<?= (int)($assignmentCounts[$depSlug] ?? 0) ?> selected)</span></summary>
+              <div class="md-assignment-options">
+                <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
+                  <label><input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>> <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></label>
+                <?php endforeach; ?>
+              </div>
+            </details>
           <?php endforeach; ?>
-        </fieldset>
-      <?php endforeach; ?>
-      <button class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
-    </form>
+          <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+        </form>
+      </div>
+    </details>
   </div>
 </section>
 </body></html>

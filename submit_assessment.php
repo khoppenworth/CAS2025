@@ -19,26 +19,51 @@ ensure_course_recommendation_schema($pdo);
 $user = current_user();
 try {
     if (($user['role'] ?? '') !== 'admin') {
-        $definitions = work_function_definitions($pdo);
-        $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
         $assigned = [];
+        $isStaff = (($user['role'] ?? '') === 'staff');
 
-        if ($workFunction !== '') {
-            $workFunctionAssignments = work_function_assignments($pdo);
-            $assignedQuestionnaireIds = array_map(
-                'intval',
-                $workFunctionAssignments[$workFunction] ?? []
-            );
-
-            if ($assignedQuestionnaireIds) {
-                $placeholders = implode(',', array_fill(0, count($assignedQuestionnaireIds), '?'));
-                $stmt = $pdo->prepare(
-                    "SELECT q.id AS id, q.title AS title FROM questionnaire q " .
-                    "WHERE q.id IN ($placeholders) AND q.status='published' ORDER BY q.title"
+        if ($isStaff) {
+            $rawDepartment = trim((string)($user['department'] ?? ''));
+            $department = resolve_department_slug($pdo, $rawDepartment);
+            if ($department === '' && $rawDepartment !== '' && !is_placeholder_department_value($rawDepartment)) {
+                // Resilient fallback: allow canonical slug lookup even if catalog rows were manually removed.
+                // This keeps staff questionnaire access functional while admins rebuild/restore department catalog metadata.
+                $department = canonical_department_slug($rawDepartment);
+            }
+            if ($department !== '') {
+                $departmentStmt = $pdo->prepare(
+                    "SELECT q.id AS id, q.title AS title FROM questionnaire_department qd " .
+                    "JOIN questionnaire q ON q.id = qd.questionnaire_id " .
+                    "WHERE qd.department_slug = :department AND q.status='published' ORDER BY q.title"
                 );
-                $stmt->execute($assignedQuestionnaireIds);
-                foreach ($stmt->fetchAll() as $row) {
+                $departmentStmt->execute([':department' => $department]);
+                foreach ($departmentStmt->fetchAll() as $row) {
                     $assigned[(int)$row['id']] = $row;
+                }
+            }
+
+            // Legacy fallback for environments that have not migrated defaults yet.
+            if ($assigned === []) {
+                $definitions = work_function_definitions($pdo);
+                $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
+                if ($workFunction !== '') {
+                    $workFunctionAssignments = work_function_assignments($pdo);
+                    $assignedQuestionnaireIds = array_map(
+                        'intval',
+                        $workFunctionAssignments[$workFunction] ?? []
+                    );
+
+                    if ($assignedQuestionnaireIds) {
+                        $placeholders = implode(',', array_fill(0, count($assignedQuestionnaireIds), '?'));
+                        $stmt = $pdo->prepare(
+                            "SELECT q.id AS id, q.title AS title FROM questionnaire q " .
+                            "WHERE q.id IN ($placeholders) AND q.status='published' ORDER BY q.title"
+                        );
+                        $stmt->execute($assignedQuestionnaireIds);
+                        foreach ($stmt->fetchAll() as $row) {
+                            $assigned[(int)$row['id']] = $row;
+                        }
+                    }
                 }
             }
         }
@@ -110,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'submit_final';
     $isDraftSave = ($action === 'save_draft');
     $autoApprove = (!$reviewEnabled) && !$isDraftSave;
-    if ($user['role'] === 'staff' && !in_array($qid, $availableQuestionnaireIds, true)) {
+    if (($user['role'] ?? '') !== 'admin' && !in_array($qid, $availableQuestionnaireIds, true)) {
         $err = t($t, 'invalid_questionnaire_selection', 'The selected questionnaire is not available.');
     } elseif (!$periodId) {
         $err = t($t,'select_period','Please select a performance period.');
