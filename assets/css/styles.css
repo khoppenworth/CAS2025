@@ -2968,7 +2968,7 @@ body.theme-dark .md-button.md-secondary {
   }
 
   .md-topnav {
-    margin-top: 1.75rem;
+    margin-top: 0.5rem;
   }
 
   .md-main {
@@ -3177,7 +3177,7 @@ body.theme-dark .md-button.md-secondary {
 
   html.has-js .md-topnav {
     position: fixed;
-    top: env(safe-area-inset-top, 0px);
+    top: calc(var(--appbar-height-mobile) + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
     bottom: 0;
@@ -3188,11 +3188,11 @@ body.theme-dark .md-button.md-secondary {
     transform: translateY(-12%);
     opacity: 0;
     pointer-events: none;
-    padding: calc(1.35rem + env(safe-area-inset-top, 0px)) 1.35rem calc(3rem + env(safe-area-inset-bottom, 0px));
+    padding: 1.1rem 1.1rem calc(2.75rem + env(safe-area-inset-bottom, 0px));
     background: var(--app-surface);
     gap: 1rem;
     overflow-y: auto;
-    max-height: 100vh;
+    max-height: calc(100vh - var(--appbar-height-mobile) - env(safe-area-inset-top, 0px));
     -webkit-overflow-scrolling: touch;
     transition: transform 0.28s ease, opacity 0.28s ease;
     z-index: 1200;
@@ -3210,6 +3210,7 @@ body.theme-dark .md-button.md-secondary {
 
   html.has-js .md-topnav-backdrop {
     display: block;
+    top: calc(var(--appbar-height-mobile) + env(safe-area-inset-top, 0px));
   }
 
   .md-topnav-mobile-header {
@@ -4271,7 +4272,7 @@ body.theme-dark .md-work-function-row-meta {
 }
 
 .md-topnav {
-  top: calc(var(--appbar-height) + 0.4rem);
+  top: var(--appbar-height);
   border-radius: 16px;
   border: 1px solid rgba(15, 77, 170, 0.2);
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
