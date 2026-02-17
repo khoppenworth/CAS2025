@@ -1334,9 +1334,9 @@ function site_theme_tokens(array $cfg): array
     $darkSurface = shade_color($primary, 0.95);
     $darkSurfaceAlt = shade_color($primary, 0.92);
     $darkSurfaceMuted = shade_color($primary, 0.89);
-    $darkText = tint_color($primary, 0.96);
-    $darkTextSecondary = tint_color($primary, 0.9);
-    $darkTextMuted = tint_color($primary, 0.84);
+    $darkText = tint_color($primary, 0.985);
+    $darkTextSecondary = tint_color($primary, 0.95);
+    $darkTextMuted = tint_color($primary, 0.9);
     $darkBorder = rgba_string($darkText, 0.48);
     $darkBorderStrong = rgba_string($darkText, 0.62);
     $darkDivider = rgba_string($darkText, 0.36);
@@ -1503,7 +1503,7 @@ function site_theme_tokens(array $cfg): array
         '--app-surface' => $darkSurface,
         '--app-surface-alt' => $darkSurfaceAlt,
         '--app-surface-muted' => $darkSurfaceMuted,
-        '--app-surface-highlight' => tint_color($darkSurfaceAlt, 0.1),
+        '--app-surface-highlight' => $darkText,
         '--app-bg' => $darkBgGradient,
         '--app-shadow-soft' => $darkShadow,
         '--app-shadow-strong' => $darkShadowStrong,
