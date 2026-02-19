@@ -320,7 +320,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             if (!$isDraftSave && $missingRequired) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 $err = t($t, 'required_questions_missing', 'Please complete all required questions before submitting.');
                 if (count($missingRequired) <= 5) {
                     $err .= ' ' . t($t, 'missing_questions_list', 'Missing:') . ' ' . implode(', ', array_map(static function ($label) use ($t) {
@@ -351,7 +353,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
         } catch (Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log('submit_assessment failed: ' . $e->getMessage());
             $err = t($t, 'submission_failed', 'We could not save your responses. Please try again.');
         }
