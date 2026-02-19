@@ -1316,6 +1316,12 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const submitAction = resolveSubmitAction(event);
         lastSubmitAction = null;
         const isFinalSubmit = submitAction === 'submit_final';
+        const finalSubmitConfirmationMessage = 'Please review your responses carefully before submitting. Once submitted, you will not be able to make any changes.';
+
+        if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
+          event.preventDefault();
+          return;
+        }
 
         if (!isAppOnline()) {
           event.preventDefault();
