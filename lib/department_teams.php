@@ -134,12 +134,19 @@ function ensure_department_catalog(PDO $pdo): void
         }
 
         $insert = $pdo->prepare('INSERT INTO department_catalog (slug, label, sort_order, archived_at) VALUES (?, ?, ?, NULL)');
-        $update = $pdo->prepare('UPDATE department_catalog SET label = ?, sort_order = ?, archived_at = NULL WHERE slug = ?');
+        $updateSort = $pdo->prepare('UPDATE department_catalog SET sort_order = ?, archived_at = NULL WHERE slug = ?');
+        $updateMissingLabel = $pdo->prepare('UPDATE department_catalog SET label = ?, sort_order = ?, archived_at = NULL WHERE slug = ?');
 
         $sort = 1;
         foreach (built_in_department_definitions() as $slug => $label) {
             if (isset($existing[$slug])) {
-                $update->execute([$label, $sort, $slug]);
+                $existingLabel = trim((string)($existing[$slug] ?? ''));
+                if ($existingLabel === '') {
+                    $updateMissingLabel->execute([$label, $sort, $slug]);
+                    $existing[$slug] = $label;
+                } else {
+                    $updateSort->execute([$sort, $slug]);
+                }
             } else {
                 $insert->execute([$slug, $label, $sort]);
                 $existing[$slug] = $label;
