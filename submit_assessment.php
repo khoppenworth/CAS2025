@@ -635,7 +635,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 <link rel="manifest" href="<?=asset_url('manifest.php')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
-</head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
+</head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>" data-assessment-protected="true">
 <?php include __DIR__.'/templates/header.php'; ?>
 <section class="md-section">
 <div class="md-card md-elev-2 md-assessment-shell">
