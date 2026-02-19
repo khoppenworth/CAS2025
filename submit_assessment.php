@@ -16,6 +16,33 @@ $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 ensure_course_recommendation_schema($pdo);
 
+$isOtherSpecifyPrompt = static function (string $text): bool {
+    $normalized = strtolower(trim(str_replace(["’", '"', "'", ','], '', $text)));
+    if ($normalized === '') {
+        return false;
+    }
+    return str_contains($normalized, 'if other') && str_contains($normalized, 'specify');
+};
+
+$hasOtherOption = static function (array $values): bool {
+    foreach ($values as $value) {
+        if (is_string($value) && strtolower(trim($value)) === 'other') {
+            return true;
+        }
+    }
+    return false;
+};
+
+$isOtherSelected = static function ($rawValue): bool {
+    $selectedValues = is_array($rawValue) ? $rawValue : [$rawValue];
+    foreach ($selectedValues as $value) {
+        if (is_string($value) && strtolower(trim($value)) === 'other') {
+            return true;
+        }
+    }
+    return false;
+};
+
 $user = current_user();
 try {
     if (($user['role'] ?? '') !== 'admin') {
@@ -160,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Fetch items with weights
-            $itemsStmt = $pdo->prepare('SELECT id, linkId, type, allow_multiple, weight_percent, is_required, requires_correct FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC');
+            $itemsStmt = $pdo->prepare('SELECT id, linkId, text, type, allow_multiple, weight_percent, is_required, requires_correct FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC');
             $itemsStmt->execute([$qid]);
             $items = $itemsStmt->fetchAll();
 
@@ -193,6 +220,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            $previousItem = null;
+            foreach ($items as $index => $itemRow) {
+                $promptText = (string)($itemRow['text'] ?? '');
+                if (!$isOtherSpecifyPrompt($promptText) || !is_array($previousItem)) {
+                    $previousItem = $itemRow;
+                    continue;
+                }
+                $previousItemId = (int)($previousItem['id'] ?? 0);
+                $previousValues = $optionMap[$previousItemId]['values'] ?? [];
+                if (($previousItem['type'] ?? '') === 'choice' && $hasOtherOption($previousValues)) {
+                    $items[$index]['other_followup_parent_linkid'] = (string)($previousItem['linkId'] ?? '');
+                }
+                $previousItem = $itemRow;
+            }
+
             $score_sum = 0.0;
             $max_points = 0.0;
 
@@ -212,8 +254,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $questionTitle = (string)($it['linkId'] ?? '');
                 }
                 $hasResponse = false;
+                $showForSelectedOther = true;
+                $parentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
+                if ($parentLinkId !== '') {
+                    $parentField = 'item_' . $parentLinkId;
+                    $showForSelectedOther = $isOtherSelected($_POST[$parentField] ?? null);
+                    if (!$showForSelectedOther) {
+                        $isRequired = false;
+                    }
+                }
 
-                if ($type === 'boolean') {
+                if (!$showForSelectedOther) {
+                    $a = json_encode([]);
+                } elseif ($type === 'boolean') {
                     $hasResponse = array_key_exists($name, $_POST);
                     $ans = $_POST[$name] ?? '';
                     $val = ($ans === '1' || $ans === 'true' || $ans === 'on') ? 'true' : 'false';
@@ -438,6 +491,22 @@ if ($qid) {
         }
         unset($itemRow);
     }
+    $previousItem = null;
+    foreach ($items as $index => $itemRow) {
+        $promptText = (string)($itemRow['text'] ?? '');
+        if (!$isOtherSpecifyPrompt($promptText) || !is_array($previousItem)) {
+            $previousItem = $itemRow;
+            continue;
+        }
+        $previousOptions = $previousItem['options'] ?? [];
+        $previousValues = array_values(array_filter(array_map(static function ($opt) {
+            return is_array($opt) ? (string)($opt['value'] ?? '') : '';
+        }, $previousOptions), static fn($value) => $value !== ''));
+        if (($previousItem['type'] ?? '') === 'choice' && $hasOtherOption($previousValues)) {
+            $items[$index]['other_followup_parent_linkid'] = (string)($previousItem['linkId'] ?? '');
+        }
+        $previousItem = $itemRow;
+    }
     foreach ($sections as &$sectionRow) {
         $sectionIdSource = (string)($sectionRow['id'] ?? ($sectionRow['title'] ?? uniqid('section')));
         $sectionRow['anchor'] = $buildAnchorId('section', $sectionIdSource);
@@ -520,13 +589,32 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     $fieldClass = 'md-field' . ($required ? ' md-field--required' : '');
     $requiredAttr = $required ? ' required' : '';
     $ariaRequired = $required ? ' aria-required="true"' : '';
+    $followupParentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
+    $followupVisible = true;
+    if ($followupParentLinkId !== '') {
+        $parentAnswerEntries = $answers[$followupParentLinkId] ?? [];
+        $followupVisible = false;
+        if (is_array($parentAnswerEntries)) {
+            foreach ($parentAnswerEntries as $entry) {
+                if (!is_array($entry) || !isset($entry['valueString'])) {
+                    continue;
+                }
+                if (strtolower(trim((string)$entry['valueString'])) === 'other') {
+                    $followupVisible = true;
+                    break;
+                }
+            }
+        }
+    }
     ob_start();
     ?>
     <label
       class="<?=htmlspecialchars($fieldClass, ENT_QUOTES, 'UTF-8')?>"
       id="<?=htmlspecialchars($anchorId, ENT_QUOTES, 'UTF-8')?>"
       data-question-anchor
+      <?php if ($followupParentLinkId !== ''): ?>data-other-followup data-other-parent-linkid="<?=htmlspecialchars($followupParentLinkId, ENT_QUOTES, 'UTF-8')?>"<?php endif; ?>
       tabindex="-1"
+      <?php if ($followupParentLinkId !== '' && !$followupVisible): ?>hidden<?php endif; ?>
     >
       <span><?=htmlspecialchars($it['text'] ?? '', ENT_QUOTES, 'UTF-8')?></span>
       <?php if (($it['type'] ?? '') === 'boolean'): ?>
@@ -916,6 +1004,65 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         }
       });
     });
+
+    const toggleOtherFollowupVisibility = () => {
+      const followups = Array.from(document.querySelectorAll('[data-other-followup][data-other-parent-linkid]'));
+      followups.forEach((field) => {
+        const parentLinkId = field.getAttribute('data-other-parent-linkid');
+        if (!parentLinkId) {
+          return;
+        }
+        const parentControls = Array.from(document.querySelectorAll(`[name="item_${parentLinkId}"], [name="item_${parentLinkId}[]"]`));
+        const selectedValues = parentControls.flatMap((control) => {
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
+              return [];
+            }
+            return [String(control.value || '').trim().toLowerCase()];
+          }
+          if (control instanceof HTMLSelectElement) {
+            return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim().toLowerCase());
+          }
+          return [];
+        });
+        const show = selectedValues.includes('other');
+        field.hidden = !show;
+        const textControls = Array.from(field.querySelectorAll('input, textarea, select'));
+        textControls.forEach((control) => {
+          if (!(control instanceof HTMLElement)) {
+            return;
+          }
+          if (show) {
+            if (control.dataset.wasRequired === 'true') {
+              control.required = true;
+            }
+          } else {
+            control.dataset.wasRequired = control.required ? 'true' : 'false';
+            control.required = false;
+            if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+              control.value = '';
+            }
+            if (control instanceof HTMLSelectElement) {
+              Array.from(control.options).forEach((option) => {
+                option.selected = false;
+              });
+            }
+          }
+        });
+      });
+    };
+
+    document.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if ((target.getAttribute('name') || '').startsWith('item_')) {
+        toggleOtherFollowupVisibility();
+      }
+    });
+
+    toggleOtherFollowupVisibility();
     const isAppOnline = () => {
       if (connectivity) {
         try {
