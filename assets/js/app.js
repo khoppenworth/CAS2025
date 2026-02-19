@@ -22,6 +22,77 @@
   const themeOverrideStorageKey = 'hrassess:theme:override';
   const darkModeDisabled = body && body.getAttribute('data-disable-dark-mode') === '1';
 
+
+  const isAssessmentProtected = document.body && document.body.getAttribute('data-assessment-protected') === 'true';
+  const hasEditableTarget = (eventTarget) => {
+    const el = eventTarget instanceof Element ? eventTarget : null;
+    if (!el) {
+      return false;
+    }
+    const editable = el.closest('input, textarea, [contenteditable="true"], [contenteditable=""]');
+    if (!editable) {
+      return false;
+    }
+    if (editable instanceof HTMLInputElement) {
+      const type = (editable.type || '').toLowerCase();
+      return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes(type);
+    }
+    return true;
+  };
+
+  const installAssessmentContentProtection = () => {
+    if (!isAssessmentProtected) {
+      return;
+    }
+
+    document.addEventListener('contextmenu', (event) => {
+      if (hasEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+    });
+
+    document.addEventListener('copy', (event) => {
+      if (hasEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+    });
+
+    document.addEventListener('cut', (event) => {
+      if (hasEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+    });
+
+    document.addEventListener('paste', (event) => {
+      if (hasEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      const key = (event.key || '').toLowerCase();
+      const blockedShortcut = (
+        (event.ctrlKey || event.metaKey) && ['c', 'x', 'v', 's', 'p', 'u'].includes(key)
+      ) || (
+        (event.ctrlKey || event.metaKey) && event.shiftKey && ['i', 'j', 'c', 's'].includes(key)
+      ) || key === 'printscreen' || key === 'f12';
+
+      if (!blockedShortcut) {
+        return;
+      }
+      if (hasEditableTarget(event.target) && ['c', 'x', 'v'].includes(key)) {
+        return;
+      }
+      event.preventDefault();
+    });
+  };
+
+  installAssessmentContentProtection();
+
   const applyTheme = (theme) => {
     const next = theme === 'dark' ? 'dark' : 'light';
     document.body.classList.toggle('theme-dark', next === 'dark');
