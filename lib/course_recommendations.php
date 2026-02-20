@@ -80,63 +80,83 @@ function ensure_course_recommendation_schema(PDO $pdo): void
  */
 function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $questionnaireId = null): array
 {
-    ensure_course_recommendation_schema($pdo);
+    try {
+        if ($questionnaireId !== null && $questionnaireId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
+                . 'FROM course_catalogue '
+                . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? '
+                . 'AND (questionnaire_id = ? OR questionnaire_id IS NULL) '
+                . 'ORDER BY questionnaire_id IS NULL ASC, min_score ASC, title ASC'
+            );
+            $stmt->execute([$workFunction, $score, $score, $questionnaireId]);
 
-    if ($questionnaireId !== null && $questionnaireId > 0) {
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
+
         $stmt = $pdo->prepare(
             'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
             . 'FROM course_catalogue '
             . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? '
-            . 'AND (questionnaire_id = ? OR questionnaire_id IS NULL) '
-            . 'ORDER BY questionnaire_id IS NULL ASC, min_score ASC, title ASC'
+            . 'AND questionnaire_id IS NULL '
+            . 'ORDER BY min_score ASC, title ASC'
         );
-        $stmt->execute([$workFunction, $score, $score, $questionnaireId]);
+        $stmt->execute([$workFunction, $score, $score]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (PDOException $e) {
+        error_log('find_course_matches failed: ' . $e->getMessage());
+        return [];
     }
+}
 
-    $stmt = $pdo->prepare(
-        'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
-        . 'FROM course_catalogue '
-        . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? '
-        . 'AND questionnaire_id IS NULL '
-        . 'ORDER BY min_score ASC, title ASC'
-    );
-    $stmt->execute([$workFunction, $score, $score]);
 
-    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+function clear_response_training_recommendations(PDO $pdo, int $responseId): void
+{
+    if ($responseId <= 0) {
+        return;
+    }
+    try {
+        $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id = ?')->execute([$responseId]);
+    } catch (PDOException $e) {
+        error_log('clear_response_training_recommendations failed: ' . $e->getMessage());
+    }
 }
 
 function map_response_to_training_courses(PDO $pdo, int $responseId, string $workFunction, int $score, ?int $questionnaireId = null): int
 {
-    ensure_course_recommendation_schema($pdo);
     $workFunction = trim($workFunction);
     if ($responseId <= 0 || $workFunction === '') {
         return 0;
     }
 
     $courses = find_course_matches($pdo, $workFunction, $score, $questionnaireId);
-    $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id = ?')->execute([$responseId]);
+    clear_response_training_recommendations($pdo, $responseId);
     if ($courses === []) {
         return 0;
     }
 
-    $insert = $pdo->prepare(
-        'INSERT INTO training_recommendation (questionnaire_response_id, course_id, recommendation_reason) VALUES (?, ?, ?)'
-    );
-    $count = 0;
-    foreach ($courses as $course) {
-        $scope = ((int)($course['questionnaire_id'] ?? 0) > 0) ? 'questionnaire-specific' : 'global';
-        $reason = sprintf(
-            'Matched %s %s score band %d-%d%%',
-            $workFunction,
-            $scope,
-            (int)$course['min_score'],
-            (int)$course['max_score']
+    try {
+        $insert = $pdo->prepare(
+            'INSERT INTO training_recommendation (questionnaire_response_id, course_id, recommendation_reason) VALUES (?, ?, ?)'
         );
-        $insert->execute([$responseId, (int)$course['id'], $reason]);
-        $count++;
-    }
+        $count = 0;
+        foreach ($courses as $course) {
+            $scope = ((int)($course['questionnaire_id'] ?? 0) > 0) ? 'questionnaire-specific' : 'global';
+            $reason = sprintf(
+                'Matched %s %s score band %d-%d%%',
+                $workFunction,
+                $scope,
+                (int)$course['min_score'],
+                (int)$course['max_score']
+            );
+            $insert->execute([$responseId, (int)$course['id'], $reason]);
+            $count++;
+        }
 
-    return $count;
+        return $count;
+    } catch (PDOException $e) {
+        error_log('map_response_to_training_courses failed: ' . $e->getMessage());
+        return 0;
+    }
 }

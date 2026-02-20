@@ -14,6 +14,9 @@ define('APP_WORK_FUNCTIONS_LOADED', true);
 function built_in_work_function_definitions(): array
 {
     return [
+        'finance' => 'Finance & Grants',
+        'hrm' => 'HRM',
+        'wim' => 'WIM',
         'expert' => 'Expert',
         'director_manager' => 'Director / Manager',
     ];
@@ -68,17 +71,6 @@ function ensure_work_function_catalog(PDO $pdo): void
                 $insert->execute([$slug, $label, $sort]);
             }
             $sort++;
-        }
-        $allowed = array_fill_keys(array_keys($defaults), true);
-        $stmt = $pdo->query('SELECT slug FROM work_function_catalog');
-        if ($stmt) {
-            $archive = $pdo->prepare('UPDATE work_function_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ?');
-            while ($slug = $stmt->fetchColumn()) {
-                $slug = (string)$slug;
-                if (!isset($allowed[$slug])) {
-                    $archive->execute([$slug]);
-                }
-            }
         }
     } catch (Throwable $e) {
         error_log('ensure_work_function_catalog sync failed: ' . $e->getMessage());
@@ -388,7 +380,7 @@ function canonical_work_function_key(string $value, ?array $definitions = null):
         return $normalizedDefinitions[$normalized];
     }
 
-    return 'expert';
+    return $normalized;
 }
 
 function canonical(string $value, ?array $definitions = null): string
