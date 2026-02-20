@@ -160,6 +160,7 @@ const Builder = (() => {
       title: section.title || '',
       description: section.description || '',
       is_active: toBoolean(section.is_active, true),
+      include_in_scoring: toBoolean(section.include_in_scoring, true),
       items,
       hasResponses: toBoolean(section.has_responses),
     };
@@ -488,7 +489,7 @@ const Builder = (() => {
           text: itemNode.querySelector('[data-role="item-text"]')?.value || '',
           type,
           options,
-          weight_percent: Number(itemNode.querySelector('[data-role="item-weight"]')?.value || 0),
+          weight_percent: Number(existing.weight_percent || 0),
           allow_multiple: allowMultiple,
           is_required: Boolean(itemNode.querySelector('[data-role="item-required"]')?.checked),
           is_active: Boolean(itemNode.querySelector('[data-role="item-active"]')?.checked ?? existing.is_active ?? true),
@@ -514,6 +515,7 @@ const Builder = (() => {
         title: sectionNode.querySelector('[data-role="section-title"]')?.value || '',
         description: sectionNode.querySelector('[data-role="section-description"]')?.value || '',
         is_active: Boolean(sectionNode.querySelector('[data-role="section-active"]')?.checked ?? existingSection.is_active ?? true),
+        include_in_scoring: Boolean(sectionNode.querySelector('[data-role="section-include-scoring"]')?.checked ?? existingSection.include_in_scoring ?? true),
         items: sectionItems,
         hasResponses: Boolean(existingSection.hasResponses),
       };
@@ -753,7 +755,6 @@ const Builder = (() => {
   function buildQuestionnaireCard(questionnaire) {
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
-    const scoring = renderScoringSummary(questionnaire);
     const deleteDisabled = questionnaire.hasResponses;
     const deleteTitle = deleteDisabled ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
 
@@ -784,7 +785,6 @@ const Builder = (() => {
           </div>
         </div>
         <div class="qb-body">
-          ${scoring}
           <div class="qb-section-list" data-role="sections" data-q="${questionnaire.clientId}">
             ${sectionsHtml}
           </div>
@@ -818,6 +818,7 @@ const Builder = (() => {
           </div>
           <div class="qb-field qb-toggle">
             <label><input type="checkbox" data-role="section-active" ${section.is_active ? 'checked' : ''} ${section.hasResponses ? 'disabled' : ''}> Active</label>
+            <label><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''}> Include in scoring</label>
           </div>
           <div class="qb-actions">
             <button type="button" class="md-button md-outline" data-role="remove-section" ${section.hasResponses ? 'disabled' : ''}>Remove section</button>
@@ -839,10 +840,6 @@ const Builder = (() => {
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item)
       : '';
-    const weightControl = scorable
-      ? `<label>${STRINGS.scoreWeightLabel}<input type="number" min="0" max="100" step="1" data-role="item-weight" value="${Number(item.weight_percent) || 0}"><span class="md-hint">${STRINGS.scoreWeightHint}</span></label>`
-      : '';
-
     return `
       <div class="qb-item" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
         <div class="qb-item-main">
@@ -881,7 +878,6 @@ const Builder = (() => {
           </div>
         </div>
         <div class="qb-item-secondary">
-          ${weightControl}
           ${optionsHtml}
         </div>
       </div>
@@ -1070,6 +1066,7 @@ const Builder = (() => {
       case 'section-title':
       case 'section-description':
       case 'section-active':
+      case 'section-include-scoring':
       case 'item-link':
       case 'item-text':
       case 'item-type':
@@ -1077,7 +1074,6 @@ const Builder = (() => {
       case 'item-multi':
       case 'item-requires-correct':
       case 'item-active':
-      case 'item-weight':
       case 'option-value':
       case 'option-correct':
         applyFieldChange(questionnaire, event.target, role);
@@ -1089,9 +1085,6 @@ const Builder = (() => {
     if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
       const itemRow = event.target.closest('[data-item]');
       rerenderItemRow(questionnaire, itemRow);
-    }
-    if (['item-type', 'item-multi', 'item-requires-correct', 'item-weight'].includes(role)) {
-      rerenderScoringSummary(questionnaire);
     }
   }
 
@@ -1107,18 +1100,6 @@ const Builder = (() => {
     const next = wrapper.firstElementChild;
     if (!next) return;
     itemRow.replaceWith(next);
-  }
-
-  function rerenderScoringSummary(questionnaire) {
-    const card = document.querySelector(`.qb-card[data-q="${questionnaire.clientId}"]`);
-    if (!card) return;
-    const current = card.querySelector('.qb-scoring');
-    if (!current) return;
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = renderScoringSummary(questionnaire).trim();
-    const next = wrapper.firstElementChild;
-    if (!next) return;
-    current.replaceWith(next);
   }
 
   function handleListClick(event) {
@@ -1163,18 +1144,6 @@ const Builder = (() => {
         removeOption(questionnaire, sectionId, itemId, optionId);
         break;
       }
-      case 'normalize-weights':
-        normalizeWeights(questionnaire);
-        break;
-      case 'even-weights':
-        evenWeights(questionnaire);
-        break;
-      case 'single-choice-weights':
-        autoWeightSingleChoice(questionnaire);
-        break;
-      case 'clear-weights':
-        clearWeights(questionnaire);
-        break;
       default:
         return;
     }
@@ -1190,6 +1159,7 @@ const Builder = (() => {
       if (role === 'section-title') section.title = input.value;
       if (role === 'section-description') section.description = input.value;
       if (role === 'section-active' && !section.hasResponses) section.is_active = input.checked;
+      if (role === 'section-include-scoring') section.include_in_scoring = input.checked;
       return;
     }
 
@@ -1243,7 +1213,6 @@ const Builder = (() => {
       case 'item-active':
         if (!item.hasResponses) item.is_active = input.checked;
         break;
-      case 'item-weight':
         item.weight_percent = Number(input.value) || 0;
         break;
       case 'option-value': {
@@ -1273,6 +1242,7 @@ const Builder = (() => {
         title: '',
         description: '',
         is_active: true,
+        include_in_scoring: true,
         items: [],
       })
     );
@@ -1653,6 +1623,7 @@ const Builder = (() => {
       description: section.description,
       order_index: orderIndex,
       is_active: section.is_active,
+      include_in_scoring: section.include_in_scoring,
       items: section.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
   }

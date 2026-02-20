@@ -28,81 +28,7 @@ function analytics_decode_answer_json($raw): array
 }
 
 /**
- * Score a single questionnaire item using the stored answers.
- */
-function analytics_score_item(array $item, array $answerSet, float $weight): float
-{
-    if ($weight <= 0) {
-        return 0.0;
-    }
-    $type = (string)($item['type'] ?? 'text');
-    if ($type === 'boolean') {
-        foreach ($answerSet as $entry) {
-            if ((isset($entry['valueBoolean']) && $entry['valueBoolean'])
-                || (isset($entry['valueString']) && strtolower((string)$entry['valueString']) === 'true')
-            ) {
-                return $weight;
-            }
-        }
-        return 0.0;
-    }
-    if ($type === 'likert') {
-        $score = null;
-        foreach ($answerSet as $entry) {
-            if (isset($entry['valueInteger']) && is_numeric($entry['valueInteger'])) {
-                $score = (int)$entry['valueInteger'];
-                break;
-            }
-            if (isset($entry['valueString'])) {
-                $candidate = trim((string)$entry['valueString']);
-                if (preg_match('/^([1-5])/', $candidate, $matches)) {
-                    $score = (int)$matches[1];
-                    break;
-                }
-                if (is_numeric($candidate)) {
-                    $value = (int)$candidate;
-                    if ($value >= 1 && $value <= 5) {
-                        $score = $value;
-                        break;
-                    }
-                }
-            }
-        }
-        if ($score !== null && $score >= 1 && $score <= 5) {
-            return $weight * $score / 5.0;
-        }
-        return 0.0;
-    }
-    if ($type === 'choice') {
-        if (empty($item['allow_multiple'])) {
-            $correct = isset($item['correct_value']) ? (string)$item['correct_value'] : '';
-            if ($correct === '') {
-                return 0.0;
-            }
-            foreach ($answerSet as $entry) {
-                if (isset($entry['valueString']) && (string)$entry['valueString'] === $correct) {
-                    return $weight;
-                }
-            }
-            return 0.0;
-        }
-        foreach ($answerSet as $entry) {
-            if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                return $weight;
-            }
-        }
-        return 0.0;
-    }
-    foreach ($answerSet as $entry) {
-        if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-            return $weight;
-        }
-    }
-    return 0.0;
-}
-
-/**
- * Fetch weighted questionnaire items for the supplied questionnaire identifiers.
+ * Fetch correct-answer scoring items for the supplied questionnaire identifiers.
  *
  * @return array<int, array<int, array<string, mixed>>> keyed by questionnaire id.
  */
@@ -113,10 +39,12 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
         return [];
     }
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $sql = 'SELECT id, questionnaire_id, linkId, type, allow_multiple, COALESCE(weight_percent,0) AS weight_percent '
-        . 'FROM questionnaire_item '
-        . 'WHERE questionnaire_id IN (' . $placeholders . ') '
-        . 'ORDER BY questionnaire_id, order_index, id';
+    $sql = 'SELECT qi.id, qi.questionnaire_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, '
+        . 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+        . 'FROM questionnaire_item qi '
+        . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
+        . 'WHERE qi.questionnaire_id IN (' . $placeholders . ') '
+        . 'ORDER BY qi.questionnaire_id, qi.order_index, qi.id';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($ids);
     $rawItems = [];
@@ -132,7 +60,8 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
             'linkId' => (string)($row['linkId'] ?? ''),
             'type' => (string)($row['type'] ?? ''),
             'allow_multiple' => !empty($row['allow_multiple']),
-            'weight_percent' => (float)($row['weight_percent'] ?? 0.0),
+            'requires_correct' => !empty($row['requires_correct']),
+            'include_in_scoring' => !empty($row['include_in_scoring']),
         ];
         if ($itemId > 0) {
             $itemIds[] = $itemId;
@@ -157,27 +86,19 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
         }
     }
 
-    $nonScorableTypes = ['display', 'group', 'section'];
     $itemsByQuestionnaire = [];
     foreach ($rawItems as $qid => $items) {
-        $singleChoiceWeights = questionnaire_even_single_choice_weights($items);
-        $likertWeights = questionnaire_even_likert_weights($items);
         foreach ($items as $item) {
-            $weight = questionnaire_resolve_effective_weight(
-                $item,
-                $singleChoiceWeights,
-                $likertWeights,
-                !in_array($item['type'], $nonScorableTypes, true)
-            );
-            if ($weight <= 0.0) {
+            if (!questionnaire_item_uses_correct_answer($item) || !questionnaire_section_included_in_scoring($item)) {
+                continue;
+            }
+            $correctValue = (string)($correctByItem[(int)($item['id'] ?? 0)] ?? '');
+            if ($correctValue === '') {
                 continue;
             }
             $itemsByQuestionnaire[$qid][] = [
                 'linkId' => (string)($item['linkId'] ?? ''),
-                'type' => (string)($item['type'] ?? ''),
-                'allow_multiple' => !empty($item['allow_multiple']),
-                'weight' => $weight,
-                'correct_value' => $correctByItem[(int)($item['id'] ?? 0)] ?? null,
+                'correct_value' => $correctValue,
             ];
         }
     }
@@ -216,25 +137,27 @@ function analytics_fetch_answers(PDO $pdo, array $responseIds): array
 }
 
 /**
- * Calculate a weighted score for a response.
+ * Calculate a correct-answer score for a response.
  */
 function analytics_compute_response_score(array $items, array $answers): ?float
 {
-    $totalWeight = 0.0;
-    $achieved = 0.0;
+    $correctCount = 0;
+    $totalCount = 0;
     foreach ($items as $item) {
-        $weight = (float)($item['weight'] ?? 0.0);
-        if ($weight <= 0) {
+        $correctValue = (string)($item['correct_value'] ?? '');
+        if ($correctValue === '') {
             continue;
         }
-        $totalWeight += $weight;
-        $answerSet = $answers[$item['linkId']] ?? [];
-        $achieved += analytics_score_item($item, $answerSet, $weight);
+        $totalCount++;
+        $answerSet = $answers[(string)($item['linkId'] ?? '')] ?? [];
+        if (questionnaire_answer_is_correct($answerSet, $correctValue)) {
+            $correctCount++;
+        }
     }
-    if ($totalWeight <= 0) {
+    if ($totalCount <= 0) {
         return null;
     }
-    return round(($achieved / $totalWeight) * 100, 1);
+    return round(($correctCount / $totalCount) * 100, 1);
 }
 
 /**
@@ -755,48 +678,8 @@ if ($selectedQuestionnaireId) {
     $selectedUserBreakdown = $userStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($selectedResponses) {
-        $selectedUserScoreSums = [];
-        foreach ($selectedResponses as &$responseRow) {
-            $rid = (int)($responseRow['id'] ?? 0);
-            if ($responseRow['score'] === null && isset($computedResponseScores[$rid])) {
-                $responseRow['score'] = $computedResponseScores[$rid];
-            } elseif ($responseRow['score'] !== null) {
-                $responseRow['score'] = (float)$responseRow['score'];
-            }
-            $status = strtolower((string)($responseRow['status'] ?? ''));
-            if ($status === 'draft') {
-                continue;
-            }
-            $userId = (int)($responseRow['user_id'] ?? 0);
-            if ($userId <= 0 || $responseRow['score'] === null) {
-                continue;
-            }
-            $selectedUserScoreSums[$userId]['sum'] = ($selectedUserScoreSums[$userId]['sum'] ?? 0.0) + (float)$responseRow['score'];
-            $selectedUserScoreSums[$userId]['count'] = ($selectedUserScoreSums[$userId]['count'] ?? 0) + 1;
-        }
-        unset($responseRow);
-
-        if ($selectedUserBreakdown) {
-            foreach ($selectedUserBreakdown as &$userRow) {
-                $uid = (int)($userRow['user_id'] ?? 0);
-                if ($userRow['avg_score'] !== null) {
-                    $userRow['avg_score'] = (float)$userRow['avg_score'];
-                    continue;
-                }
-                if (isset($selectedUserScoreSums[$uid]) && $selectedUserScoreSums[$uid]['count'] > 0) {
-                    $userRow['avg_score'] = round(
-                        $selectedUserScoreSums[$uid]['sum'] / $selectedUserScoreSums[$uid]['count'],
-                        1
-                    );
-                }
-            }
-            unset($userRow);
-        }
-    }
-
-    if ($selectedResponses) {
         $sectionStmt = $pdo->prepare(
-            'SELECT id, title FROM questionnaire_section WHERE questionnaire_id=? ORDER BY order_index, id'
+            'SELECT id, title, COALESCE(include_in_scoring,1) AS include_in_scoring FROM questionnaire_section WHERE questionnaire_id=? ORDER BY order_index, id'
         );
         $sectionStmt->execute([$selectedQuestionnaireId]);
         $sectionLabels = [];
@@ -804,51 +687,82 @@ if ($selectedQuestionnaireId) {
         foreach ($sectionStmt->fetchAll(PDO::FETCH_ASSOC) as $sectionRow) {
             $sid = (int)$sectionRow['id'];
             $sectionOrder[] = $sid;
-            $sectionLabels[$sid] = trim((string)($sectionRow['title'] ?? ''));
+            $sectionLabels[$sid] = [
+                'label' => trim((string)($sectionRow['title'] ?? '')),
+                'include_in_scoring' => !empty($sectionRow['include_in_scoring']),
+            ];
         }
 
         $itemStmt = $pdo->prepare(
-            'SELECT section_id, linkId, type, allow_multiple, COALESCE(weight_percent,0) AS weight '
-            . 'FROM questionnaire_item WHERE questionnaire_id=? ORDER BY order_index, id'
+            'SELECT qi.id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+            . 'FROM questionnaire_item qi LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
+            . 'WHERE qi.questionnaire_id=? ORDER BY qi.order_index, qi.id'
         );
         $itemStmt->execute([$selectedQuestionnaireId]);
         $rawItems = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $itemIds = [];
+        foreach ($rawItems as $itemRow) {
+            $itemId = (int)($itemRow['id'] ?? 0);
+            if ($itemId > 0) {
+                $itemIds[] = $itemId;
+            }
+        }
+        $correctByItem = [];
+        if ($itemIds) {
+            $itemIds = array_values(array_unique($itemIds));
+            $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+            $optStmt = $pdo->prepare(
+                "SELECT questionnaire_item_id, value FROM questionnaire_item_option WHERE questionnaire_item_id IN ($placeholders) AND is_correct=1 ORDER BY questionnaire_item_id, order_index, id"
+            );
+            $optStmt->execute($itemIds);
+            foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $optRow) {
+                $itemId = (int)$optRow['questionnaire_item_id'];
+                if (!isset($correctByItem[$itemId])) {
+                    $correctByItem[$itemId] = (string)($optRow['value'] ?? '');
+                }
+            }
+        }
 
         $unassignedKey = 'unassigned';
         $generalLabel = t($t, 'unassigned_section_label', 'General');
         $sectionFallback = t($t, 'section_placeholder', 'Section');
 
-        $baseSectionWeights = [];
-        $scoringItems = [];
-        foreach ($rawItems as $itemRow) {
-            $sectionKey = $itemRow['section_id'] !== null ? (int)$itemRow['section_id'] : $unassignedKey;
-            $weight = (float)($itemRow['weight'] ?? 0.0);
-            if ($weight <= 0) {
-                continue;
-            }
-            $baseSectionWeights[$sectionKey] = ($baseSectionWeights[$sectionKey] ?? 0.0) + $weight;
-            $scoringItems[] = [
-                'section_key' => $sectionKey,
-                'linkId' => (string)($itemRow['linkId'] ?? ''),
-                'type' => (string)($itemRow['type'] ?? 'text'),
-                'allow_multiple' => !empty($itemRow['allow_multiple']),
-                'weight' => $weight,
-            ];
-        }
-
         $sectionColumns = [];
         foreach ($sectionOrder as $sid) {
-            if (($baseSectionWeights[$sid] ?? 0) <= 0) {
+            if (empty($sectionLabels[$sid]['include_in_scoring'])) {
                 continue;
             }
-            $label = $sectionLabels[$sid] ?? '';
+            $label = (string)($sectionLabels[$sid]['label'] ?? '');
             $label = trim($label) !== '' ? $label : $sectionFallback;
             $sectionColumns[] = [
                 'key' => $sid,
                 'label' => $label,
             ];
         }
-        if (($baseSectionWeights[$unassignedKey] ?? 0) > 0) {
+
+        $scoringItems = [];
+        $hasUnassignedIncluded = false;
+        foreach ($rawItems as $itemRow) {
+            if (!questionnaire_item_uses_correct_answer($itemRow) || !questionnaire_section_included_in_scoring($itemRow)) {
+                continue;
+            }
+            $itemId = (int)($itemRow['id'] ?? 0);
+            $correctValue = (string)($correctByItem[$itemId] ?? '');
+            if ($correctValue === '') {
+                continue;
+            }
+            $sectionKey = $itemRow['section_id'] !== null ? (int)$itemRow['section_id'] : $unassignedKey;
+            if ($sectionKey === $unassignedKey) {
+                $hasUnassignedIncluded = true;
+            }
+            $scoringItems[] = [
+                'section_key' => $sectionKey,
+                'linkId' => (string)($itemRow['linkId'] ?? ''),
+                'correct_value' => $correctValue,
+            ];
+        }
+        if ($hasUnassignedIncluded) {
             $sectionColumns[] = [
                 'key' => $unassignedKey,
                 'label' => $generalLabel,
@@ -870,73 +784,18 @@ if ($selectedQuestionnaireId) {
                 }
             }
 
-            $scoreCalculator = static function (array $item, array $answerSet, float $weight): float {
-                if ($weight <= 0) {
-                    return 0.0;
-                }
-                $type = (string)($item['type'] ?? 'text');
-                if ($type === 'boolean') {
-                    foreach ($answerSet as $entry) {
-                        if ((isset($entry['valueBoolean']) && $entry['valueBoolean'])
-                            || (isset($entry['valueString']) && strtolower((string)$entry['valueString']) === 'true')) {
-                            return $weight;
-                        }
-                    }
-                    return 0.0;
-                }
-                if ($type === 'likert') {
-                    $score = null;
-                    foreach ($answerSet as $entry) {
-                        if (isset($entry['valueInteger']) && is_numeric($entry['valueInteger'])) {
-                            $score = (int)$entry['valueInteger'];
-                            break;
-                        }
-                        if (isset($entry['valueString'])) {
-                            $candidate = trim((string)$entry['valueString']);
-                            if (preg_match('/^([1-5])/', $candidate, $matches)) {
-                                $score = (int)$matches[1];
-                                break;
-                            }
-                            if (is_numeric($candidate)) {
-                                $value = (int)$candidate;
-                                if ($value >= 1 && $value <= 5) {
-                                    $score = $value;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if ($score !== null && $score >= 1 && $score <= 5) {
-                        return $weight * $score / 5.0;
-                    }
-                    return 0.0;
-                }
-                if ($type === 'choice') {
-                    foreach ($answerSet as $entry) {
-                        if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                            return $weight;
-                        }
-                    }
-                    return 0.0;
-                }
-                foreach ($answerSet as $entry) {
-                    if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                        return $weight;
-                    }
-                }
-                return 0.0;
-            };
-
             $aggregateStats = [];
+            foreach ($sectionColumns as $col) {
+                $aggregateStats[$col['key']] = ['correct' => 0, 'total' => 0];
+            }
+
             foreach ($selectedResponses as $row) {
-                $responseId = (int)$row['id'];
+                $responseId = (int)($row['id'] ?? 0);
                 $answers = $answersByResponse[$responseId] ?? [];
+
                 $sectionStats = [];
                 foreach ($sectionColumns as $col) {
-                    $sectionStats[$col['key']] = [
-                        'weight' => 0.0,
-                        'achieved' => 0.0,
-                    ];
+                    $sectionStats[$col['key']] = ['correct' => 0, 'total' => 0];
                 }
 
                 foreach ($scoringItems as $item) {
@@ -944,19 +803,21 @@ if ($selectedQuestionnaireId) {
                     if (!isset($sectionStats[$sectionKey])) {
                         continue;
                     }
-                    $sectionStats[$sectionKey]['weight'] += $item['weight'];
+                    $sectionStats[$sectionKey]['total']++;
                     $answerSet = $answers[$item['linkId']] ?? [];
-                    $sectionStats[$sectionKey]['achieved'] += $scoreCalculator($item, $answerSet, $item['weight']);
+                    if (questionnaire_answer_is_correct($answerSet, (string)$item['correct_value'])) {
+                        $sectionStats[$sectionKey]['correct']++;
+                    }
                 }
 
                 $sectionScores = [];
                 foreach ($sectionColumns as $col) {
                     $stat = $sectionStats[$col['key']];
-                    if ($stat['weight'] > 0) {
-                        $scorePct = round(($stat['achieved'] / $stat['weight']) * 100, 1);
+                    if ($stat['total'] > 0) {
+                        $scorePct = round(($stat['correct'] / $stat['total']) * 100, 1);
                         $sectionScores[$col['key']] = $scorePct;
-                        $aggregateStats[$col['key']]['achieved'] = ($aggregateStats[$col['key']]['achieved'] ?? 0.0) + $stat['achieved'];
-                        $aggregateStats[$col['key']]['weight'] = ($aggregateStats[$col['key']]['weight'] ?? 0.0) + $stat['weight'];
+                        $aggregateStats[$col['key']]['correct'] += $stat['correct'];
+                        $aggregateStats[$col['key']]['total'] += $stat['total'];
                     } else {
                         $sectionScores[$col['key']] = null;
                     }
@@ -974,8 +835,8 @@ if ($selectedQuestionnaireId) {
             }
 
             foreach ($sectionColumns as $col) {
-                $stat = $aggregateStats[$col['key']] ?? ['achieved' => 0.0, 'weight' => 0.0];
-                $avg = $stat['weight'] > 0 ? round(($stat['achieved'] / $stat['weight']) * 100, 1) : null;
+                $stat = $aggregateStats[$col['key']] ?? ['correct' => 0, 'total' => 0];
+                $avg = $stat['total'] > 0 ? round(($stat['correct'] / $stat['total']) * 100, 1) : null;
                 $sectionAggregates[] = [
                     'label' => $col['label'],
                     'score' => $avg,

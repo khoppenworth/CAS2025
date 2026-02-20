@@ -119,6 +119,7 @@ CREATE TABLE questionnaire_section (
   description TEXT NULL,
   order_index INT NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
+  include_in_scoring TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -392,6 +392,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'description' => $section['description'],
             'order_index' => (int)$section['order_index'],
             'is_active' => (bool)($section['is_active'] ?? true),
+            'include_in_scoring' => (bool)($section['include_in_scoring'] ?? true),
         ];
     }
 
@@ -756,8 +757,8 @@ if ($action === 'save' || $action === 'publish') {
         $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
         $updateQuestionnaireStmt = $pdo->prepare('UPDATE questionnaire SET title=?, description=?, status=? WHERE id=?');
 
-        $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index, is_active) VALUES (?, ?, ?, ?, ?)');
-        $updateSectionStmt = $pdo->prepare('UPDATE questionnaire_section SET title=?, description=?, order_index=?, is_active=? WHERE id=?');
+        $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index, is_active, include_in_scoring) VALUES (?, ?, ?, ?, ?, ?)');
+        $updateSectionStmt = $pdo->prepare('UPDATE questionnaire_section SET title=?, description=?, order_index=?, is_active=?, include_in_scoring=? WHERE id=?');
 
         $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, requires_correct, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, requires_correct=?, is_active=? WHERE id=?');
@@ -891,12 +892,14 @@ if ($action === 'save' || $action === 'publish') {
                 $sectionTitle = trim((string)($sectionData['title'] ?? ''));
                 $sectionDescription = $sectionData['description'] ?? null;
                 $sectionActive = array_key_exists('is_active', $sectionData) ? !empty($sectionData['is_active']) : true;
+                $sectionIncludeInScoring = array_key_exists('include_in_scoring', $sectionData) ? !empty($sectionData['include_in_scoring']) : true;
 
                 if ($sectionId && isset($existingSections[$sectionId])) {
-                    $updateSectionStmt->execute([$sectionTitle, $sectionDescription, $orderIndex, $sectionActive ? 1 : 0, $sectionId]);
+                    $updateSectionStmt->execute([$sectionTitle, $sectionDescription, $orderIndex, $sectionActive ? 1 : 0, $sectionIncludeInScoring ? 1 : 0, $sectionId]);
                     $existingSections[$sectionId]['is_active'] = $sectionActive ? 1 : 0;
+                    $existingSections[$sectionId]['include_in_scoring'] = $sectionIncludeInScoring ? 1 : 0;
                 } else {
-                    $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $orderIndex, $sectionActive ? 1 : 0]);
+                    $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $orderIndex, $sectionActive ? 1 : 0, $sectionIncludeInScoring ? 1 : 0]);
                     $sectionId = (int)$pdo->lastInsertId();
                     if ($sectionClientId) {
                         $idMap['sections'][$sectionClientId] = $sectionId;
@@ -904,6 +907,7 @@ if ($action === 'save' || $action === 'publish') {
                     $existingSections[$sectionId] = [
                         'id' => $sectionId,
                         'is_active' => $sectionActive ? 1 : 0,
+                        'include_in_scoring' => $sectionIncludeInScoring ? 1 : 0,
                     ];
                 }
                 $sectionSeen[] = $sectionId;
