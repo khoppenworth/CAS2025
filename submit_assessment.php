@@ -50,6 +50,78 @@ $isOtherSelected = static function ($rawValue): bool {
     return false;
 };
 
+
+$collectPostedValues = static function (array $postData): array {
+    $valuesByLinkId = [];
+    foreach ($postData as $key => $value) {
+        if (!is_string($key) || !str_starts_with($key, 'item_')) {
+            continue;
+        }
+        $linkId = substr($key, 5);
+        if ($linkId === '') {
+            continue;
+        }
+        $rawValues = is_array($value) ? $value : [$value];
+        $normalized = [];
+        foreach ($rawValues as $entry) {
+            if (is_scalar($entry) || $entry === null) {
+                $text = trim((string)$entry);
+                if ($text !== '') {
+                    $normalized[] = $text;
+                }
+            }
+        }
+        if ($normalized) {
+            $valuesByLinkId[$linkId] = $normalized;
+        }
+    }
+    return $valuesByLinkId;
+};
+
+$matchesCondition = static function (array $item, array $valuesByLinkId): bool {
+    $source = trim((string)($item['condition_source_linkid'] ?? ''));
+    if ($source === '') {
+        return true;
+    }
+
+    $operator = strtolower(trim((string)($item['condition_operator'] ?? 'equals')));
+    if ($operator === '') {
+        $operator = 'equals';
+    }
+
+    $expected = trim((string)($item['condition_value'] ?? ''));
+    $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
+    $candidateValues = [];
+    foreach (($valuesByLinkId[$source] ?? []) as $value) {
+        $candidateValues[] = trim((string)$value);
+    }
+
+    if ($operator === 'contains') {
+        if ($expectedLower === '') {
+            return false;
+        }
+        foreach ($candidateValues as $candidate) {
+            $candidateLower = function_exists('mb_strtolower') ? mb_strtolower($candidate, 'UTF-8') : strtolower($candidate);
+            if ($candidateLower !== '' && str_contains($candidateLower, $expectedLower)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    $normalizedCandidates = [];
+    foreach ($candidateValues as $candidate) {
+        $normalizedCandidates[] = function_exists('mb_strtolower')
+            ? mb_strtolower((string)$candidate, 'UTF-8')
+            : strtolower((string)$candidate);
+    }
+    $equals = in_array($expectedLower, $normalizedCandidates, true);
+    if ($operator === 'not_equals') {
+        return !$equals;
+    }
+    return $equals;
+};
+
 $user = current_user();
 try {
     if (($user['role'] ?? '') !== 'admin') {
@@ -195,8 +267,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Fetch items with section scoring metadata
             $itemsStmt = $pdo->prepare(
-                'SELECT qi.id, qi.linkId, qi.text, qi.type, qi.allow_multiple, qi.weight_percent, qi.is_required, qi.requires_correct, '
-                . 'qi.section_id, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                'SELECT qi.id, qi.linkId, qi.text, qi.type, qi.allow_multiple, qi.weight_percent, qi.is_required, qi.requires_correct, ' .
+                'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, ' .
+                'qi.section_id, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
                 . 'FROM questionnaire_item qi '
                 . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
                 . 'WHERE qi.questionnaire_id=? AND qi.is_active=1 ORDER BY qi.order_index ASC'
@@ -251,8 +324,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $correctCount = 0;
             $totalCount = 0;
 
+            $answersByLinkId = [];
+            $submittedValuesByLinkId = $collectPostedValues($_POST);
             $missingRequired = [];
             foreach ($items as $it) {
+                $isVisible = $matchesCondition($it, $submittedValuesByLinkId);
+                if (!$isVisible) {
+                    continue;
+                }
                 $name = 'item_' . $it['linkId'];
                 $type = (string)($it['type'] ?? '');
                 $isScorable = !in_array($type, $nonScorableTypes, true);
@@ -372,6 +451,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $a = $encodeAnswerPayload([['valueString' => $txt]]);
                 }
+
+                $answersByLinkId[(string)$it['linkId']] = json_decode((string)$a, true) ?: [];
 
                 if ($isRequired && !$isDraftSave && !$hasResponse) {
                     $missingRequired[] = $questionTitle;
@@ -615,6 +696,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     $required = !empty($it['is_required']);
     $fieldClass = 'md-field' . ($required ? ' md-field--required' : '');
     $requiredAttr = $required ? ' required' : '';
+    $conditionSource = trim((string)($it['condition_source_linkid'] ?? ''));
+    $conditionOperator = trim((string)($it['condition_operator'] ?? 'equals'));
+    $conditionValue = trim((string)($it['condition_value'] ?? ''));
     $ariaRequired = $required ? ' aria-required="true"' : '';
     $followupParentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
     $followupVisible = true;
@@ -640,7 +724,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       id="<?=htmlspecialchars($anchorId, ENT_QUOTES, 'UTF-8')?>"
       data-question-anchor
       <?php if ($followupParentLinkId !== ''): ?>data-other-followup data-other-parent-linkid="<?=htmlspecialchars($followupParentLinkId, ENT_QUOTES, 'UTF-8')?>"<?php endif; ?>
+      <?php if ($conditionSource !== ''): ?>data-condition-source="<?=htmlspecialchars($conditionSource, ENT_QUOTES, 'UTF-8')?>" data-condition-operator="<?=htmlspecialchars($conditionOperator ?: 'equals', ENT_QUOTES, 'UTF-8')?>" data-condition-value="<?=htmlspecialchars($conditionValue, ENT_QUOTES, 'UTF-8')?>"<?php endif; ?>
       tabindex="-1"
+      data-required="<?= $required ? '1' : '0' ?>"
       <?php if ($followupParentLinkId !== '' && !$followupVisible): ?>hidden<?php endif; ?>
     >
       <span><?=htmlspecialchars($it['text'] ?? '', ENT_QUOTES, 'UTF-8')?></span>
@@ -893,6 +979,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
               id="<?=htmlspecialchars($questionnaireDetails['anchor'] ?? $buildAnchorId('section', (string)($questionnaireDetails['id'] ?? $questionnaireDetails['title'] ?? 'questionnaire')), ENT_QUOTES, 'UTF-8')?>"
               data-section-anchor
               tabindex="-1"
+      data-required="<?= $required ? '1' : '0' ?>"
             >
               <?=htmlspecialchars($questionnaireDetails['title'])?>
             </h3>
@@ -1131,6 +1218,70 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     };
 
+
+    const toggleConditionalVisibility = () => {
+      const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
+      conditionalFields.forEach((field) => {
+        const source = field.getAttribute('data-condition-source') || '';
+        const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
+        const expected = (field.getAttribute('data-condition-value') || '').trim();
+        if (!source) {
+          field.hidden = false;
+          return;
+        }
+        const controls = Array.from(document.querySelectorAll(`[name="item_${source}"], [name="item_${source}[]"]`));
+        const selectedValues = controls.flatMap((control) => {
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
+              return [];
+            }
+            return [String(control.value || '').trim()];
+          }
+          if (control instanceof HTMLSelectElement) {
+            return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
+          }
+          return [];
+        });
+        const expectedLower = expected.toLowerCase();
+        const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
+        const equals = normalizedSelected.includes(expectedLower);
+        const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
+        let show = equals;
+        if (operator === 'contains') {
+          show = contains;
+        } else if (operator === 'not_equals') {
+          show = !equals;
+        }
+        field.hidden = !show;
+        const innerControls = Array.from(field.querySelectorAll('input, textarea, select'));
+        innerControls.forEach((control) => {
+          if (!(control instanceof HTMLElement)) {
+            return;
+          }
+          if (show) {
+            if (control.dataset.wasRequired === 'true') {
+              control.required = true;
+            }
+          } else {
+            control.dataset.wasRequired = control.required ? 'true' : 'false';
+            control.required = false;
+            if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+              if (control.type === 'checkbox' || control.type === 'radio') {
+                control.checked = false;
+              } else {
+                control.value = '';
+              }
+            }
+            if (control instanceof HTMLSelectElement) {
+              Array.from(control.options).forEach((option) => {
+                option.selected = false;
+              });
+            }
+          }
+        });
+      });
+    };
+
     document.addEventListener('change', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
@@ -1138,10 +1289,12 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
         toggleOtherFollowupVisibility();
+        toggleConditionalVisibility();
       }
     });
 
     toggleOtherFollowupVisibility();
+    toggleConditionalVisibility();
     const isAppOnline = () => {
       if (connectivity) {
         try {
