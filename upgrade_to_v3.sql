@@ -147,6 +147,9 @@ ALTER TABLE questionnaire
 ALTER TABLE questionnaire_section
   ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER order_index;
 
+ALTER TABLE questionnaire_section
+  ADD COLUMN IF NOT EXISTS include_in_scoring TINYINT(1) NOT NULL DEFAULT 1 AFTER is_active;
+
 ALTER TABLE questionnaire_item
   ADD COLUMN IF NOT EXISTS is_required TINYINT(1) NOT NULL DEFAULT 0 AFTER allow_multiple;
 
@@ -180,6 +183,10 @@ DEALLOCATE PREPARE stmt;
 UPDATE questionnaire_section
 SET is_active = 1
 WHERE is_active IS NULL;
+
+UPDATE questionnaire_section
+SET include_in_scoring = 1
+WHERE include_in_scoring IS NULL;
 
 UPDATE questionnaire_item
 SET is_active = 1

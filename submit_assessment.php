@@ -186,8 +186,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $responseId = (int)$pdo->lastInsertId();
             }
 
-            // Fetch items with weights
-            $itemsStmt = $pdo->prepare('SELECT id, linkId, text, type, allow_multiple, weight_percent, is_required, requires_correct FROM questionnaire_item WHERE questionnaire_id=? AND is_active=1 ORDER BY order_index ASC');
+            // Fetch items with section scoring metadata
+            $itemsStmt = $pdo->prepare(
+                'SELECT qi.id, qi.linkId, qi.text, qi.type, qi.allow_multiple, qi.weight_percent, qi.is_required, qi.requires_correct, '
+                . 'qi.section_id, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                . 'FROM questionnaire_item qi '
+                . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
+                . 'WHERE qi.questionnaire_id=? AND qi.is_active=1 ORDER BY qi.order_index ASC'
+            );
             $itemsStmt->execute([$qid]);
             $items = $itemsStmt->fetchAll();
 
@@ -235,8 +241,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $previousItem = $itemRow;
             }
 
-            $score_sum = 0.0;
-            $max_points = 0.0;
+            $correctCount = 0;
+            $totalCount = 0;
 
             $missingRequired = [];
             foreach ($items as $it) {
@@ -367,9 +373,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ins = $pdo->prepare('INSERT INTO questionnaire_response_item (response_id, linkId, answer) VALUES (?,?,?)');
                 $ins->execute([$responseId, $it['linkId'], $a]);
 
-                if (!$isDraftSave && $isScorable) {
-                    $max_points += $effectiveWeight;
-                    $score_sum += max(0.0, min($effectiveWeight, $achievedPoints));
+                if (!$isDraftSave && $isScorable && questionnaire_item_uses_correct_answer($it) && questionnaire_section_included_in_scoring($it)) {
+                    $correctValue = (string)($optionMap[(int)$it['id']]['correct'] ?? '');
+                    if ($correctValue !== '') {
+                        $totalCount++;
+                        $answerSet = json_decode((string)$a, true);
+                        if (is_array($answerSet) && questionnaire_answer_is_correct($answerSet, $correctValue)) {
+                            $correctCount++;
+                        }
+                    }
                 }
             }
             if (!$isDraftSave && $missingRequired) {
@@ -387,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare('UPDATE questionnaire_response SET score=NULL WHERE id=?')->execute([$responseId]);
                     $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id=?')->execute([$responseId]);
                 } else {
-                    $pctRaw = $max_points > 0 ? ($score_sum / $max_points) * 100 : 0.0;
+                    $pctRaw = $totalCount > 0 ? ($correctCount / $totalCount) * 100 : 0.0;
                     $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
                     $pdo->prepare('UPDATE questionnaire_response SET score=? WHERE id=?')->execute([$pct, $responseId]);
                     map_response_to_training_courses($pdo, $responseId, (string)($user['work_function'] ?? ''), $pct, $qid);
