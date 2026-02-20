@@ -1481,12 +1481,6 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         } else {
           pendingSubmit = isFinalSubmit;
           persistDraft();
-          if (isFinalSubmit) {
-            clearDraft();
-            offlineStatus.dataset.state = '';
-            offlineStatus.textContent = '';
-            offlineStatus.hidden = true;
-          }
         }
       });
 
