@@ -191,6 +191,9 @@ const Builder = (() => {
       is_active: toBoolean(item.is_active, true),
       hasResponses: toBoolean(item.has_responses),
       requires_correct: requiresCorrect,
+      condition_source_linkid: item.condition_source_linkid || '',
+      condition_operator: item.condition_operator || 'equals',
+      condition_value: item.condition_value || '',
     };
     ensureSingleChoiceCorrect(normalized);
     return normalized;
@@ -495,6 +498,9 @@ const Builder = (() => {
           is_active: Boolean(itemNode.querySelector('[data-role="item-active"]')?.checked ?? existing.is_active ?? true),
           hasResponses: Boolean(existing.hasResponses),
           requires_correct: type === 'choice' && !allowMultiple && Boolean(requiresCorrectInput && requiresCorrectInput.checked),
+          condition_source_linkid: itemNode.querySelector('[data-role="item-condition-source"]')?.value || '',
+          condition_operator: itemNode.querySelector('[data-role="item-condition-operator"]')?.value || 'equals',
+          condition_value: itemNode.querySelector('[data-role="item-condition-value"]')?.value || '',
         };
         ensureSingleChoiceCorrect(parsed);
         return parsed;
@@ -873,6 +879,22 @@ const Builder = (() => {
           <div class="qb-field qb-toggle">
             <label><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
           </div>
+          <div class="qb-field">
+            <label>Show when question code</label>
+            <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
+          </div>
+          <div class="qb-field">
+            <label>Condition</label>
+            <select class="qb-select" data-role="item-condition-operator">
+              <option value="equals" ${(item.condition_operator || 'equals') === 'equals' ? 'selected' : ''}>Equals</option>
+              <option value="not_equals" ${(item.condition_operator || '') === 'not_equals' ? 'selected' : ''}>Does not equal</option>
+              <option value="contains" ${(item.condition_operator || '') === 'contains' ? 'selected' : ''}>Contains</option>
+            </select>
+          </div>
+          <div class="qb-field">
+            <label>Condition value</label>
+            <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer">
+          </div>
           <div class="qb-actions">
             <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
           </div>
@@ -1074,6 +1096,9 @@ const Builder = (() => {
       case 'item-multi':
       case 'item-requires-correct':
       case 'item-active':
+      case 'item-condition-source':
+      case 'item-condition-operator':
+      case 'item-condition-value':
       case 'option-value':
       case 'option-correct':
         applyFieldChange(questionnaire, event.target, role);
@@ -1213,7 +1238,14 @@ const Builder = (() => {
       case 'item-active':
         if (!item.hasResponses) item.is_active = input.checked;
         break;
-        item.weight_percent = Number(input.value) || 0;
+      case 'item-condition-source':
+        item.condition_source_linkid = input.value.trim();
+        break;
+      case 'item-condition-operator':
+        item.condition_operator = input.value || 'equals';
+        break;
+      case 'item-condition-value':
+        item.condition_value = input.value;
         break;
       case 'option-value': {
         const optId = input.closest('[data-option]')?.getAttribute('data-option');
@@ -1640,6 +1672,9 @@ const Builder = (() => {
       allow_multiple: item.allow_multiple && item.type === 'choice',
       is_required: item.is_required,
       requires_correct: item.requires_correct && item.type === 'choice' && !item.allow_multiple,
+      condition_source_linkid: (item.condition_source_linkid || '').trim(),
+      condition_operator: (item.condition_operator || 'equals').trim() || 'equals',
+      condition_value: item.condition_value || '',
       is_active: item.is_active,
       options: ['choice', 'likert'].includes(item.type)
         ? item.options.map((opt, idx) => ({

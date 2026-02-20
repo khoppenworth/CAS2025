@@ -425,6 +425,9 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'allow_multiple' => (bool)$item['allow_multiple'],
             'is_required' => (bool)($item['is_required'] ?? false),
             'requires_correct' => (bool)($item['requires_correct'] ?? false),
+            'condition_source_linkid' => (string)($item['condition_source_linkid'] ?? ''),
+            'condition_operator' => (string)($item['condition_operator'] ?? ''),
+            'condition_value' => (string)($item['condition_value'] ?? ''),
             'options' => $optionsByItem[(int)$item['id']] ?? [],
             'is_active' => (bool)($item['is_active'] ?? true),
             'has_responses' => !empty($itemResponseCounts[$qid][$item['linkId']] ?? null),
@@ -760,8 +763,8 @@ if ($action === 'save' || $action === 'publish') {
         $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index, is_active, include_in_scoring) VALUES (?, ?, ?, ?, ?, ?)');
         $updateSectionStmt = $pdo->prepare('UPDATE questionnaire_section SET title=?, description=?, order_index=?, is_active=?, include_in_scoring=? WHERE id=?');
 
-        $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, requires_correct, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, requires_correct=?, is_active=? WHERE id=?');
+        $insertItemStmt = $pdo->prepare('INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type, order_index, weight_percent, allow_multiple, is_required, requires_correct, condition_source_linkid, condition_operator, condition_value, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $updateItemStmt = $pdo->prepare('UPDATE questionnaire_item SET section_id=?, linkId=?, text=?, type=?, order_index=?, weight_percent=?, allow_multiple=?, is_required=?, requires_correct=?, condition_source_linkid=?, condition_operator=?, condition_value=?, is_active=? WHERE id=?');
         $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
         $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, is_correct=?, order_index=? WHERE id=?');
         $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
@@ -940,14 +943,21 @@ if ($action === 'save' || $action === 'publish') {
                         $requiresCorrect = false;
                     }
                     $itemActive = array_key_exists('is_active', $itemData) ? !empty($itemData['is_active']) : true;
+                    $conditionSource = trim((string)($itemData['condition_source_linkid'] ?? ''));
+                    $conditionOperator = trim((string)($itemData['condition_operator'] ?? 'equals'));
+                    $conditionValue = trim((string)($itemData['condition_value'] ?? ''));
+                    if ($conditionSource === '') {
+                        $conditionOperator = '';
+                        $conditionValue = '';
+                    }
 
                     if ($itemId && isset($existingItems[$itemId])) {
-                        $updateItemStmt->execute([$sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
+                        $updateItemStmt->execute([$sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $conditionSource !== '' ? $conditionSource : null, $conditionOperator !== '' ? $conditionOperator : null, $conditionValue !== '' ? $conditionValue : null, $itemActive ? 1 : 0, $itemId]);
                         $existingItems[$itemId]['section_id'] = $sectionId;
                         $existingItems[$itemId]['linkId'] = $linkId;
                         $existingItems[$itemId]['is_active'] = $itemActive ? 1 : 0;
                     } else {
-                        $insertItemStmt->execute([$qid, $sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0]);
+                        $insertItemStmt->execute([$qid, $sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $conditionSource !== '' ? $conditionSource : null, $conditionOperator !== '' ? $conditionOperator : null, $conditionValue !== '' ? $conditionValue : null, $itemActive ? 1 : 0]);
                         $itemId = (int)$pdo->lastInsertId();
                         if ($itemClientId) {
                             $idMap['items'][$itemClientId] = $itemId;
@@ -999,14 +1009,21 @@ if ($action === 'save' || $action === 'publish') {
                     $requiresCorrect = false;
                 }
                 $itemActive = array_key_exists('is_active', $itemData) ? !empty($itemData['is_active']) : true;
+                $conditionSource = trim((string)($itemData['condition_source_linkid'] ?? ''));
+                $conditionOperator = trim((string)($itemData['condition_operator'] ?? 'equals'));
+                $conditionValue = trim((string)($itemData['condition_value'] ?? ''));
+                if ($conditionSource === '') {
+                    $conditionOperator = '';
+                    $conditionValue = '';
+                }
 
                 if ($itemId && isset($existingItems[$itemId])) {
-                    $updateItemStmt->execute([null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0, $itemId]);
+                    $updateItemStmt->execute([null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $conditionSource !== '' ? $conditionSource : null, $conditionOperator !== '' ? $conditionOperator : null, $conditionValue !== '' ? $conditionValue : null, $itemActive ? 1 : 0, $itemId]);
                     $existingItems[$itemId]['section_id'] = null;
                     $existingItems[$itemId]['linkId'] = $linkId;
                     $existingItems[$itemId]['is_active'] = $itemActive ? 1 : 0;
                 } else {
-                    $insertItemStmt->execute([$qid, null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $itemActive ? 1 : 0]);
+                    $insertItemStmt->execute([$qid, null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple ? 1 : 0, $isRequired ? 1 : 0, $requiresCorrect ? 1 : 0, $conditionSource !== '' ? $conditionSource : null, $conditionOperator !== '' ? $conditionOperator : null, $conditionValue !== '' ? $conditionValue : null, $itemActive ? 1 : 0]);
                     $itemId = (int)$pdo->lastInsertId();
                     if ($itemClientId) {
                         $idMap['items'][$itemClientId] = $itemId;
