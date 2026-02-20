@@ -120,17 +120,20 @@ SET u.cadre = dtc.slug
 WHERE u.cadre IS NOT NULL AND TRIM(u.cadre) <> '';
 
 -- 7) Collapse work functions to work roles
---    Admin/supervisor users become director_manager; other users become expert.
+--    Admin users become director, supervisors become manager, others become expert.
 UPDATE users
 SET work_function = CASE
-  WHEN role IN ('admin', 'supervisor') THEN 'director_manager'
+  WHEN role = 'admin' THEN 'director'
+  WHEN role = 'supervisor' THEN 'manager'
   ELSE 'expert'
 END;
 
 INSERT INTO work_function_catalog (slug, label, sort_order, archived_at)
 VALUES
-  ('expert', 'Expert', 1, NULL),
-  ('director_manager', 'Director / Manager', 2, NULL)
+  ('director', 'Director', 1, NULL),
+  ('manager', 'Manager', 2, NULL),
+  ('team_lead', 'Team Lead', 3, NULL),
+  ('expert', 'Expert', 4, NULL)
 ON DUPLICATE KEY UPDATE
   label = VALUES(label),
   sort_order = VALUES(sort_order),
@@ -138,6 +141,6 @@ ON DUPLICATE KEY UPDATE
 
 UPDATE work_function_catalog
 SET archived_at = CURRENT_TIMESTAMP
-WHERE slug NOT IN ('expert', 'director_manager');
+WHERE slug NOT IN ('director', 'manager', 'team_lead', 'expert');
 
 COMMIT;

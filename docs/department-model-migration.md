@@ -20,9 +20,11 @@ SOURCE migration_department_model.sql;
 - Converts `users.department` to department slug values.
 - Creates department-linked team rows and converts `users.cadre` to team slug values.
 - Collapses `users.work_function` to role values:
+  - `director`
+  - `manager`
+  - `team_lead`
   - `expert`
-  - `director_manager`
-- Keeps only those two active entries in `work_function_catalog`.
+- Keeps only those four active entries in `work_function_catalog`.
 
 ## Notes
 
