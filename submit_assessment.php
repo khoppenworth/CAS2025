@@ -33,6 +33,14 @@ $hasOtherOption = static function (array $values): bool {
     return false;
 };
 
+$encodeAnswerPayload = static function (array $payload): string {
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        return '[]';
+    }
+    return $json;
+};
+
 $isOtherSelected = static function ($rawValue): bool {
     $selectedValues = is_array($rawValue) ? $rawValue : [$rawValue];
     foreach ($selectedValues as $value) {
@@ -347,7 +355,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $achievedPoints = $effectiveWeight;
                         }
                     }
-                    $a = json_encode(array_map(static fn($val) => ['valueString' => $val], $values));
+                    $a = $encodeAnswerPayload(array_map(static fn($val) => ['valueString' => (string)$val], $values));
                 } else {
                     $ans = $_POST[$name] ?? '';
                     $txt = trim((string)$ans);
@@ -357,7 +365,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($txt !== '') {
                         $achievedPoints = $effectiveWeight;
                     }
-                    $a = json_encode([['valueString' => $txt]]);
+                    $a = $encodeAnswerPayload([['valueString' => $txt]]);
                 }
 
                 if ($isRequired && !$isDraftSave && !$hasResponse) {
@@ -1481,12 +1489,6 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         } else {
           pendingSubmit = isFinalSubmit;
           persistDraft();
-          if (isFinalSubmit) {
-            clearDraft();
-            offlineStatus.dataset.state = '';
-            offlineStatus.textContent = '';
-            offlineStatus.hidden = true;
-          }
         }
       });
 

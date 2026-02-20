@@ -80,8 +80,6 @@ function ensure_course_recommendation_schema(PDO $pdo): void
  */
 function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $questionnaireId = null): array
 {
-    ensure_course_recommendation_schema($pdo);
-
     if ($questionnaireId !== null && $questionnaireId > 0) {
         $stmt = $pdo->prepare(
             'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
@@ -109,7 +107,6 @@ function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $q
 
 function map_response_to_training_courses(PDO $pdo, int $responseId, string $workFunction, int $score, ?int $questionnaireId = null): int
 {
-    ensure_course_recommendation_schema($pdo);
     $workFunction = trim($workFunction);
     if ($responseId <= 0 || $workFunction === '') {
         return 0;
