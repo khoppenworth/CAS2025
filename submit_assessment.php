@@ -14,7 +14,6 @@ $err = '';
 $flashNotice = '';
 $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
-ensure_course_recommendation_schema($pdo);
 
 $isOtherSpecifyPrompt = static function (string $text): bool {
     $normalized = strtolower(trim(str_replace(["’", '"', "'", ','], '', $text)));
@@ -398,7 +397,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pctRaw = $max_points > 0 ? ($score_sum / $max_points) * 100 : 0.0;
                     $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
                     $pdo->prepare('UPDATE questionnaire_response SET score=? WHERE id=?')->execute([$pct, $responseId]);
-                    map_response_to_training_courses($pdo, $responseId, (string)($user['work_function'] ?? ''), $pct, $qid);
+                    try {
+                        map_response_to_training_courses($pdo, $responseId, (string)($user['work_function'] ?? ''), $pct, $qid);
+                    } catch (Throwable $courseMapError) {
+                        error_log('submit_assessment recommendation mapping failed: ' . $courseMapError->getMessage());
+                    }
                 }
                 $pdo->commit();
                 if ($isDraftSave) {
