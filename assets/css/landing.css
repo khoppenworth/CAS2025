@@ -289,6 +289,76 @@ body.landing-body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+
+.landing-section--hero {
+  margin-top: 0.25rem;
+}
+
+.landing-hero-panel {
+  width: var(--landing-container-width);
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 3.25rem);
+  border-radius: var(--landing-radius-lg);
+  background:
+    radial-gradient(100% 140% at 0% 0%, color-mix(in srgb, var(--landing-accent) 24%, transparent), transparent 70%),
+    radial-gradient(120% 120% at 100% 100%, color-mix(in srgb, var(--landing-primary) 22%, transparent), transparent 75%),
+    linear-gradient(135deg, color-mix(in srgb, var(--md-surface) 92%, transparent), color-mix(in srgb, var(--app-primary-soft, #d7e5ff) 38%, transparent));
+  border: 1px solid color-mix(in srgb, var(--landing-primary) 20%, transparent);
+  box-shadow: var(--landing-shadow-md);
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+  align-items: center;
+}
+
+.landing-hero-copy__eyebrow {
+  margin: 0;
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--landing-primary) 14%, transparent);
+  color: var(--landing-primary-dark);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.landing-hero-copy__title {
+  margin: 1rem 0 0.8rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.18;
+  color: var(--landing-primary-darker);
+}
+
+.landing-hero-copy__subtitle {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--app-text-secondary, #43546a);
+  line-height: 1.75;
+  font-size: 1.06rem;
+}
+
+.landing-hero-copy__actions {
+  margin-top: 1.7rem;
+}
+
+.landing-hero-badges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.85rem;
+}
+
+.landing-hero-badges span {
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--md-surface) 90%, transparent);
+  color: var(--landing-primary-dark);
+  font-weight: 600;
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--app-shadow-soft) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--landing-primary) 18%, transparent);
+}
+
 .landing-main {
   flex: 1;
   background: transparent;
@@ -577,8 +647,13 @@ body.landing-body {
     padding: 0.75rem 0;
   }
 
-  .landing-hero {
+  .landing-hero,
+  .landing-hero-panel {
     text-align: center;
+  }
+
+  .landing-hero-panel {
+    grid-template-columns: 1fr;
   }
 
   .landing-brand {
