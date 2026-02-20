@@ -404,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 if ($isDraftSave) {
                     $pdo->prepare('UPDATE questionnaire_response SET score=NULL WHERE id=?')->execute([$responseId]);
-                    $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id=?')->execute([$responseId]);
+                    clear_response_training_recommendations($pdo, $responseId);
                 } else {
                     $pctRaw = $totalCount > 0 ? ($correctCount / $totalCount) * 100 : 0.0;
                     $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
