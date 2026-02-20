@@ -1018,6 +1018,58 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+
+    const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
+
+    const clearMissingQuestionHighlights = () => {
+      questionFields().forEach((field) => {
+        field.classList.remove('md-field--missing');
+      });
+    };
+
+    const applyMissingQuestionHighlights = () => {
+      const missingFields = [];
+      questionFields().forEach((field) => {
+        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+        if (controls.length === 0) {
+          return;
+        }
+        const isMissing = controls.some((control) => {
+          if (!(control instanceof HTMLElement) || control.disabled || !control.required) {
+            return false;
+          }
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'radio' || control.type === 'checkbox')) {
+              const groupName = control.name;
+              if (!groupName) {
+                return control.type === 'checkbox' ? !control.checked : control.value.trim() === '';
+              }
+              const group = Array.from(assessmentForm.querySelectorAll('input[type="radio"], input[type="checkbox"]'))
+                .filter((candidate) => candidate instanceof HTMLInputElement && candidate.name === groupName);
+              return !group.some((candidate) => candidate.checked);
+            }
+            return control.value.trim() === '';
+          }
+          if (control instanceof HTMLTextAreaElement) {
+            return control.value.trim() === '';
+          }
+          if (control instanceof HTMLSelectElement) {
+            if (control.multiple) {
+              return control.selectedOptions.length === 0;
+            }
+            return control.value.trim() === '';
+          }
+          return false;
+        });
+
+        field.classList.toggle('md-field--missing', isMissing);
+        if (isMissing) {
+          missingFields.push(field);
+        }
+      });
+      return missingFields;
+    };
+
     navLinks.forEach((link) => {
       link.addEventListener('click', (event) => {
         const targetSelector = link.getAttribute('href') || link.getAttribute('data-target');
@@ -1467,8 +1519,28 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         };
       })();
 
-      assessmentForm.addEventListener('input', scheduleSave);
-      assessmentForm.addEventListener('change', scheduleSave);
+      assessmentForm.addEventListener('input', (event) => {
+        scheduleSave();
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const field = target.closest('[data-question-anchor]');
+        if (field) {
+          field.classList.remove('md-field--missing');
+        }
+      });
+      assessmentForm.addEventListener('change', (event) => {
+        scheduleSave();
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const field = target.closest('[data-question-anchor]');
+        if (field) {
+          field.classList.remove('md-field--missing');
+        }
+      });
 
       const params = new URLSearchParams(window.location.search);
       if (params.get('saved') === 'draft') {
@@ -1495,6 +1567,11 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
           event.preventDefault();
           return;
+        }
+
+        clearMissingQuestionHighlights();
+        if (isFinalSubmit) {
+          applyMissingQuestionHighlights();
         }
 
         if (!isAppOnline()) {
