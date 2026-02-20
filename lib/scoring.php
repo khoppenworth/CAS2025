@@ -163,3 +163,51 @@ function questionnaire_even_likert_weights(array $items, float $totalWeight = 10
     }
     return $weights;
 }
+
+/**
+ * Determine if an item can be scored using the correct-answer method.
+ *
+ * @param array<string, mixed> $item
+ */
+function questionnaire_item_uses_correct_answer(array $item): bool
+{
+    $type = strtolower((string)($item['type'] ?? ''));
+    if ($type !== 'choice') {
+        return false;
+    }
+    if (!empty($item['allow_multiple'])) {
+        return false;
+    }
+    return !empty($item['requires_correct']);
+}
+
+/**
+ * Decide whether a section should be included in scoring.
+ *
+ * @param array<string, mixed> $section
+ */
+function questionnaire_section_included_in_scoring(array $section): bool
+{
+    if (array_key_exists('include_in_scoring', $section)) {
+        return !empty($section['include_in_scoring']);
+    }
+    return true;
+}
+
+/**
+ * Evaluate whether a question was answered correctly.
+ *
+ * @param array<int, mixed> $answerSet
+ */
+function questionnaire_answer_is_correct(array $answerSet, string $correctValue): bool
+{
+    if ($correctValue === '') {
+        return false;
+    }
+    foreach ($answerSet as $entry) {
+        if (is_array($entry) && isset($entry['valueString']) && (string)$entry['valueString'] === $correctValue) {
+            return true;
+        }
+    }
+    return false;
+}

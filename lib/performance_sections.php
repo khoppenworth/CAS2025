@@ -54,15 +54,15 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
         try {
             $itemsStmt = $pdo->prepare(
                 "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, requires_correct, " .
-                "COALESCE(weight_percent,0) AS weight_percent FROM questionnaire_item " .
-                "WHERE questionnaire_id IN ($placeholder) ORDER BY questionnaire_id, order_index, id"
+                "COALESCE(weight_percent,0) AS weight_percent, COALESCE(qs.include_in_scoring,1) AS include_in_scoring FROM questionnaire_item qi " .
+                "LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
             );
             $itemsStmt->execute($qidList);
         } catch (PDOException $e) {
             $itemsStmt = $pdo->prepare(
-                "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, " .
-                "COALESCE(weight_percent,0) AS weight_percent FROM questionnaire_item " .
-                "WHERE questionnaire_id IN ($placeholder) ORDER BY questionnaire_id, order_index, id"
+                "SELECT qi.id, qi.questionnaire_id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, " .
+                "COALESCE(qi.weight_percent,0) AS weight_percent, COALESCE(qs.include_in_scoring,1) AS include_in_scoring FROM questionnaire_item qi " .
+                "LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
             );
             $itemsStmt->execute($qidList);
         }
@@ -83,6 +83,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             'allow_multiple' => (bool)$row['allow_multiple'],
             'requires_correct' => (bool)($row['requires_correct'] ?? false),
             'weight_percent' => (float)$row['weight_percent'],
+            'include_in_scoring' => !empty($row['include_in_scoring']),
         ];
     }
 
@@ -152,84 +153,6 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
     $sectionFallback = t($translations, 'section_placeholder', 'Section');
     $questionnaireFallback = t($translations, 'questionnaire_placeholder', 'Questionnaire');
 
-    $scoreCalculator = static function (array $item, array $answerSet, float $weight, array $correctByItem) use (&$translations): float {
-        $type = (string)($item['type'] ?? 'text');
-        if ($weight <= 0) {
-            return 0.0;
-        }
-        if ($type === 'boolean') {
-            foreach ($answerSet as $entry) {
-                if ((isset($entry['valueBoolean']) && $entry['valueBoolean']) ||
-                    (isset($entry['valueString']) && strtolower((string)$entry['valueString']) === 'true')) {
-                    return $weight;
-                }
-            }
-            return 0.0;
-        }
-        if ($type === 'likert') {
-            $score = null;
-            foreach ($answerSet as $entry) {
-                if (isset($entry['valueInteger']) && is_numeric($entry['valueInteger'])) {
-                    $score = (int)$entry['valueInteger'];
-                    break;
-                }
-                if (isset($entry['valueString'])) {
-                    $candidate = trim((string)$entry['valueString']);
-                    if (preg_match('/^([1-5])/', $candidate, $matches)) {
-                        $score = (int)$matches[1];
-                        break;
-                    }
-                    if (is_numeric($candidate)) {
-                        $value = (int)$candidate;
-                        if ($value >= 1 && $value <= 5) {
-                            $score = $value;
-                            break;
-                        }
-                    }
-                }
-            }
-            if ($score !== null && $score >= 1 && $score <= 5) {
-                return $weight * $score / 5.0;
-            }
-            return 0.0;
-        }
-        if ($type === 'choice') {
-            if (empty($item['allow_multiple'])) {
-                $requiresCorrect = !empty($item['requires_correct']);
-                if (!$requiresCorrect) {
-                    foreach ($answerSet as $entry) {
-                        if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                            return $weight;
-                        }
-                    }
-                    return 0.0;
-                }
-                $correct = $correctByItem[(int)($item['id'] ?? 0)] ?? null;
-                if ($correct === null || $correct === '') {
-                    return 0.0;
-                }
-                foreach ($answerSet as $entry) {
-                    if (isset($entry['valueString']) && (string)$entry['valueString'] === $correct) {
-                        return $weight;
-                    }
-                }
-                return 0.0;
-            }
-            foreach ($answerSet as $entry) {
-                if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                    return $weight;
-                }
-            }
-            return 0.0;
-        }
-        foreach ($answerSet as $entry) {
-            if (isset($entry['valueString']) && trim((string)$entry['valueString']) !== '') {
-                return $weight;
-            }
-        }
-        return 0.0;
-    };
-
     foreach ($responseMeta as $responseId => $meta) {
         $qid = $meta['questionnaire_id'];
         $items = $itemsByQuestionnaire[$qid] ?? [];
@@ -242,16 +165,16 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             $sid = $section['id'];
             $sectionStats[$sid] = [
                 'label' => (string)$section['title'],
-                'weight' => 0.0,
-                'achieved' => 0.0,
+                'total' => 0,
+                'correct' => 0,
             ];
             $orderedSections[] = $sid;
         }
         $unassignedKey = 'unassigned';
         $sectionStats[$unassignedKey] = [
             'label' => $generalLabel,
-            'weight' => 0.0,
-            'achieved' => 0.0,
+            'total' => 0,
+            'correct' => 0,
         ];
 
         $answers = $answersByResponse[$responseId] ?? [];
@@ -260,26 +183,31 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             if (!isset($sectionStats[$sectionKey])) {
                 $sectionStats[$sectionKey] = [
                     'label' => $sectionFallback,
-                    'weight' => 0.0,
-                    'achieved' => 0.0,
+                    'total' => 0,
+                    'correct' => 0,
                 ];
                 if ($sectionKey !== $unassignedKey) {
                     $orderedSections[] = $sectionKey;
                 }
             }
-            $weight = (float)$item['weight'];
-            if ($weight <= 0) {
+            if (!questionnaire_section_included_in_scoring($item) || !questionnaire_item_uses_correct_answer($item)) {
                 continue;
             }
-            $sectionStats[$sectionKey]['weight'] += $weight;
+            $correctValue = (string)($correctByItem[(int)($item['id'] ?? 0)] ?? '');
+            if ($correctValue === '') {
+                continue;
+            }
+            $sectionStats[$sectionKey]['total'] += 1;
             $answerSet = $answers[$item['linkId']] ?? [];
-            $sectionStats[$sectionKey]['achieved'] += $scoreCalculator($item, $answerSet, $weight, $correctByItem);
+            if (questionnaire_answer_is_correct($answerSet, $correctValue)) {
+                $sectionStats[$sectionKey]['correct'] += 1;
+            }
         }
 
         $sections = [];
         foreach ($orderedSections as $sid) {
             $stat = $sectionStats[$sid] ?? null;
-            if (!$stat || $stat['weight'] <= 0) {
+            if (!$stat || $stat['total'] <= 0) {
                 continue;
             }
             $label = trim((string)$stat['label']);
@@ -288,14 +216,14 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             }
             $sections[] = [
                 'label' => $label,
-                'score' => round(($stat['achieved'] / $stat['weight']) * 100, 1),
+                'score' => round(($stat['correct'] / $stat['total']) * 100, 1),
             ];
         }
 
-        if ($sectionStats[$unassignedKey]['weight'] > 0) {
+        if ($sectionStats[$unassignedKey]['total'] > 0) {
             $sections[] = [
                 'label' => $sectionStats[$unassignedKey]['label'],
-                'score' => round(($sectionStats[$unassignedKey]['achieved'] / $sectionStats[$unassignedKey]['weight']) * 100, 1),
+                'score' => round(($sectionStats[$unassignedKey]['correct'] / $sectionStats[$unassignedKey]['total']) * 100, 1),
             ];
         }
 
