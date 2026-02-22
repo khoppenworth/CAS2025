@@ -16,15 +16,30 @@ $user = current_user();
 ensure_course_recommendation_schema($pdo);
 $userId = (int) ($user['id'] ?? 0);
 
+$hasPeriodStartColumn = false;
+try {
+    $periodColumnsStmt = $pdo->query('SHOW COLUMNS FROM performance_period');
+    $periodColumns = $periodColumnsStmt ? $periodColumnsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    foreach ($periodColumns as $periodColumn) {
+        if (strcasecmp((string)($periodColumn['Field'] ?? ''), 'period_start') === 0) {
+            $hasPeriodStartColumn = true;
+            break;
+        }
+    }
+} catch (Throwable $periodSchemaError) {
+    error_log('my_performance_download performance_period schema lookup failed: ' . $periodSchemaError->getMessage());
+}
+
 if ($userId <= 0) {
     http_response_code(404);
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT qr.*, q.title, pp.label AS period_label, pp.period_start
+$periodStartSelect = $hasPeriodStartColumn ? 'pp.period_start' : 'NULL AS period_start';
+$stmt = $pdo->prepare("SELECT qr.*, q.title, COALESCE(pp.label, '') AS period_label, {$periodStartSelect}
     FROM questionnaire_response qr
     JOIN questionnaire q ON q.id = qr.questionnaire_id
-    JOIN performance_period pp ON pp.id = qr.performance_period_id
+    LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id
     WHERE qr.user_id = ?
     ORDER BY qr.created_at ASC");
 $stmt->execute([$userId]);

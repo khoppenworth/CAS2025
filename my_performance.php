@@ -13,6 +13,22 @@ $user = current_user();
 $userWorkFunctionLabel = work_function_label($pdo, (string)($user['work_function'] ?? ''));
 ensure_course_recommendation_schema($pdo);
 
+$hasPeriodStartColumn = false;
+try {
+    $periodColumnsStmt = $pdo->query('SHOW COLUMNS FROM performance_period');
+    $periodColumns = $periodColumnsStmt ? $periodColumnsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    foreach ($periodColumns as $periodColumn) {
+        if (strcasecmp((string)($periodColumn['Field'] ?? ''), 'period_start') === 0) {
+            $hasPeriodStartColumn = true;
+            break;
+        }
+    }
+} catch (Throwable $periodSchemaError) {
+    error_log('my_performance performance_period schema lookup failed: ' . $periodSchemaError->getMessage());
+}
+
+$periodStartSelect = $hasPeriodStartColumn ? 'pp.period_start' : 'NULL AS period_start';
+
 function resolve_timeline_label(array $row): string
 {
     $periodStart = $row['period_start'] ?? null;
@@ -43,19 +59,19 @@ function resolve_timeline_label(array $row): string
 
 $stmt = $pdo->prepare(
     "SELECT qr.id, qr.questionnaire_id, qr.performance_period_id, qr.status, qr.score, qr.created_at, " .
-    "q.title, pp.label AS period_label, pp.period_start " .
+    "q.title, COALESCE(pp.label, '') AS period_label, {$periodStartSelect} " .
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
-    "JOIN performance_period pp ON pp.id = qr.performance_period_id " .
+    "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
     "WHERE qr.user_id = ? AND (qr.status IS NULL OR qr.status <> 'draft') ORDER BY qr.created_at ASC, qr.id ASC"
 );
 $stmt->execute([$user['id']]);
 
 $draftStmt = $pdo->prepare(
-    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, pp.label AS period_label " .
+    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, COALESCE(pp.label, '') AS period_label " .
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
-    "JOIN performance_period pp ON pp.id = qr.performance_period_id " .
+    "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
     "WHERE qr.user_id = ? AND qr.status = 'draft' ORDER BY qr.created_at DESC, qr.id DESC"
 );
 $draftStmt->execute([$user['id']]);
