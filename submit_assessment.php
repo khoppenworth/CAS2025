@@ -263,6 +263,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!$periodId) {
         $err = t($t,'select_period','Please select a performance period.');
     } else {
+        $responseColumns = [];
+        try {
+            $responseColumnStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_response');
+            $responseColumnRows = $responseColumnStmt ? $responseColumnStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($responseColumnRows as $responseColumnRow) {
+                $field = strtolower((string)($responseColumnRow['Field'] ?? ''));
+                if ($field !== '') {
+                    $responseColumns[$field] = true;
+                }
+            }
+        } catch (Throwable $responseColumnError) {
+            error_log('submit_assessment questionnaire_response columns fetch failed: ' . $responseColumnError->getMessage());
+            $responseColumns = [];
+        }
+
         $existingStmt = $pdo->prepare('SELECT * FROM questionnaire_response WHERE user_id=? AND questionnaire_id=? AND performance_period_id=?');
         $existingStmt->execute([$user['id'], $qid, $periodId]);
         $existingResponse = $existingStmt->fetch();
@@ -276,12 +291,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $scoreValue = $isDraftSave ? null : 0;
             $autoApprovedAt = $autoApprove ? date('Y-m-d H:i:s') : null;
             if ($existingResponse) {
-                $updateStmt = $pdo->prepare('UPDATE questionnaire_response SET status=?, score=?, created_at=NOW(), reviewed_by=NULL, reviewed_at=?, review_comment=NULL WHERE id=?');
-                $updateStmt->execute([$statusValue, $scoreValue, $autoApprovedAt, $responseId]);
+                $updateClauses = ['status=?', 'score=?', 'created_at=NOW()'];
+                $updateParams = [$statusValue, $scoreValue];
+                if (isset($responseColumns['reviewed_by'])) {
+                    $updateClauses[] = 'reviewed_by=NULL';
+                }
+                if (isset($responseColumns['reviewed_at'])) {
+                    $updateClauses[] = 'reviewed_at=?';
+                    $updateParams[] = $autoApprovedAt;
+                }
+                if (isset($responseColumns['review_comment'])) {
+                    $updateClauses[] = 'review_comment=NULL';
+                }
+                $updateParams[] = $responseId;
+                $updateSql = 'UPDATE questionnaire_response SET ' . implode(', ', $updateClauses) . ' WHERE id=?';
+                $updateStmt = $pdo->prepare($updateSql);
+                $updateStmt->execute($updateParams);
                 $pdo->prepare('DELETE FROM questionnaire_response_item WHERE response_id=?')->execute([$responseId]);
             } else {
-                $insertStmt = $pdo->prepare('INSERT INTO questionnaire_response (user_id, questionnaire_id, performance_period_id, status, created_at, reviewed_at) VALUES (?,?,?,?, NOW(), ?)');
-                $insertStmt->execute([$user['id'], $qid, $periodId, $statusValue, $autoApprovedAt]);
+                $insertColumns = ['user_id', 'questionnaire_id', 'performance_period_id', 'status', 'created_at'];
+                $insertValues = ['?', '?', '?', '?', 'NOW()'];
+                $insertParams = [$user['id'], $qid, $periodId, $statusValue];
+                if (isset($responseColumns['reviewed_at'])) {
+                    $insertColumns[] = 'reviewed_at';
+                    $insertValues[] = '?';
+                    $insertParams[] = $autoApprovedAt;
+                }
+                $insertSql = 'INSERT INTO questionnaire_response (' . implode(', ', $insertColumns) . ') VALUES (' . implode(', ', $insertValues) . ')';
+                $insertStmt = $pdo->prepare($insertSql);
+                $insertStmt->execute($insertParams);
                 $responseId = (int)$pdo->lastInsertId();
             }
 
@@ -1002,7 +1040,6 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
               id="<?=htmlspecialchars($questionnaireDetails['anchor'] ?? $buildAnchorId('section', (string)($questionnaireDetails['id'] ?? $questionnaireDetails['title'] ?? 'questionnaire')), ENT_QUOTES, 'UTF-8')?>"
               data-section-anchor
               tabindex="-1"
-      data-required="<?= $required ? '1' : '0' ?>"
             >
               <?=htmlspecialchars($questionnaireDetails['title'])?>
             </h3>
