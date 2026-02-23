@@ -173,37 +173,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>" style="<?=htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/templates/header.php'; ?>
-<section class="md-section">
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t,'profile_information','Profile Information')?></h2>
-      <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
-      <?php if ($error): ?><div class="md-alert error"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
-      <?php if ($pendingNotice): ?>
-        <div class="md-alert warning">
-          <?=htmlspecialchars(t($t, 'pending_account_notice', 'Your account is pending supervisor approval. You can update your profile while you wait.'), ENT_QUOTES, 'UTF-8')?>
-        </div>
-      <?php endif; ?>
-      <?php if ($forceResetNotice): ?>
-        <div class="md-alert warning">
-          <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
-        </div>
-      <?php endif; ?>
-    <div class="md-required-popup" data-required-popup hidden>
-      <div class="md-required-popup__backdrop" data-required-popup-close></div>
-      <div class="md-required-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="required-popup-title">
-        <div class="md-required-popup__header">
-          <div class="md-required-popup__title" id="required-popup-title">
-            <?=t($t,'required_fields_title','Required fields missing')?>
-          </div>
-          <button type="button" class="md-required-popup__close" data-required-popup-close aria-label="<?=htmlspecialchars(t($t,'close','Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
-        </div>
-        <p class="md-required-popup__body">
-          <?=t($t,'required_fields_body','Please complete all mandatory fields marked in red before saving your profile.')?>
-        </p>
-      </div>
+<section class="md-section md-profile-section">
+  <header class="md-page-header md-profile-header">
+    <div class="md-page-header__content">
+      <h1 class="md-page-title"><?=t($t,'profile','Profile')?></h1>
+      <p class="md-page-subtitle"><?=t($t,'profile_summary','Update your profile details and settings.')?></p>
     </div>
-    <form method="post" class="md-form-grid" action="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" data-profile-form>
-      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+  </header>
+
+  <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if ($error): ?><div class="md-alert error"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if ($pendingNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'pending_account_notice', 'Your account is pending supervisor approval. You can update your profile while you wait.'), ENT_QUOTES, 'UTF-8')?>
+    </div>
+  <?php endif; ?>
+  <?php if ($forceResetNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
+    </div>
+  <?php endif; ?>
+
+  <div class="md-required-popup" data-required-popup hidden>
+    <div class="md-required-popup__backdrop" data-required-popup-close></div>
+    <div class="md-required-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="required-popup-title">
+      <div class="md-required-popup__header">
+        <div class="md-required-popup__title" id="required-popup-title">
+          <?=t($t,'required_fields_title','Required fields missing')?>
+        </div>
+        <button type="button" class="md-required-popup__close" data-required-popup-close aria-label="<?=htmlspecialchars(t($t,'close','Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+      </div>
+      <p class="md-required-popup__body">
+        <?=t($t,'required_fields_body','Please complete all mandatory fields marked in red before saving your profile.')?>
+      </p>
+    </div>
+  </div>
+
+  <form method="post" class="md-profile-layout" action="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" data-profile-form>
+    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+
+    <article class="md-card md-elev-2 md-profile-card">
+      <h2 class="md-card-title"><?=t($t,'profile_information','Profile Information')?></h2>
+      <div class="md-form-grid md-profile-fields">
       <label class="md-field md-field--required">
         <span><?=t($t,'full_name','Full Name')?></span>
         <input name="full_name" value="<?=htmlspecialchars($user['full_name'] ?? '')?>" required>
@@ -282,6 +293,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
+      </div>
+    </article>
+
+    <article class="md-card md-elev-2 md-profile-card md-profile-card--preferences">
+      <h2 class="md-card-title"><?=htmlspecialchars(t($t,'account_tools','Account & Tools'), ENT_QUOTES, 'UTF-8')?></h2>
+      <div class="md-form-grid md-profile-fields">
       <label class="md-field">
         <span><?=t($t,'preferred_language','Preferred Language')?></span>
         <?php $lval = $_SESSION['lang'] ?? ($user['language'] ?? 'en'); ?>
@@ -295,11 +312,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?=t($t,'new_password','New Password (optional)')?></span>
         <input type="password" name="password" minlength="6">
       </label>
-      <div class="md-form-actions">
+      </div>
+      <div class="md-form-actions md-profile-actions">
         <button class="md-button md-primary md-elev-2"><?=t($t,'save','Save Changes')?></button>
       </div>
-    </form>
-  </div>
+    </article>
+  </form>
 </section>
 
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
