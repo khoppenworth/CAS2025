@@ -157,7 +157,16 @@ ALTER TABLE questionnaire_item
   ADD COLUMN IF NOT EXISTS requires_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER is_required;
 
 ALTER TABLE questionnaire_item
-  ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER requires_correct;
+  ADD COLUMN IF NOT EXISTS condition_source_linkid VARCHAR(255) NULL AFTER requires_correct;
+
+ALTER TABLE questionnaire_item
+  ADD COLUMN IF NOT EXISTS condition_operator VARCHAR(20) NULL AFTER condition_source_linkid;
+
+ALTER TABLE questionnaire_item
+  ADD COLUMN IF NOT EXISTS condition_value VARCHAR(500) NULL AFTER condition_operator;
+
+ALTER TABLE questionnaire_item
+  ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER condition_value;
 
 ALTER TABLE questionnaire_item_option
   ADD COLUMN IF NOT EXISTS is_correct TINYINT(1) NOT NULL DEFAULT 0 AFTER value;

@@ -135,6 +135,9 @@ CREATE TABLE questionnaire_item (
   allow_multiple TINYINT(1) NOT NULL DEFAULT 0,
   is_required TINYINT(1) NOT NULL DEFAULT 0,
   requires_correct TINYINT(1) NOT NULL DEFAULT 0,
+  condition_source_linkid VARCHAR(255) NULL,
+  condition_operator VARCHAR(20) NULL,
+  condition_value VARCHAR(500) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE,
   FOREIGN KEY (section_id) REFERENCES questionnaire_section(id) ON DELETE SET NULL
