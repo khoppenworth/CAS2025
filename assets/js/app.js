@@ -556,10 +556,6 @@
           toggle.setAttribute('aria-expanded', 'false');
         }
         closeSubmenus();
-        const activeItem = topnav.querySelector('[data-topnav-item].is-active');
-        if (activeItem instanceof HTMLElement) {
-          setItemExpanded(activeItem, true);
-        }
         lastFocusedElement = null;
         return;
       }
