@@ -694,7 +694,7 @@ if ($selectedQuestionnaireId) {
     $userStmt = $pdo->prepare(
         'SELECT u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, '
         . 'COUNT(*) AS total_responses, '
-        . 'SUM(qr.status=\'approved\') AS approved_count, '
+        . "SUM(qr.status='approved') AS approved_count, "
         . 'AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
@@ -897,7 +897,7 @@ $teamSummary = [];
 try {
     $workFunctionStmt = $pdo->query(
         "SELECT u.work_function, COUNT(*) AS total_responses, "
-        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
         . "JOIN users u ON u.id = qr.user_id "
@@ -908,7 +908,7 @@ try {
 
     $departmentSummaryStmt = $pdo->query(
         "SELECT u.department, COUNT(*) AS total_responses, "
-        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
         . "JOIN users u ON u.id = qr.user_id "
@@ -919,7 +919,7 @@ try {
 
     $teamSummaryStmt = $pdo->query(
         "SELECT u.cadre, COUNT(*) AS total_responses, "
-        . "SUM(qr.status=\'approved\') AS approved_count, "
+        . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
         . "JOIN users u ON u.id = qr.user_id "
