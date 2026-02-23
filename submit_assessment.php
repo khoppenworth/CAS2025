@@ -17,6 +17,7 @@ $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
 
 $supportsItemConditions = false;
+$supportsSectionIncludeInScoring = false;
 try {
     $itemColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_item');
     $itemColumns = [];
@@ -33,6 +34,22 @@ try {
         && isset($itemColumns['condition_value']);
 } catch (PDOException $itemColumnError) {
     error_log('submit_assessment questionnaire_item columns fetch failed: ' . $itemColumnError->getMessage());
+}
+
+try {
+    $sectionColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_section');
+    $sectionColumns = [];
+    if ($sectionColumnsStmt) {
+        foreach ($sectionColumnsStmt->fetchAll() as $columnRow) {
+            $name = isset($columnRow['Field']) ? (string)$columnRow['Field'] : '';
+            if ($name !== '') {
+                $sectionColumns[$name] = true;
+            }
+        }
+    }
+    $supportsSectionIncludeInScoring = isset($sectionColumns['include_in_scoring']);
+} catch (PDOException $sectionColumnError) {
+    error_log('submit_assessment questionnaire_section columns fetch failed: ' . $sectionColumnError->getMessage());
 }
 
 $isOtherSpecifyPrompt = static function (string $text): bool {
@@ -327,10 +344,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conditionSelectSql = $supportsItemConditions
                 ? 'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, '
                 : 'NULL AS condition_source_linkid, NULL AS condition_operator, NULL AS condition_value, ';
+            $includeInScoringSelectSql = $supportsSectionIncludeInScoring
+                ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                : '1 AS include_in_scoring ';
             $itemsStmt = $pdo->prepare(
                 'SELECT qi.id, qi.linkId, qi.text, qi.type, qi.allow_multiple, qi.weight_percent, qi.is_required, qi.requires_correct, '
                 . $conditionSelectSql
-                . 'qi.section_id, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                . 'qi.section_id, ' . $includeInScoringSelectSql
                 . 'FROM questionnaire_item qi '
                 . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
                 . 'WHERE qi.questionnaire_id=? AND qi.is_active=1 ORDER BY qi.order_index ASC'
