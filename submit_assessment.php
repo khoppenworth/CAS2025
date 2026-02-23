@@ -1266,6 +1266,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
             }
             return [String(control.value || '').trim().toLowerCase()];
           }
+          if (control instanceof HTMLTextAreaElement) {
+            return [String(control.value || '').trim().toLowerCase()];
+          }
           if (control instanceof HTMLSelectElement) {
             return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim().toLowerCase());
           }
@@ -1315,6 +1318,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
             if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
               return [];
             }
+            return [String(control.value || '').trim()];
+          }
+          if (control instanceof HTMLTextAreaElement) {
             return [String(control.value || '').trim()];
           }
           if (control instanceof HTMLSelectElement) {
