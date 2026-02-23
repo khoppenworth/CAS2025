@@ -14,11 +14,10 @@ define('APP_WORK_FUNCTIONS_LOADED', true);
 function built_in_work_function_definitions(): array
 {
     return [
-        'finance' => 'Finance & Grants',
-        'hrm' => 'HRM',
-        'wim' => 'WIM',
+        'director' => 'Director',
+        'manager' => 'Manager',
+        'team_lead' => 'Team Lead',
         'expert' => 'Expert',
-        'director_manager' => 'Director / Manager',
     ];
 }
 
@@ -380,7 +379,12 @@ function canonical_work_function_key(string $value, ?array $definitions = null):
         return $normalizedDefinitions[$normalized];
     }
 
-    return $normalized;
+    // Backward-compatible alias from the legacy combined role.
+    if ($normalized === 'director_manager') {
+        return 'manager';
+    }
+
+    return 'expert';
 }
 
 function canonical(string $value, ?array $definitions = null): string
