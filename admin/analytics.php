@@ -10,6 +10,30 @@ if (!function_exists('available_work_functions')) {
 require_once __DIR__ . '/../lib/analytics_report.php';
 require_once __DIR__ . '/../lib/scoring.php';
 
+function analytics_supports_section_include_in_scoring(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    try {
+        $stmt = $pdo->query('SHOW COLUMNS FROM questionnaire_section');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($rows as $row) {
+            if (strcasecmp((string)($row['Field'] ?? ''), 'include_in_scoring') === 0) {
+                $cached = true;
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('analytics include_in_scoring schema lookup failed: ' . $e->getMessage());
+    }
+
+    $cached = false;
+    return false;
+}
+
 /**
  * Decode a stored questionnaire response answer payload.
  */
@@ -39,8 +63,11 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
         return [];
     }
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $includeSelect = analytics_supports_section_include_in_scoring($pdo)
+        ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+        : '1 AS include_in_scoring ';
     $sql = 'SELECT qi.id, qi.questionnaire_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, '
-        . 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+        . $includeSelect
         . 'FROM questionnaire_item qi '
         . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
         . 'WHERE qi.questionnaire_id IN (' . $placeholders . ') '
@@ -651,6 +678,7 @@ foreach ($questionnaires as $qRow) {
 }
 if ($selectedQuestionnaireId) {
     try {
+    $supportsSectionIncludeInScoring = analytics_supports_section_include_in_scoring($pdo);
     $responseStmt = $pdo->prepare(
         'SELECT qr.id, qr.status, qr.score, qr.created_at, qr.review_comment, '
         . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, pp.label AS period_label '
@@ -678,8 +706,11 @@ if ($selectedQuestionnaireId) {
     $selectedUserBreakdown = $userStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($selectedResponses) {
+        $sectionIncludeSelect = $supportsSectionIncludeInScoring
+            ? 'COALESCE(include_in_scoring,1) AS include_in_scoring'
+            : '1 AS include_in_scoring';
         $sectionStmt = $pdo->prepare(
-            'SELECT id, title, COALESCE(include_in_scoring,1) AS include_in_scoring FROM questionnaire_section WHERE questionnaire_id=? ORDER BY order_index, id'
+            'SELECT id, title, ' . $sectionIncludeSelect . ' FROM questionnaire_section WHERE questionnaire_id=? ORDER BY order_index, id'
         );
         $sectionStmt->execute([$selectedQuestionnaireId]);
         $sectionLabels = [];
@@ -693,8 +724,11 @@ if ($selectedQuestionnaireId) {
             ];
         }
 
+        $itemIncludeSelect = $supportsSectionIncludeInScoring
+            ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+            : '1 AS include_in_scoring ';
         $itemStmt = $pdo->prepare(
-            'SELECT qi.id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+            'SELECT qi.id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, ' . $itemIncludeSelect
             . 'FROM questionnaire_item qi LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
             . 'WHERE qi.questionnaire_id=? ORDER BY qi.order_index, qi.id'
         );
