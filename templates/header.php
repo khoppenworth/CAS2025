@@ -422,7 +422,6 @@ if ($profileInitials === '') {
           <a href="<?=htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('workspace.my_performance')?>>
             <span class="md-topnav-link-content">
               <span class="md-topnav-link-title"><?=t($t, 'my_performance', 'My Performance')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'my_performance_summary', 'Track your objectives, reviews, and milestones.')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
           </a>
@@ -431,7 +430,6 @@ if ($profileInitials === '') {
           <a href="<?=htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('workspace.submit_assessment')?>>
             <span class="md-topnav-link-content">
               <span class="md-topnav-link-title"><?=t($t, 'submit_assessment', 'Submit Assessment')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'submit_assessment_summary', 'Complete or update your latest assessment.')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
           </a>
@@ -460,7 +458,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/supervisor_review.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.review_queue')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'review_queue', 'Review Queue')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'review_queue_summary', 'Review submissions that need your feedback.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -470,7 +467,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.pending_accounts')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'pending_accounts', 'Pending Approvals')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'pending_accounts_summary', 'Approve or reject incoming access requests.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -479,7 +475,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.analytics')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'analytics', 'Analytics')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'analytics_summary', 'Discover trends with interactive analytics.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -505,7 +500,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/users.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.users')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_users', 'Manage Users')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'manage_users_summary', 'Invite, edit, or deactivate accounts and roles.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -514,7 +508,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.manage_questionnaires')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'manage_questionnaires', 'Manage Questionnaires')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'manage_questionnaires_summary', 'Build, organize, and publish assessment questionnaires.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -523,7 +516,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.work_function_defaults')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'work_function_defaults_title', 'Work Function Defaults')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'work_function_defaults_summary', 'Set default work function options for new assessments.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -532,7 +524,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/branding.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.branding')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'branding', 'Branding & Landing')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'branding_summary', 'Customize logos, colors, and the landing page.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -541,7 +532,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/course_mappings.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.course_mappings')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'course_mapping_nav', 'Course Mappings')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'course_mapping_nav_summary', 'Map assessment score bands to Moodle learning links.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -561,7 +551,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Upgrade')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'admin_dashboard_summary', 'Monitor release status, backups, and usage metrics.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -570,7 +559,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/export.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.export')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'export_data', 'Export Data')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'export_data_summary', 'Download assessment data for reporting or analysis.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -579,7 +567,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('admin/settings.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.settings')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'settings', 'Settings')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'settings_summary', 'Adjust platform settings and integrations.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
@@ -588,7 +575,6 @@ if ($profileInitials === '') {
             <a href="<?=htmlspecialchars(url_for('swagger.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link md-topnav-link--external" target="_blank" rel="noopener">
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t,'api_documentation','API Documentation')?></span>
-                <span class="md-topnav-link-desc"><?=t($t, 'api_documentation_summary', 'Browse the interactive API reference.')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">↗</span>
             </a>
