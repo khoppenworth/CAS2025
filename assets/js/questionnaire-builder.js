@@ -106,6 +106,7 @@ const Builder = (() => {
     previewNoDescription: 'No description provided.',
     previewRootTitle: 'Items without a section',
     previewNoItems: 'No questions yet. Add items in the builder to preview them.',
+    previewUnavailable: 'Select or create a questionnaire before opening preview.',
     previewRequiredTag: 'Required',
     previewConditionPrefix: 'Shown when',
     previewOptionPlaceholder: 'Option',
@@ -364,9 +365,15 @@ const Builder = (() => {
   function openPreview() {
     const modal = document.querySelector(selectors.previewModal);
     const body = document.querySelector(selectors.previewBody);
-    if (!modal || !body) return;
+    if (!modal || !body) {
+      renderMessage('Preview is unavailable right now.', 'error');
+      return;
+    }
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
-    if (!active) return;
+    if (!active) {
+      renderMessage(STRINGS.previewUnavailable, 'error');
+      return;
+    }
 
     body.innerHTML = buildPreviewContent(active);
     modal.hidden = false;
@@ -1267,10 +1274,12 @@ const Builder = (() => {
     const saveBtn = document.querySelector(selectors.saveButton);
     const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
+    const previewBtn = document.querySelector(selectors.previewButton);
     const disabled = state.questionnaires.length === 0 || state.saving;
     if (saveBtn) saveBtn.disabled = disabled || (!state.dirty && !state.loading);
     if (floatingSaveBtn) floatingSaveBtn.disabled = disabled || (!state.dirty && !state.loading);
     if (publishBtn) publishBtn.disabled = disabled || (!state.dirty && !state.loading);
+    if (previewBtn) previewBtn.disabled = state.questionnaires.length === 0;
   }
 
   function handleListInput(event) {
