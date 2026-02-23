@@ -1019,6 +1019,14 @@ $formatScore = static function ($score, int $precision = 1): string {
     return number_format((float)$score, $precision);
 };
 
+$formatProficiencyLevel = static function ($score) use ($t): string {
+    if ($score === null) {
+        return '—';
+    }
+    $level = questionnaire_proficiency_level((float)$score);
+    return $level !== '' ? $level : t($t, 'not_available', 'N/A');
+};
+
 $selectedAggregate = [
     'total' => count($selectedResponses),
     'approved' => 0,
@@ -1581,6 +1589,7 @@ $pageHelpKey = 'team.analytics';
             <th><?=t($t, 'status_draft', 'Draft')?></th>
             <th><?=t($t, 'status_rejected', 'Rejected')?></th>
             <th><?=t($t, 'average_score', 'Average score (%)')?></th>
+            <th><?=t($t, 'proficiency_level', 'Proficiency level')?></th>
           </tr>
         </thead>
         <tbody>
@@ -1598,6 +1607,7 @@ $pageHelpKey = 'team.analytics';
               <td><?= (int)$row['draft_count'] ?></td>
               <td><?= (int)$row['rejected_count'] ?></td>
               <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
+              <td><?=htmlspecialchars($formatProficiencyLevel($row['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -1626,6 +1636,7 @@ $pageHelpKey = 'team.analytics';
         <p class="md-upgrade-meta">
           <?=t($t, 'selected_summary', 'Average score: ')?>
           <?=$formatScore($selectedAverage)?> ·
+          <?=t($t, 'proficiency_level', 'Proficiency level')?>: <?=htmlspecialchars($formatProficiencyLevel($selectedAverage), ENT_QUOTES, 'UTF-8')?> ·
           <?=t($t, 'approved_responses', 'Approved responses')?>: <?=$selectedAggregate['approved']?> ·
           <?=t($t, 'status_submitted', 'Submitted')?>: <?=$selectedAggregate['submitted']?> ·
           <?=t($t, 'status_draft', 'Draft')?>: <?=$selectedAggregate['draft']?> ·
@@ -1638,6 +1649,7 @@ $pageHelpKey = 'team.analytics';
               <th><?=t($t, 'performance_period', 'Performance Period')?></th>
               <th><?=t($t, 'status', 'Status')?></th>
               <th><?=t($t, 'score', 'Score (%)')?></th>
+              <th><?=t($t, 'proficiency_level', 'Proficiency level')?></th>
               <th><?=t($t, 'date', 'Submitted on')?></th>
               <th><?=t($t, 'review_comment', 'Review comment')?></th>
               <th><?=t($t, 'view', 'View')?></th>
@@ -1656,6 +1668,7 @@ $pageHelpKey = 'team.analytics';
                 <td><?=htmlspecialchars($row['period_label'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
                 <td><?=htmlspecialchars($statusLabels[$statusKey] ?? ucfirst((string)$statusKey), ENT_QUOTES, 'UTF-8')?></td>
                 <td><?= isset($row['score']) && $row['score'] !== null ? (int)$row['score'] : '—' ?></td>
+                <td><?=htmlspecialchars($formatProficiencyLevel($row['score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
                 <td><?=htmlspecialchars($row['created_at'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
                 <td><?=htmlspecialchars($row['review_comment'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
                 <td><a class="md-button" href="<?=htmlspecialchars(url_for('admin/view_submission.php?id=' . (int)$row['id']), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'open', 'Open')?></a></td>
@@ -1746,6 +1759,7 @@ $pageHelpKey = 'team.analytics';
               <th><?=t($t, 'count', 'Responses')?></th>
               <th><?=t($t, 'approved', 'Approved')?></th>
               <th><?=t($t, 'average_score', 'Average score (%)')?></th>
+              <th><?=t($t, 'proficiency_level', 'Proficiency level')?></th>
             </tr>
           </thead>
           <tbody>
@@ -1764,6 +1778,7 @@ $pageHelpKey = 'team.analytics';
                 <td><?= (int)$row['total_responses'] ?></td>
                 <td><?= (int)$row['approved_count'] ?></td>
                 <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
+                <td><?=htmlspecialchars($formatProficiencyLevel($row['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
