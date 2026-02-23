@@ -100,6 +100,19 @@ $qbStrings = [
         'qb_delete_questionnaire_destroy_success',
         'Questionnaire and responses deleted.'
     ),
+    'previewLabel' => t($t, 'qb_preview_label', 'Preview questionnaire'),
+    'previewCloseLabel' => t($t, 'close', 'Close'),
+    'previewEmptyTitle' => t($t, 'untitled_questionnaire', 'Untitled questionnaire'),
+    'previewNoDescription' => t($t, 'qb_preview_no_description', 'No description provided.'),
+    'previewRootTitle' => t($t, 'items_without_section', 'Items without a section'),
+    'previewNoItems' => t($t, 'qb_preview_no_items', 'No questions yet. Add items in the builder to preview them.'),
+    'previewRequiredTag' => t($t, 'required', 'Required'),
+    'previewConditionPrefix' => t($t, 'qb_preview_condition_prefix', 'Shown when'),
+    'previewOptionPlaceholder' => t($t, 'qb_preview_option_placeholder', 'Option'),
+    'previewTextPlaceholder' => t($t, 'qb_preview_text_placeholder', 'Short answer'),
+    'previewTextareaPlaceholder' => t($t, 'qb_preview_textarea_placeholder', 'Long answer'),
+    'previewBooleanYes' => t($t, 'yes', 'Yes'),
+    'previewBooleanNo' => t($t, 'no', 'No'),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
@@ -1945,6 +1958,7 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       <div class="md-card md-elev-2 qb-builder-card">
         <div class="qb-toolbar">
           <div class="qb-toolbar-actions">
+            <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
             <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
             <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
               <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
@@ -1958,6 +1972,15 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
+    </div>
+  </div>
+  <div id="qb-preview-modal" class="qb-preview-overlay" hidden>
+    <div class="qb-preview-dialog md-card md-elev-3" role="dialog" aria-modal="true" aria-labelledby="qb-preview-title">
+      <div class="qb-preview-header">
+        <h2 id="qb-preview-title"><?=t($t,'qb_preview_label','Preview questionnaire')?></h2>
+        <button type="button" class="md-button md-outline" id="qb-preview-close"><?=t($t,'close','Close')?></button>
+      </div>
+      <div id="qb-preview-body" class="qb-preview-body"></div>
     </div>
   </div>
   <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
