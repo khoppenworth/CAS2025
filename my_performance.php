@@ -175,6 +175,14 @@ $statusLabels = [
     'rejected' => t($t, 'status_rejected', 'Rejected'),
 ];
 
+$formatProficiencyLevel = static function ($score): string {
+    if ($score === null) {
+        return '—';
+    }
+    $level = questionnaire_proficiency_level((float)$score);
+    return $level !== '' ? $level : 'N/A';
+};
+
 $flash = $_GET['msg'] ?? '';
 $flashMessage = '';
 if ($flash === 'submitted') {
@@ -262,7 +270,7 @@ $pageHelpKey = 'workspace.my_performance';
       <p><?=t($t,'no_trend_data','Submit assessments to generate your performance trend.')?></p>
     <?php endif; ?>
     <table class="md-table">
-      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Performance Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'status','Status')?></th><th><?=t($t,'actions','Actions')?></th></tr></thead>
+      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Performance Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'proficiency_level','Proficiency level')?></th><th><?=t($t,'status','Status')?></th><th><?=t($t,'actions','Actions')?></th></tr></thead>
       <tbody>
       <?php foreach ($responses as $r): ?>
         <?php
@@ -274,6 +282,7 @@ $pageHelpKey = 'workspace.my_performance';
           <td><?=htmlspecialchars($r['title'])?></td>
           <td><?=htmlspecialchars($r['period_label'])?></td>
           <td><?= is_null($r['score']) ? '-' : (int)$r['score']?></td>
+          <td><?=htmlspecialchars($formatProficiencyLevel($r['score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
           <td><?=htmlspecialchars($statusLabel)?></td>
           <td><span class="md-muted">—</span></td>
         </tr>
