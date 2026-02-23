@@ -747,6 +747,8 @@ if ($action === 'save' || $action === 'publish') {
     $supportsItemRequiresCorrect = false;
     $supportsItemActive = false;
     $supportsItemConditions = false;
+    $supportsOptionCorrect = false;
+    $supportsOptionOrder = false;
     $supportsQuestionnaireStatus = false;
     try {
         $questionnaireColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire');
@@ -801,6 +803,23 @@ if ($action === 'save' || $action === 'publish') {
             && isset($itemColumns['condition_value']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire_item columns fetch failed: ' . $columnError->getMessage());
+    }
+
+    try {
+        $optionColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_item_option');
+        $optionColumns = [];
+        if ($optionColumnsStmt) {
+            foreach ($optionColumnsStmt->fetchAll() as $columnRow) {
+                $name = isset($columnRow['Field']) ? (string)$columnRow['Field'] : '';
+                if ($name !== '') {
+                    $optionColumns[$name] = true;
+                }
+            }
+        }
+        $supportsOptionCorrect = isset($optionColumns['is_correct']);
+        $supportsOptionOrder = isset($optionColumns['order_index']);
+    } catch (PDOException $columnError) {
+        error_log('questionnaire_manage questionnaire_item_option columns fetch failed: ' . $columnError->getMessage());
     }
 
     $itemResponsePresence = [];
@@ -962,8 +981,48 @@ if ($action === 'save' || $action === 'publish') {
             $values[] = $itemId;
             return $values;
         };
-        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
-        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, is_correct=?, order_index=? WHERE id=?');
+        $optionInsertColumns = ['questionnaire_item_id', 'value'];
+        if ($supportsOptionCorrect) {
+            $optionInsertColumns[] = 'is_correct';
+        }
+        if ($supportsOptionOrder) {
+            $optionInsertColumns[] = 'order_index';
+        }
+        $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (' . implode(', ', $optionInsertColumns) . ') VALUES (' . implode(', ', array_fill(0, count($optionInsertColumns), '?')) . ')');
+
+        $optionUpdateColumns = ['value'];
+        if ($supportsOptionCorrect) {
+            $optionUpdateColumns[] = 'is_correct';
+        }
+        if ($supportsOptionOrder) {
+            $optionUpdateColumns[] = 'order_index';
+        }
+        $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET ' . implode(', ', array_map(static function ($column) {
+            return $column . '=?';
+        }, $optionUpdateColumns)) . ' WHERE id=?');
+
+        $buildOptionValues = static function (int $itemId, string $value, bool $isCorrect, int $order) use ($supportsOptionCorrect, $supportsOptionOrder): array {
+            $values = [$itemId, $value];
+            if ($supportsOptionCorrect) {
+                $values[] = $isCorrect ? 1 : 0;
+            }
+            if ($supportsOptionOrder) {
+                $values[] = $order;
+            }
+            return $values;
+        };
+
+        $buildOptionUpdateValues = static function (string $value, bool $isCorrect, int $order, int $optionId) use ($supportsOptionCorrect, $supportsOptionOrder): array {
+            $values = [$value];
+            if ($supportsOptionCorrect) {
+                $values[] = $isCorrect ? 1 : 0;
+            }
+            if ($supportsOptionOrder) {
+                $values[] = $order;
+            }
+            $values[] = $optionId;
+            return $values;
+        };
 
         $insertWorkFunctionStmt = null;
         $deleteWorkFunctionStmt = null;
@@ -974,7 +1033,7 @@ if ($action === 'save' || $action === 'publish') {
             error_log('questionnaire_manage work function statements unavailable: ' . $workFunctionStmtError->getMessage());
         }
 
-        $saveOptions = function (int $itemId, $optionsInput, bool $isSingleChoice, bool $requiresCorrect) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
+        $saveOptions = function (int $itemId, $optionsInput, bool $isSingleChoice, bool $requiresCorrect) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, $buildOptionValues, $buildOptionUpdateValues, &$idMap, $pdo) {
             $existing = $optionsMap[$itemId] ?? [];
             if (!is_array($optionsInput)) {
                 $optionsInput = [];
@@ -1016,9 +1075,9 @@ if ($action === 'save' || $action === 'publish') {
                 $optionClientId = $optionData['clientId'] ?? null;
                 $optionId = isset($optionData['id']) ? (int)$optionData['id'] : null;
                 if ($optionId && isset($existing[$optionId])) {
-                    $updateOptionStmt->execute([$value, $isCorrect ? 1 : 0, $order, $optionId]);
+                    $updateOptionStmt->execute($buildOptionUpdateValues($value, $isCorrect, $order, $optionId));
                 } else {
-                    $insertOptionStmt->execute([$itemId, $value, $isCorrect ? 1 : 0, $order]);
+                    $insertOptionStmt->execute($buildOptionValues($itemId, $value, $isCorrect, $order));
                     $optionId = (int)$pdo->lastInsertId();
                     if ($optionClientId) {
                         $idMap['options'][$optionClientId] = $optionId;
