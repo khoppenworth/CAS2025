@@ -196,10 +196,13 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
 <style>
   .md-defaults-group { margin-bottom: .9rem; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: rgba(255,255,255,.72); }
-  .md-defaults-group > summary { cursor: pointer; padding: .7rem .9rem; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .md-defaults-group > summary { cursor: pointer; padding: .7rem .9rem; font-weight: 700; list-style: none; display: flex; justify-content: flex-start; align-items: center; gap: .5rem; }
+  .md-defaults-group > summary::before { content: '▸'; font-size: .95rem; color: rgba(0,0,0,.65); transition: transform .2s ease; }
+  .md-defaults-group[open] > summary::before { transform: rotate(90deg); }
   .md-defaults-group > summary::-webkit-details-marker { display: none; }
+  .md-defaults-meta { margin-left: auto; }
   .md-defaults-group-body { padding: .35rem .9rem .85rem; }
-  .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; margin-left: .6rem; }
+  .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; }
   .md-work-function-row { margin-bottom: .6rem; }
   .md-compact-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: flex-end; }
   .md-compact-actions .md-field { margin: 0; flex: 1 1 220px; }
@@ -218,7 +221,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
-    <details class="md-defaults-group" open>
+    <details class="md-defaults-group">
       <summary>
         <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=count($departmentOptions)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
@@ -256,7 +259,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </details>
 
-    <details class="md-defaults-group" open>
+    <details class="md-defaults-group">
       <summary>
         <span><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
