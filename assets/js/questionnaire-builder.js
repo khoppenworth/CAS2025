@@ -26,6 +26,7 @@ const Builder = (() => {
     floatingSaveButton: '#qb-save-floating',
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
+    previewButton: '#qb-preview-questionnaire',
     deleteButton: '#qb-delete-questionnaire',
     destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
@@ -35,6 +36,9 @@ const Builder = (() => {
     metaCsrf: 'meta[name="csrf-token"]',
     scrollTopButton: '#qb-scroll-top',
     pageTitle: '#qb-page-title',
+    previewModal: '#qb-preview-modal',
+    previewBody: '#qb-preview-body',
+    previewClose: '#qb-preview-close',
   };
 
   const QUESTION_TYPES = ['choice', 'likert', 'text', 'textarea', 'boolean'];
@@ -92,6 +96,19 @@ const Builder = (() => {
     deleteQuestionnaireDestroyLabel: 'Delete questionnaire + responses',
     deleteQuestionnaireDestroyConfirm: 'Delete "%s" and all submissions? This is irreversible and will permanently remove all response data.',
     deleteQuestionnaireDestroySuccess: 'Questionnaire and responses deleted.',
+    previewLabel: 'Preview questionnaire',
+    previewCloseLabel: 'Close',
+    previewEmptyTitle: 'Untitled questionnaire',
+    previewNoDescription: 'No description provided.',
+    previewRootTitle: 'Items without a section',
+    previewNoItems: 'No questions yet. Add items in the builder to preview them.',
+    previewRequiredTag: 'Required',
+    previewConditionPrefix: 'Shown when',
+    previewOptionPlaceholder: 'Option',
+    previewTextPlaceholder: 'Short answer',
+    previewTextareaPlaceholder: 'Long answer',
+    previewBooleanYes: 'Yes',
+    previewBooleanNo: 'No',
   };
 
   const state = {
@@ -263,6 +280,7 @@ const Builder = (() => {
     const floatingSaveBtn = document.querySelector(selectors.floatingSaveButton);
     const publishBtn = document.querySelector(selectors.publishButton);
     const exportBtns = document.querySelectorAll(selectors.exportButton);
+    const previewBtn = document.querySelector(selectors.previewButton);
     const deleteBtn = document.querySelector(selectors.deleteButton);
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
@@ -270,6 +288,8 @@ const Builder = (() => {
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
     const scrollTopBtn = document.querySelector(selectors.scrollTopButton);
+    const previewClose = document.querySelector(selectors.previewClose);
+    const previewModal = document.querySelector(selectors.previewModal);
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
@@ -279,6 +299,7 @@ const Builder = (() => {
     floatingSaveBtn?.addEventListener('click', () => saveAll(false));
     publishBtn?.addEventListener('click', () => saveAll(true));
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
+    previewBtn?.addEventListener('click', openPreview);
     deleteBtn?.addEventListener('click', () => {
       const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
       removeQuestionnaire(active);
@@ -294,6 +315,13 @@ const Builder = (() => {
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
+    previewClose?.addEventListener('click', closePreview);
+    previewModal?.addEventListener('click', (event) => {
+      if (event.target === previewModal) closePreview();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closePreview();
+    });
 
     selector?.addEventListener('change', (event) => {
       const key = event.target.value;
@@ -315,6 +343,124 @@ const Builder = (() => {
       window.addEventListener('scroll', toggleScrollTopVisibility, { passive: true });
       toggleScrollTopVisibility();
     }
+  }
+
+  function openPreview() {
+    const modal = document.querySelector(selectors.previewModal);
+    const body = document.querySelector(selectors.previewBody);
+    if (!modal || !body) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) return;
+
+    body.innerHTML = buildPreviewContent(active);
+    modal.hidden = false;
+    document.body.classList.add('qb-preview-open');
+  }
+
+  function closePreview() {
+    const modal = document.querySelector(selectors.previewModal);
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    document.body.classList.remove('qb-preview-open');
+  }
+
+  function buildPreviewContent(questionnaire) {
+    const title = questionnaire.title?.trim() || STRINGS.previewEmptyTitle;
+    const description = questionnaire.description?.trim() || STRINGS.previewNoDescription;
+    const rootItems = (questionnaire.items || []).filter((item) => item.is_active !== false);
+    const activeSections = (questionnaire.sections || []).filter((section) => section.is_active !== false);
+    const hasItems = rootItems.length > 0 || activeSections.some((section) => (section.items || []).some((item) => item.is_active !== false));
+
+    if (!hasItems) {
+      return `
+        <article class="qb-preview-sheet">
+          <h3 class="qb-preview-sheet-title">${escapeHtml(title)}</h3>
+          <p class="qb-preview-sheet-description">${escapeHtml(description)}</p>
+          <p class="qb-preview-empty">${escapeHtml(STRINGS.previewNoItems)}</p>
+        </article>
+      `;
+    }
+
+    const rootBlock = rootItems.length
+      ? `<section class="qb-preview-section">
+          <h4>${escapeHtml(STRINGS.previewRootTitle)}</h4>
+          <div class="qb-preview-items">
+            ${rootItems.map((item) => buildPreviewItem(item)).join('')}
+          </div>
+        </section>`
+      : '';
+
+    const sectionsHtml = activeSections
+      .map((section, index) => {
+        const items = (section.items || []).filter((item) => item.is_active !== false);
+        if (!items.length) return '';
+        const sectionTitle = section.title?.trim() || `${STRINGS.previewRootTitle} ${index + 1}`;
+        return `
+          <section class="qb-preview-section">
+            <h4>${escapeHtml(sectionTitle)}</h4>
+            ${section.description ? `<p class="qb-preview-section-description">${escapeHtml(section.description)}</p>` : ''}
+            <div class="qb-preview-items">${items.map((item) => buildPreviewItem(item)).join('')}</div>
+          </section>
+        `;
+      })
+      .join('');
+
+    return `
+      <article class="qb-preview-sheet">
+        <h3 class="qb-preview-sheet-title">${escapeHtml(title)}</h3>
+        <p class="qb-preview-sheet-description">${escapeHtml(description)}</p>
+        ${rootBlock}
+        ${sectionsHtml}
+      </article>
+    `;
+  }
+
+  function buildPreviewItem(item) {
+    const label = item.text?.trim() || STRINGS.previewOptionPlaceholder;
+    const required = item.is_required ? `<span class="qb-preview-required">${escapeHtml(STRINGS.previewRequiredTag)}</span>` : '';
+    const condition = item.condition_source_linkid
+      ? `<p class="qb-preview-condition">${escapeHtml(STRINGS.previewConditionPrefix)} <code>${escapeHtml(item.condition_source_linkid)}</code> ${escapeHtml(item.condition_operator || 'equals')} <strong>${escapeHtml(item.condition_value || '')}</strong></p>`
+      : '';
+
+    return `
+      <div class="qb-preview-item">
+        <div class="qb-preview-item-head">
+          <label>${escapeHtml(label)} ${required}</label>
+        </div>
+        ${buildPreviewInput(item)}
+        ${condition}
+      </div>
+    `;
+  }
+
+  function buildPreviewInput(item) {
+    if (item.type === 'text') {
+      return `<input type="text" class="qb-preview-control" placeholder="${escapeAttr(STRINGS.previewTextPlaceholder)}" disabled>`;
+    }
+    if (item.type === 'textarea') {
+      return `<textarea class="qb-preview-control" rows="3" placeholder="${escapeAttr(STRINGS.previewTextareaPlaceholder)}" disabled></textarea>`;
+    }
+    if (item.type === 'boolean') {
+      return `
+        <div class="qb-preview-options">
+          <label><input type="radio" disabled> ${escapeHtml(STRINGS.previewBooleanYes)}</label>
+          <label><input type="radio" disabled> ${escapeHtml(STRINGS.previewBooleanNo)}</label>
+        </div>
+      `;
+    }
+    const options = (item.options || []).length ? item.options : [{ value: STRINGS.previewOptionPlaceholder }];
+    if (item.type === 'choice' && item.allow_multiple) {
+      return `
+        <div class="qb-preview-options">
+          ${options.map((opt) => `<label><input type="checkbox" disabled> ${escapeHtml(opt.value || STRINGS.previewOptionPlaceholder)}</label>`).join('')}
+        </div>
+      `;
+    }
+    return `
+      <div class="qb-preview-options">
+        ${options.map((opt) => `<label><input type="radio" disabled> ${escapeHtml(opt.value || STRINGS.previewOptionPlaceholder)}</label>`).join('')}
+      </div>
+    `;
   }
 
   function fetchData({ silent = false } = {}) {
