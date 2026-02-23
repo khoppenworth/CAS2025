@@ -792,8 +792,15 @@ if ($action === 'save' || $action === 'publish') {
         }
         $insertOptionStmt = $pdo->prepare('INSERT INTO questionnaire_item_option (questionnaire_item_id, value, is_correct, order_index) VALUES (?, ?, ?, ?)');
         $updateOptionStmt = $pdo->prepare('UPDATE questionnaire_item_option SET value=?, is_correct=?, order_index=? WHERE id=?');
-        $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
-        $deleteWorkFunctionStmt = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE questionnaire_id=?');
+
+        $insertWorkFunctionStmt = null;
+        $deleteWorkFunctionStmt = null;
+        try {
+            $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+            $deleteWorkFunctionStmt = $pdo->prepare('DELETE FROM questionnaire_work_function WHERE questionnaire_id=?');
+        } catch (PDOException $workFunctionStmtError) {
+            error_log('questionnaire_manage work function statements unavailable: ' . $workFunctionStmtError->getMessage());
+        }
 
         $saveOptions = function (int $itemId, $optionsInput, bool $isSingleChoice, bool $requiresCorrect) use (&$optionsMap, $insertOptionStmt, $updateOptionStmt, &$idMap, $pdo) {
             $existing = $optionsMap[$itemId] ?? [];
@@ -1104,7 +1111,7 @@ if ($action === 'save' || $action === 'publish') {
                 }
             }
 
-            if (array_key_exists('work_functions', $qData)) {
+            if (array_key_exists('work_functions', $qData) && $deleteWorkFunctionStmt && $insertWorkFunctionStmt) {
                 $workFunctionsInput = $qData['work_functions'];
                 if (!is_array($workFunctionsInput)) {
                     $workFunctionsInput = [];
@@ -1290,7 +1297,12 @@ if (isset($_POST['import'])) {
                     }
 
                     $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
-                    $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+                    $insertWorkFunctionStmt = null;
+                    try {
+                        $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
+                    } catch (PDOException $workFunctionImportStmtError) {
+                        error_log('questionnaire_manage import work function statement unavailable: ' . $workFunctionImportStmtError->getMessage());
+                    }
 
                     foreach ($qs as $resource) {
                         $title = qb_import_normalize_string($resource['title'] ?? null, QB_IMPORT_MAX_QUESTIONNAIRE_TITLE, 'FHIR Questionnaire');
@@ -1319,8 +1331,10 @@ if (isset($_POST['import'])) {
                         $recentImportId = $qid;
                         $importedQuestionnaires++;
 
-                        foreach ($availableWorkFunctions as $wf) {
-                            $insertWorkFunctionStmt->execute([$qid, $wf]);
+                        if ($insertWorkFunctionStmt) {
+                            foreach ($availableWorkFunctions as $wf) {
+                                $insertWorkFunctionStmt->execute([$qid, $wf]);
+                            }
                         }
 
                         $insertSectionStmt = $pdo->prepare('INSERT INTO questionnaire_section (questionnaire_id, title, description, order_index) VALUES (?, ?, ?, ?)');
