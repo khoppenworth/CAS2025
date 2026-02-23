@@ -211,3 +211,62 @@ function questionnaire_answer_is_correct(array $answerSet, string $correctValue)
     }
     return false;
 }
+
+/**
+ * Resolve a proficiency level label from a score percentage.
+ */
+function questionnaire_proficiency_level(?float $score): string
+{
+    if ($score === null) {
+        return '';
+    }
+    if ($score >= 85.0) {
+        return 'Expert';
+    }
+    if ($score >= 70.0) {
+        return 'Strong Proficiency';
+    }
+    if ($score >= 60.0) {
+        return 'Intermediate';
+    }
+    if ($score >= 50.0) {
+        return 'Basic';
+    }
+    return 'Not Proficient';
+}
+
+/**
+ * Resolve proficiency level and interpretation details for a score percentage.
+ *
+ * @return array{level:string, interpretation:string}
+ */
+function questionnaire_proficiency_details(?float $score): array
+{
+    $level = questionnaire_proficiency_level($score);
+    return match ($level) {
+        'Expert' => [
+            'level' => 'Expert',
+            'interpretation' => 'Exceptional mastery; capable of leading complex assignments and mentoring others.',
+        ],
+        'Strong Proficiency' => [
+            'level' => 'Strong Proficiency',
+            'interpretation' => 'Fully meets expectations; operates independently at the expected level.',
+        ],
+        'Intermediate' => [
+            'level' => 'Intermediate',
+            'interpretation' => 'Partial mastery; requires targeted development to reach full proficiency.',
+        ],
+        'Basic' => [
+            'level' => 'Basic',
+            'interpretation' => 'Limited understanding; requires close supervision and structured learning.',
+        ],
+        'Not Proficient' => [
+            'level' => 'Not Proficient',
+            'interpretation' => 'Does not meet minimum expectations; needs foundational skill development.',
+        ],
+        default => [
+            'level' => '',
+            'interpretation' => '',
+        ],
+    };
+}

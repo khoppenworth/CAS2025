@@ -4,6 +4,7 @@ require_once __DIR__ . '/lib/simple_pdf.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
 require_once __DIR__ . '/lib/analytics_report.php';
 require_once __DIR__ . '/lib/performance_sections.php';
+require_once __DIR__ . '/lib/scoring.php';
 
 auth_required(['staff', 'supervisor', 'admin']);
 refresh_current_user($pdo);
@@ -157,6 +158,10 @@ $summaryRows = [
 ];
 if ($averageScore !== null) {
     $summaryRows[] = [t($t, 'average_score', 'Average score (%)'), number_format($averageScore, 1)];
+    $summaryRows[] = [
+        t($t, 'proficiency_level', 'Proficiency level'),
+        questionnaire_proficiency_level((float) $averageScore),
+    ];
 }
 if ($nextAssessmentDisplay !== '') {
     $summaryRows[] = [t($t, 'next_assessment', 'Next Assessment Date'), $nextAssessmentDisplay];
@@ -222,11 +227,13 @@ if ($rows) {
     $responseRows = [];
     $limit = 20;
     foreach (array_slice($rows, -$limit) as $row) {
+        $scoreValue = isset($row['score']) && $row['score'] !== null ? (float) $row['score'] : null;
         $responseRows[] = [
             resolve_performance_year($row),
             (string) ($row['title'] ?? ''),
             (string) ($row['period_label'] ?? ''),
-            isset($row['score']) && $row['score'] !== null ? number_format((float) $row['score'], 0) . '%' : '—',
+            $scoreValue !== null ? number_format($scoreValue, 0) . '%' : '—',
+            $scoreValue !== null ? questionnaire_proficiency_level($scoreValue) : '—',
             t($t, 'status_' . ($row['status'] ?? 'submitted'), ucfirst((string) ($row['status'] ?? 'submitted'))),
         ];
     }
@@ -235,8 +242,9 @@ if ($rows) {
         t($t, 'questionnaire', 'Questionnaire'),
         t($t, 'performance_period', 'Performance Period'),
         t($t, 'score', 'Score (%)'),
+        t($t, 'proficiency_level', 'Proficiency level'),
         t($t, 'status', 'Status'),
-    ], $responseRows, [20, 60, 60, 28, 32]);
+    ], $responseRows, [18, 52, 52, 20, 28, 30]);
 } else {
     $pdf->addParagraph(t($t, 'no_submissions_yet', 'No submissions recorded yet. Complete your first assessment to see insights.'));
 }
