@@ -76,6 +76,22 @@ $nextLocale = $localeCount > 0
     : $currentLocale;
 $currentLocaleBadge = strtoupper((string)$currentLocale);
 $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.svg');
+$profileDisplayName = trim((string)($user['full_name'] ?? $user['username'] ?? t($t, 'profile', 'Profile')));
+$initialParts = preg_split('/\s+/', $profileDisplayName) ?: [];
+$profileInitials = '';
+foreach ($initialParts as $part) {
+    $part = trim((string)$part);
+    if ($part === '') {
+        continue;
+    }
+    $profileInitials .= strtoupper(substr($part, 0, 1));
+    if (strlen($profileInitials) >= 2) {
+        break;
+    }
+}
+if ($profileInitials === '') {
+    $profileInitials = strtoupper(substr($profileDisplayName, 0, 2));
+}
 ?>
 <?php if ($brandStyle !== ''): ?>
 <style id="md-brand-style"><?=htmlspecialchars($brandStyle, ENT_QUOTES, 'UTF-8')?></style>
@@ -140,6 +156,15 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
         loading="lazy"
         decoding="async"
       >
+    </a>
+    <a
+      href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>"
+      class="md-appbar-link md-appbar-profile"
+      aria-label="<?=htmlspecialchars(t($t, 'profile', 'Profile') . ': ' . $profileDisplayName, ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars($profileDisplayName, ENT_QUOTES, 'UTF-8')?>"
+    >
+      <span class="md-appbar-profile-initials" aria-hidden="true"><?=htmlspecialchars($profileInitials, ENT_QUOTES, 'UTF-8')?></span>
+      <span class="visually-hidden"><?=htmlspecialchars(t($t, 'profile', 'Profile'), ENT_QUOTES, 'UTF-8')?></span>
     </a>
     <a
       href="<?=htmlspecialchars(url_for('logout.php'), ENT_QUOTES, 'UTF-8')?>"
@@ -571,41 +596,6 @@ $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.
         </ul>
       </li>
     <?php endif; ?>
-    <li class="md-topnav-item" data-topnav-item>
-      <button type="button" class="md-topnav-trigger" data-topnav-trigger data-topnav-icon="account" aria-haspopup="true" aria-expanded="false">
-        <span class="md-topnav-label">
-          <span class="md-topnav-title"><?=t($t, 'account_tools', 'Account & Tools')?></span>
-          <span class="md-topnav-desc"><?=t($t, 'account_tools_summary', 'Quick actions, profile, and preferences.')?></span>
-        </span>
-        <span class="md-topnav-chevron" aria-hidden="true"></span>
-      </button>
-      <ul class="md-topnav-submenu">
-        <li>
-          <button
-            type="button"
-            class="md-topnav-link"
-            id="appbar-install-btn"
-            hidden
-            aria-hidden="true"
-          >
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=htmlspecialchars(t($t, 'install_app', 'Install App'), ENT_QUOTES, 'UTF-8')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'install_app_summary', 'Add this app to your device for quick access.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">↓</span>
-          </button>
-        </li>
-        <li>
-          <a href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>" class="md-topnav-link">
-            <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Profile')?></span>
-              <span class="md-topnav-link-desc"><?=t($t, 'profile_summary', 'Update your profile details and settings.')?></span>
-            </span>
-            <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
-          </a>
-        </li>
-      </ul>
-    </li>
   </ul>
 </nav>
 <div class="md-topnav-backdrop" data-topnav-backdrop aria-hidden="true" hidden></div>

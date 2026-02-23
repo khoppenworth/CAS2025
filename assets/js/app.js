@@ -604,64 +604,6 @@
     document.head.appendChild(manifest);
   }
 
-  const installButton = document.getElementById('appbar-install-btn');
-  let deferredInstallPrompt = null;
-  const isStandalone = () => {
-    const mediaQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(display-mode: standalone)') : null;
-    return (mediaQuery && mediaQuery.matches) || window.navigator.standalone === true;
-  };
-  const updateInstallButtonVisibility = () => {
-    if (!installButton) {
-      return;
-    }
-    const shouldShow = Boolean(deferredInstallPrompt) && !isStandalone();
-    installButton.hidden = !shouldShow;
-    installButton.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
-    if (!shouldShow) {
-      installButton.disabled = false;
-    }
-  };
-  if (installButton) {
-    installButton.addEventListener('click', async () => {
-      if (!deferredInstallPrompt) {
-        updateInstallButtonVisibility();
-        return;
-      }
-      installButton.disabled = true;
-      try {
-        await deferredInstallPrompt.prompt();
-        if (deferredInstallPrompt.userChoice) {
-          await deferredInstallPrompt.userChoice.catch(() => undefined);
-        }
-      } catch (err) {
-        // Ignore prompt errors.
-      }
-      deferredInstallPrompt = null;
-      updateInstallButtonVisibility();
-      installButton.disabled = false;
-      installButton.blur();
-    });
-  }
-  const standaloneMedia = window.matchMedia ? window.matchMedia('(display-mode: standalone)') : null;
-  if (standaloneMedia) {
-    const handleStandaloneChange = () => updateInstallButtonVisibility();
-    if (typeof standaloneMedia.addEventListener === 'function') {
-      standaloneMedia.addEventListener('change', handleStandaloneChange);
-    } else if (typeof standaloneMedia.addListener === 'function') {
-      standaloneMedia.addListener(handleStandaloneChange);
-    }
-  }
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    deferredInstallPrompt = event;
-    updateInstallButtonVisibility();
-  });
-  window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null;
-    updateInstallButtonVisibility();
-  });
-  updateInstallButtonVisibility();
-
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register(normalizedBase + '/service-worker.js', { scope: normalizedBase + '/' })
