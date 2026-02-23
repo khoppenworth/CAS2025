@@ -73,8 +73,10 @@ class SimplePdfDocument
         $titleFontSize = 16.0;
         $subtitleFontSize = 11.0;
         $lineGap = 4.0;
-        $topPadding = 8.0;
-        $bottomPadding = 12.0;
+        $topPadding = 10.0;
+        $bottomPadding = 14.0;
+        $ruleGap = 8.0;
+        $contentGap = 12.0;
         $textGap = $image !== null ? 12.0 : 0.0;
 
         $textHeight = 0.0;
@@ -90,7 +92,7 @@ class SimplePdfDocument
 
         $imageHeight = $image['height'] ?? 0.0;
         $contentHeight = max($textHeight, $imageHeight);
-        $this->headerSpacing = $topPadding + $contentHeight + $bottomPadding;
+        $this->headerSpacing = $topPadding + $contentHeight + $bottomPadding + $ruleGap + $contentGap;
 
         $this->headerConfig = [
             'title' => $normalizedTitle,
@@ -100,6 +102,8 @@ class SimplePdfDocument
             'line_gap' => $lineGap,
             'top_padding' => $topPadding,
             'bottom_padding' => $bottomPadding,
+            'rule_gap' => $ruleGap,
+            'content_gap' => $contentGap,
             'text_gap' => $textGap,
             'image' => $image,
         ];
@@ -242,10 +246,17 @@ class SimplePdfDocument
     public function addRightAlignedText(array $lines, float $fontSize = 10.0, float $lineSpacing = 1.3): void
     {
         $content = [];
+        $maxBlockWidth = ($this->width - $this->marginLeft - $this->marginRight) * 0.46;
+        if ($maxBlockWidth <= 0.0) {
+            $maxBlockWidth = $this->width - $this->marginLeft - $this->marginRight;
+        }
+
         foreach ($lines as $line) {
             $text = trim((string)$line);
             if ($text !== '') {
-                $content[] = $text;
+                foreach ($this->wrapTextToWidth($text, $fontSize, $maxBlockWidth) as $wrappedLine) {
+                    $content[] = $wrappedLine;
+                }
             }
         }
 
@@ -267,6 +278,63 @@ class SimplePdfDocument
         }
 
         $this->cursorY = $currentY - 2.0;
+    }
+
+    private function wrapTextToWidth(string $text, float $fontSize, float $availableWidth): array
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim($text));
+        if ($normalized === '') {
+            return [''];
+        }
+
+        if ($availableWidth <= 0.0) {
+            return [$normalized];
+        }
+
+        $words = preg_split('/\s+/u', $normalized);
+        if (!is_array($words)) {
+            $words = [$normalized];
+        }
+
+        $spaceWidth = $this->estimateTextWidth(' ', $fontSize);
+        $result = [];
+        $current = '';
+        $currentWidth = 0.0;
+
+        foreach ($words as $word) {
+            if ($word === '') {
+                continue;
+            }
+
+            $segments = $this->segmentWordToFit($word, $availableWidth, $fontSize);
+            foreach ($segments as $index => $segment) {
+                $segmentWidth = $this->estimateTextWidth($segment, $fontSize);
+
+                if ($current === '') {
+                    $current = $segment;
+                    $currentWidth = $segmentWidth;
+                    continue;
+                }
+
+                $needsSpace = ($index === 0);
+                $candidateWidth = $currentWidth + ($needsSpace ? $spaceWidth : 0.0) + $segmentWidth;
+
+                if ($needsSpace && $candidateWidth <= $availableWidth) {
+                    $current .= ' ' . $segment;
+                    $currentWidth = $candidateWidth;
+                } else {
+                    $result[] = $current;
+                    $current = $segment;
+                    $currentWidth = $segmentWidth;
+                }
+            }
+        }
+
+        if ($current !== '') {
+            $result[] = $current;
+        }
+
+        return $result ?: [''];
     }
 
     public function output(): string
@@ -494,7 +562,9 @@ class SimplePdfDocument
             $this->drawText($config['subtitle'], 'F1', $config['subtitle_font_size'], $textX, $currentTop);
         }
 
-        $ruleY = $topY - $this->headerSpacing + 2.0;
+        $contentGap = (float)($config['content_gap'] ?? 10.0);
+        $ruleGap = (float)($config['rule_gap'] ?? 6.0);
+        $ruleY = $topY - $this->headerSpacing + $contentGap + $ruleGap;
         if ($imageHeight > 0.0 || $config['title'] !== null || $config['subtitle'] !== null) {
             $this->drawLine(
                 $this->marginLeft,
@@ -505,7 +575,7 @@ class SimplePdfDocument
             );
         }
 
-        $this->cursorY = $topY - $this->headerSpacing;
+        $this->cursorY = $topY - $this->headerSpacing + $contentGap;
     }
 
     private function normalizeHeaderText(?string $value): ?string

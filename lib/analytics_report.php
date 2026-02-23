@@ -5,6 +5,30 @@ declare(strict_types=1);
 require_once __DIR__ . '/simple_pdf.php';
 require_once __DIR__ . '/performance_sections.php';
 
+function analytics_report_has_period_start_column(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    try {
+        $stmt = $pdo->query('SHOW COLUMNS FROM performance_period');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($rows as $row) {
+            if (strcasecmp((string)($row['Field'] ?? ''), 'period_start') === 0) {
+                $cached = true;
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('analytics_report period_start schema lookup failed: ' . $e->getMessage());
+    }
+
+    $cached = false;
+    return false;
+}
+
 function analytics_report_allowed_frequencies(): array
 {
     return ['daily', 'weekly', 'monthly'];
@@ -123,9 +147,12 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
 
     $sectionBreakdowns = [];
     if ($selectedId) {
+        $periodStartSelect = analytics_report_has_period_start_column($pdo)
+            ? 'pp.period_start'
+            : 'NULL AS period_start';
         $responseStmt = $pdo->prepare(
             "SELECT qr.id, qr.questionnaire_id, qr.performance_period_id, qr.status, qr.score, qr.created_at, "
-            . "q.title, pp.label AS period_label, pp.period_start "
+            . "q.title, COALESCE(pp.label, '') AS period_label, {$periodStartSelect} "
             . "FROM questionnaire_response qr "
             . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
             . "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id "
@@ -184,7 +211,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
         $userStmt = $pdo->prepare(
             'SELECT u.username, u.full_name, u.work_function, '
             . 'COUNT(*) AS total_responses, '
-            . 'SUM(qr.status="approved") AS approved_count, '
+            . "SUM(qr.status='approved') AS approved_count, "
             . 'AVG(qr.score) AS avg_score '
             . 'FROM questionnaire_response qr '
             . 'JOIN users u ON u.id = qr.user_id '
@@ -268,7 +295,11 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
 
 function analytics_report_collect_period_series(PDO $pdo, ?int $questionnaireId = null): array
 {
-    $sql = 'SELECT pp.label, pp.period_start, AVG(qr.score) AS avg_score, COUNT(*) AS total_responses '
+    $hasPeriodStart = analytics_report_has_period_start_column($pdo);
+    $periodStartSelect = $hasPeriodStart ? 'pp.period_start' : 'NULL AS period_start';
+    $periodOrderBy = $hasPeriodStart ? 'pp.period_start ASC' : 'pp.id ASC';
+
+    $sql = 'SELECT pp.label, ' . $periodStartSelect . ', AVG(qr.score) AS avg_score, COUNT(*) AS total_responses '
         . 'FROM questionnaire_response qr '
         . 'JOIN performance_period pp ON pp.id = qr.performance_period_id '
         . 'WHERE qr.score IS NOT NULL';
@@ -277,7 +308,11 @@ function analytics_report_collect_period_series(PDO $pdo, ?int $questionnaireId 
         $sql .= ' AND qr.questionnaire_id = ?';
         $params[] = $questionnaireId;
     }
-    $sql .= ' GROUP BY pp.id, pp.label, pp.period_start ORDER BY pp.period_start ASC';
+    if ($hasPeriodStart) {
+        $sql .= ' GROUP BY pp.id, pp.label, pp.period_start ORDER BY ' . $periodOrderBy;
+    } else {
+        $sql .= ' GROUP BY pp.id, pp.label ORDER BY ' . $periodOrderBy;
+    }
 
     try {
         $stmt = $pdo->prepare($sql);

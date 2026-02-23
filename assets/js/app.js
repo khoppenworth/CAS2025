@@ -433,6 +433,16 @@
 
       trigger.addEventListener('focus', () => openSubmenuForItem(item));
       item.addEventListener('mouseenter', () => openSubmenuForItem(item));
+      item.addEventListener('mouseleave', (event) => {
+        if (isMobileView()) {
+          return;
+        }
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && item.contains(nextTarget)) {
+          return;
+        }
+        setItemExpanded(item, false);
+      });
     });
 
     mobilePanel = document.createElement('div');

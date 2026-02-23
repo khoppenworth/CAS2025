@@ -21,6 +21,12 @@ $baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
 $langAttr = htmlspecialchars($locale, ENT_QUOTES, 'UTF-8');
 $loginUrl = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
+$heroEyebrow = htmlspecialchars(t($t, 'hero_eyebrow', 'National performance excellence platform'), ENT_QUOTES, 'UTF-8');
+$heroTitle = htmlspecialchars(t($t, 'hero_title', 'Bring every performance conversation into one vibrant workspace'), ENT_QUOTES, 'UTF-8');
+$heroSubtitle = htmlspecialchars(t($t, 'hero_subtitle', 'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.'), ENT_QUOTES, 'UTF-8');
+$heroBadgeOne = htmlspecialchars(t($t, 'hero_badge_one', 'Goal alignment'), ENT_QUOTES, 'UTF-8');
+$heroBadgeTwo = htmlspecialchars(t($t, 'hero_badge_two', '360° feedback'), ENT_QUOTES, 'UTF-8');
+$heroBadgeThree = htmlspecialchars(t($t, 'hero_badge_three', 'Learning insights'), ENT_QUOTES, 'UTF-8');
 $addressLabel = htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8');
 $contactLabel = htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8');
 $featureItems = [
@@ -108,6 +114,24 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
     </header>
 
     <main class="landing-main" aria-labelledby="features-heading">
+      <section class="landing-section landing-section--hero">
+        <div class="landing-hero-panel">
+          <div class="landing-hero-copy">
+            <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
+            <h1 class="landing-hero-copy__title"><?= $heroTitle ?></h1>
+            <p class="landing-hero-copy__subtitle"><?= $heroSubtitle ?></p>
+            <div class="landing-hero-copy__actions">
+              <a class="landing-button landing-button--accent" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
+            </div>
+          </div>
+          <div class="landing-hero-badges" aria-label="<?= htmlspecialchars(t($t, 'hero_badges_label', 'Platform highlights'), ENT_QUOTES, 'UTF-8') ?>">
+            <span><?= $heroBadgeOne ?></span>
+            <span><?= $heroBadgeTwo ?></span>
+            <span><?= $heroBadgeThree ?></span>
+          </div>
+        </div>
+      </section>
+
       <section class="landing-section landing-section--stats">
         <div class="landing-stats-grid">
           <?php foreach ($statTiles as $tile): ?>

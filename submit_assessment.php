@@ -15,6 +15,43 @@ $flashNotice = '';
 $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
+
+$supportsItemConditions = false;
+$supportsSectionIncludeInScoring = false;
+try {
+    $itemColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_item');
+    $itemColumns = [];
+    if ($itemColumnsStmt) {
+        foreach ($itemColumnsStmt->fetchAll() as $columnRow) {
+            $name = isset($columnRow['Field']) ? (string)$columnRow['Field'] : '';
+            if ($name !== '') {
+                $itemColumns[$name] = true;
+            }
+        }
+    }
+    $supportsItemConditions = isset($itemColumns['condition_source_linkid'])
+        && isset($itemColumns['condition_operator'])
+        && isset($itemColumns['condition_value']);
+} catch (PDOException $itemColumnError) {
+    error_log('submit_assessment questionnaire_item columns fetch failed: ' . $itemColumnError->getMessage());
+}
+
+try {
+    $sectionColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_section');
+    $sectionColumns = [];
+    if ($sectionColumnsStmt) {
+        foreach ($sectionColumnsStmt->fetchAll() as $columnRow) {
+            $name = isset($columnRow['Field']) ? (string)$columnRow['Field'] : '';
+            if ($name !== '') {
+                $sectionColumns[$name] = true;
+            }
+        }
+    }
+    $supportsSectionIncludeInScoring = isset($sectionColumns['include_in_scoring']);
+} catch (PDOException $sectionColumnError) {
+    error_log('submit_assessment questionnaire_section columns fetch failed: ' . $sectionColumnError->getMessage());
+}
+
 $isOtherSpecifyPrompt = static function (string $text): bool {
     $normalized = strtolower(trim(str_replace(["’", '"', "'", ','], '', $text)));
     if ($normalized === '') {
@@ -48,6 +85,78 @@ $isOtherSelected = static function ($rawValue): bool {
         }
     }
     return false;
+};
+
+
+$collectPostedValues = static function (array $postData): array {
+    $valuesByLinkId = [];
+    foreach ($postData as $key => $value) {
+        if (!is_string($key) || !str_starts_with($key, 'item_')) {
+            continue;
+        }
+        $linkId = substr($key, 5);
+        if ($linkId === '') {
+            continue;
+        }
+        $rawValues = is_array($value) ? $value : [$value];
+        $normalized = [];
+        foreach ($rawValues as $entry) {
+            if (is_scalar($entry) || $entry === null) {
+                $text = trim((string)$entry);
+                if ($text !== '') {
+                    $normalized[] = $text;
+                }
+            }
+        }
+        if ($normalized) {
+            $valuesByLinkId[$linkId] = $normalized;
+        }
+    }
+    return $valuesByLinkId;
+};
+
+$matchesCondition = static function (array $item, array $valuesByLinkId): bool {
+    $source = trim((string)($item['condition_source_linkid'] ?? ''));
+    if ($source === '') {
+        return true;
+    }
+
+    $operator = strtolower(trim((string)($item['condition_operator'] ?? 'equals')));
+    if ($operator === '') {
+        $operator = 'equals';
+    }
+
+    $expected = trim((string)($item['condition_value'] ?? ''));
+    $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
+    $candidateValues = [];
+    foreach (($valuesByLinkId[$source] ?? []) as $value) {
+        $candidateValues[] = trim((string)$value);
+    }
+
+    if ($operator === 'contains') {
+        if ($expectedLower === '') {
+            return false;
+        }
+        foreach ($candidateValues as $candidate) {
+            $candidateLower = function_exists('mb_strtolower') ? mb_strtolower($candidate, 'UTF-8') : strtolower($candidate);
+            if ($candidateLower !== '' && str_contains($candidateLower, $expectedLower)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    $normalizedCandidates = [];
+    foreach ($candidateValues as $candidate) {
+        $normalizedCandidates[] = function_exists('mb_strtolower')
+            ? mb_strtolower((string)$candidate, 'UTF-8')
+            : strtolower((string)$candidate);
+    }
+    $equals = in_array($expectedLower, $normalizedCandidates, true);
+    if ($operator === 'not_equals') {
+        return !$equals;
+    }
+    return $equals;
 };
 
 $user = current_user();
@@ -171,6 +280,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!$periodId) {
         $err = t($t,'select_period','Please select a performance period.');
     } else {
+        $responseColumns = [];
+        try {
+            $responseColumnStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_response');
+            $responseColumnRows = $responseColumnStmt ? $responseColumnStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($responseColumnRows as $responseColumnRow) {
+                $field = strtolower((string)($responseColumnRow['Field'] ?? ''));
+                if ($field !== '') {
+                    $responseColumns[$field] = true;
+                }
+            }
+        } catch (Throwable $responseColumnError) {
+            error_log('submit_assessment questionnaire_response columns fetch failed: ' . $responseColumnError->getMessage());
+            $responseColumns = [];
+        }
+
         $existingStmt = $pdo->prepare('SELECT * FROM questionnaire_response WHERE user_id=? AND questionnaire_id=? AND performance_period_id=?');
         $existingStmt->execute([$user['id'], $qid, $periodId]);
         $existingResponse = $existingStmt->fetch();
@@ -184,19 +308,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $scoreValue = $isDraftSave ? null : 0;
             $autoApprovedAt = $autoApprove ? date('Y-m-d H:i:s') : null;
             if ($existingResponse) {
-                $updateStmt = $pdo->prepare('UPDATE questionnaire_response SET status=?, score=?, created_at=NOW(), reviewed_by=NULL, reviewed_at=?, review_comment=NULL WHERE id=?');
-                $updateStmt->execute([$statusValue, $scoreValue, $autoApprovedAt, $responseId]);
+                $updateClauses = ['status=?', 'score=?', 'created_at=NOW()'];
+                $updateParams = [$statusValue, $scoreValue];
+                if (isset($responseColumns['reviewed_by'])) {
+                    $updateClauses[] = 'reviewed_by=NULL';
+                }
+                if (isset($responseColumns['reviewed_at'])) {
+                    $updateClauses[] = 'reviewed_at=?';
+                    $updateParams[] = $autoApprovedAt;
+                }
+                if (isset($responseColumns['review_comment'])) {
+                    $updateClauses[] = 'review_comment=NULL';
+                }
+                $updateParams[] = $responseId;
+                $updateSql = 'UPDATE questionnaire_response SET ' . implode(', ', $updateClauses) . ' WHERE id=?';
+                $updateStmt = $pdo->prepare($updateSql);
+                $updateStmt->execute($updateParams);
                 $pdo->prepare('DELETE FROM questionnaire_response_item WHERE response_id=?')->execute([$responseId]);
             } else {
-                $insertStmt = $pdo->prepare('INSERT INTO questionnaire_response (user_id, questionnaire_id, performance_period_id, status, created_at, reviewed_at) VALUES (?,?,?,?, NOW(), ?)');
-                $insertStmt->execute([$user['id'], $qid, $periodId, $statusValue, $autoApprovedAt]);
+                $insertColumns = ['user_id', 'questionnaire_id', 'performance_period_id', 'status', 'created_at'];
+                $insertValues = ['?', '?', '?', '?', 'NOW()'];
+                $insertParams = [$user['id'], $qid, $periodId, $statusValue];
+                if (isset($responseColumns['reviewed_at'])) {
+                    $insertColumns[] = 'reviewed_at';
+                    $insertValues[] = '?';
+                    $insertParams[] = $autoApprovedAt;
+                }
+                $insertSql = 'INSERT INTO questionnaire_response (' . implode(', ', $insertColumns) . ') VALUES (' . implode(', ', $insertValues) . ')';
+                $insertStmt = $pdo->prepare($insertSql);
+                $insertStmt->execute($insertParams);
                 $responseId = (int)$pdo->lastInsertId();
             }
 
             // Fetch items with section scoring metadata
+            $conditionSelectSql = $supportsItemConditions
+                ? 'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, '
+                : 'NULL AS condition_source_linkid, NULL AS condition_operator, NULL AS condition_value, ';
+            $includeInScoringSelectSql = $supportsSectionIncludeInScoring
+                ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                : '1 AS include_in_scoring ';
             $itemsStmt = $pdo->prepare(
                 'SELECT qi.id, qi.linkId, qi.text, qi.type, qi.allow_multiple, qi.weight_percent, qi.is_required, qi.requires_correct, '
-                . 'qi.section_id, COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
+                . $conditionSelectSql
+                . 'qi.section_id, ' . $includeInScoringSelectSql
                 . 'FROM questionnaire_item qi '
                 . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
                 . 'WHERE qi.questionnaire_id=? AND qi.is_active=1 ORDER BY qi.order_index ASC'
@@ -251,8 +405,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $correctCount = 0;
             $totalCount = 0;
 
+            $answersByLinkId = [];
+            $submittedValuesByLinkId = $collectPostedValues($_POST);
             $missingRequired = [];
             foreach ($items as $it) {
+                $isVisible = $matchesCondition($it, $submittedValuesByLinkId);
+                if (!$isVisible) {
+                    continue;
+                }
                 $name = 'item_' . $it['linkId'];
                 $type = (string)($it['type'] ?? '');
                 $isScorable = !in_array($type, $nonScorableTypes, true);
@@ -373,6 +533,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $a = $encodeAnswerPayload([['valueString' => $txt]]);
                 }
 
+                $answersByLinkId[(string)$it['linkId']] = json_decode((string)$a, true) ?: [];
+
                 if ($isRequired && !$isDraftSave && !$hasResponse) {
                     $missingRequired[] = $questionTitle;
                 }
@@ -404,7 +566,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 if ($isDraftSave) {
                     $pdo->prepare('UPDATE questionnaire_response SET score=NULL WHERE id=?')->execute([$responseId]);
-                    $pdo->prepare('DELETE FROM training_recommendation WHERE questionnaire_response_id=?')->execute([$responseId]);
+                    clear_response_training_recommendations($pdo, $responseId);
                 } else {
                     $pctRaw = $totalCount > 0 ? ($correctCount / $totalCount) * 100 : 0.0;
                     $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
@@ -615,6 +777,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     $required = !empty($it['is_required']);
     $fieldClass = 'md-field' . ($required ? ' md-field--required' : '');
     $requiredAttr = $required ? ' required' : '';
+    $conditionSource = trim((string)($it['condition_source_linkid'] ?? ''));
+    $conditionOperator = trim((string)($it['condition_operator'] ?? 'equals'));
+    $conditionValue = trim((string)($it['condition_value'] ?? ''));
     $ariaRequired = $required ? ' aria-required="true"' : '';
     $followupParentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
     $followupVisible = true;
@@ -640,7 +805,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       id="<?=htmlspecialchars($anchorId, ENT_QUOTES, 'UTF-8')?>"
       data-question-anchor
       <?php if ($followupParentLinkId !== ''): ?>data-other-followup data-other-parent-linkid="<?=htmlspecialchars($followupParentLinkId, ENT_QUOTES, 'UTF-8')?>"<?php endif; ?>
+      <?php if ($conditionSource !== ''): ?>data-condition-source="<?=htmlspecialchars($conditionSource, ENT_QUOTES, 'UTF-8')?>" data-condition-operator="<?=htmlspecialchars($conditionOperator ?: 'equals', ENT_QUOTES, 'UTF-8')?>" data-condition-value="<?=htmlspecialchars($conditionValue, ENT_QUOTES, 'UTF-8')?>"<?php endif; ?>
       tabindex="-1"
+      data-required="<?= $required ? '1' : '0' ?>"
       <?php if ($followupParentLinkId !== '' && !$followupVisible): ?>hidden<?php endif; ?>
     >
       <span><?=htmlspecialchars($it['text'] ?? '', ENT_QUOTES, 'UTF-8')?></span>
@@ -1018,6 +1185,58 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+
+    const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
+
+    const clearMissingQuestionHighlights = () => {
+      questionFields().forEach((field) => {
+        field.classList.remove('md-field--missing');
+      });
+    };
+
+    const applyMissingQuestionHighlights = () => {
+      const missingFields = [];
+      questionFields().forEach((field) => {
+        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+        if (controls.length === 0) {
+          return;
+        }
+        const isMissing = controls.some((control) => {
+          if (!(control instanceof HTMLElement) || control.disabled || !control.required) {
+            return false;
+          }
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'radio' || control.type === 'checkbox')) {
+              const groupName = control.name;
+              if (!groupName) {
+                return control.type === 'checkbox' ? !control.checked : control.value.trim() === '';
+              }
+              const group = Array.from(assessmentForm.querySelectorAll('input[type="radio"], input[type="checkbox"]'))
+                .filter((candidate) => candidate instanceof HTMLInputElement && candidate.name === groupName);
+              return !group.some((candidate) => candidate.checked);
+            }
+            return control.value.trim() === '';
+          }
+          if (control instanceof HTMLTextAreaElement) {
+            return control.value.trim() === '';
+          }
+          if (control instanceof HTMLSelectElement) {
+            if (control.multiple) {
+              return control.selectedOptions.length === 0;
+            }
+            return control.value.trim() === '';
+          }
+          return false;
+        });
+
+        field.classList.toggle('md-field--missing', isMissing);
+        if (isMissing) {
+          missingFields.push(field);
+        }
+      });
+      return missingFields;
+    };
+
     navLinks.forEach((link) => {
       link.addEventListener('click', (event) => {
         const targetSelector = link.getAttribute('href') || link.getAttribute('data-target');
@@ -1079,6 +1298,70 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     };
 
+
+    const toggleConditionalVisibility = () => {
+      const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
+      conditionalFields.forEach((field) => {
+        const source = field.getAttribute('data-condition-source') || '';
+        const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
+        const expected = (field.getAttribute('data-condition-value') || '').trim();
+        if (!source) {
+          field.hidden = false;
+          return;
+        }
+        const controls = Array.from(document.querySelectorAll(`[name="item_${source}"], [name="item_${source}[]"]`));
+        const selectedValues = controls.flatMap((control) => {
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
+              return [];
+            }
+            return [String(control.value || '').trim()];
+          }
+          if (control instanceof HTMLSelectElement) {
+            return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
+          }
+          return [];
+        });
+        const expectedLower = expected.toLowerCase();
+        const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
+        const equals = normalizedSelected.includes(expectedLower);
+        const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
+        let show = equals;
+        if (operator === 'contains') {
+          show = contains;
+        } else if (operator === 'not_equals') {
+          show = !equals;
+        }
+        field.hidden = !show;
+        const innerControls = Array.from(field.querySelectorAll('input, textarea, select'));
+        innerControls.forEach((control) => {
+          if (!(control instanceof HTMLElement)) {
+            return;
+          }
+          if (show) {
+            if (control.dataset.wasRequired === 'true') {
+              control.required = true;
+            }
+          } else {
+            control.dataset.wasRequired = control.required ? 'true' : 'false';
+            control.required = false;
+            if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+              if (control.type === 'checkbox' || control.type === 'radio') {
+                control.checked = false;
+              } else {
+                control.value = '';
+              }
+            }
+            if (control instanceof HTMLSelectElement) {
+              Array.from(control.options).forEach((option) => {
+                option.selected = false;
+              });
+            }
+          }
+        });
+      });
+    };
+
     document.addEventListener('change', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
@@ -1086,10 +1369,12 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
         toggleOtherFollowupVisibility();
+        toggleConditionalVisibility();
       }
     });
 
     toggleOtherFollowupVisibility();
+    toggleConditionalVisibility();
     const isAppOnline = () => {
       if (connectivity) {
         try {
@@ -1467,8 +1752,28 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         };
       })();
 
-      assessmentForm.addEventListener('input', scheduleSave);
-      assessmentForm.addEventListener('change', scheduleSave);
+      assessmentForm.addEventListener('input', (event) => {
+        scheduleSave();
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const field = target.closest('[data-question-anchor]');
+        if (field) {
+          field.classList.remove('md-field--missing');
+        }
+      });
+      assessmentForm.addEventListener('change', (event) => {
+        scheduleSave();
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const field = target.closest('[data-question-anchor]');
+        if (field) {
+          field.classList.remove('md-field--missing');
+        }
+      });
 
       const params = new URLSearchParams(window.location.search);
       if (params.get('saved') === 'draft') {
@@ -1495,6 +1800,11 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
           event.preventDefault();
           return;
+        }
+
+        clearMissingQuestionHighlights();
+        if (isFinalSubmit) {
+          applyMissingQuestionHighlights();
         }
 
         if (!isAppOnline()) {

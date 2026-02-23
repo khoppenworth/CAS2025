@@ -947,6 +947,15 @@ function ensure_questionnaire_item_schema(PDO $pdo): void
         if (!isset($existing['is_required'])) {
             $pdo->exec("ALTER TABLE questionnaire_item ADD COLUMN is_required TINYINT(1) NOT NULL DEFAULT 0 AFTER allow_multiple");
         }
+        if (!isset($existing['condition_source_linkid'])) {
+            $pdo->exec("ALTER TABLE questionnaire_item ADD COLUMN condition_source_linkid VARCHAR(255) NULL AFTER requires_correct");
+        }
+        if (!isset($existing['condition_operator'])) {
+            $pdo->exec("ALTER TABLE questionnaire_item ADD COLUMN condition_operator VARCHAR(20) NULL AFTER condition_source_linkid");
+        }
+        if (!isset($existing['condition_value'])) {
+            $pdo->exec("ALTER TABLE questionnaire_item ADD COLUMN condition_value VARCHAR(500) NULL AFTER condition_operator");
+        }
     } catch (PDOException $e) {
         error_log('ensure_questionnaire_item_schema: ' . $e->getMessage());
     }

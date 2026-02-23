@@ -4,6 +4,30 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/scoring.php';
 
+function performance_sections_supports_include_in_scoring(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    try {
+        $stmt = $pdo->query('SHOW COLUMNS FROM questionnaire_section');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($rows as $row) {
+            if (strcasecmp((string)($row['Field'] ?? ''), 'include_in_scoring') === 0) {
+                $cached = true;
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('performance_sections include_in_scoring lookup failed: ' . $e->getMessage());
+    }
+
+    $cached = false;
+    return false;
+}
+
 function compute_section_breakdowns(PDO $pdo, array $responses, array $translations): array
 {
     if (!$responses) {
@@ -26,6 +50,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             'questionnaire_id' => $questionnaireId,
             'title' => (string)($response['title'] ?? ''),
             'period' => $response['period_label'] ?? null,
+            'score' => $response['score'] ?? null,
         ];
     }
 
@@ -51,20 +76,42 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             ];
         }
 
+        $supportsIncludeInScoring = performance_sections_supports_include_in_scoring($pdo);
+        $includeSelect = $supportsIncludeInScoring
+            ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring'
+            : '1 AS include_in_scoring';
+
         try {
             $itemsStmt = $pdo->prepare(
                 "SELECT id, questionnaire_id, section_id, linkId, type, allow_multiple, requires_correct, " .
-                "COALESCE(weight_percent,0) AS weight_percent, COALESCE(qs.include_in_scoring,1) AS include_in_scoring FROM questionnaire_item qi " .
+                "COALESCE(weight_percent,0) AS weight_percent, {$includeSelect} FROM questionnaire_item qi " .
                 "LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
             );
             $itemsStmt->execute($qidList);
         } catch (PDOException $e) {
             $itemsStmt = $pdo->prepare(
                 "SELECT qi.id, qi.questionnaire_id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, " .
-                "COALESCE(qi.weight_percent,0) AS weight_percent, COALESCE(qs.include_in_scoring,1) AS include_in_scoring FROM questionnaire_item qi " .
+                "COALESCE(qi.weight_percent,0) AS weight_percent, {$includeSelect} FROM questionnaire_item qi " .
                 "LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
             );
             $itemsStmt->execute($qidList);
+        } catch (PDOException $e) {
+            try {
+                $itemsStmt = $pdo->prepare(
+                    "SELECT qi.id, qi.questionnaire_id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, " .
+                    "COALESCE(qi.weight_percent,0) AS weight_percent, COALESCE(qs.include_in_scoring,1) AS include_in_scoring, " .
+                    "0 AS requires_correct FROM questionnaire_item qi " .
+                    "LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
+                );
+                $itemsStmt->execute($qidList);
+            } catch (PDOException $inner) {
+                $itemsStmt = $pdo->prepare(
+                    "SELECT qi.id, qi.questionnaire_id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, " .
+                    "COALESCE(qi.weight_percent,0) AS weight_percent, 1 AS include_in_scoring, 0 AS requires_correct FROM questionnaire_item qi " .
+                    "WHERE qi.questionnaire_id IN ($placeholder) ORDER BY qi.questionnaire_id, qi.order_index, qi.id"
+                );
+                $itemsStmt->execute($qidList);
+            }
         }
     } else {
         $itemsStmt = $pdo->prepare('SELECT 1 WHERE 0');
@@ -225,6 +272,33 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
                 'label' => $sectionStats[$unassignedKey]['label'],
                 'score' => round(($sectionStats[$unassignedKey]['correct'] / $sectionStats[$unassignedKey]['total']) * 100, 1),
             ];
+        }
+
+        if (!$sections) {
+            $overallScore = $meta['score'] ?? null;
+            if ($overallScore !== null && is_numeric($overallScore)) {
+                $fallbackScore = round((float)$overallScore, 1);
+                foreach ($orderedSections as $sid) {
+                    if ($sid === $unassignedKey || !isset($sectionStats[$sid])) {
+                        continue;
+                    }
+                    $label = trim((string)($sectionStats[$sid]['label'] ?? ''));
+                    if ($label === '') {
+                        $label = $sectionFallback;
+                    }
+                    $sections[] = [
+                        'label' => $label,
+                        'score' => $fallbackScore,
+                    ];
+                }
+
+                if (!$sections) {
+                    $sections[] = [
+                        'label' => $sectionStats[$unassignedKey]['label'],
+                        'score' => $fallbackScore,
+                    ];
+                }
+            }
         }
 
         if ($sections) {

@@ -1297,3 +1297,51 @@ INSERT INTO work_function_catalog (slug, label, sort_order) VALUES
 ON DUPLICATE KEY UPDATE
   label = VALUES(label),
   sort_order = VALUES(sort_order);
+
+SET @qi_condition_source_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item'
+    AND COLUMN_NAME = 'condition_source_linkid'
+);
+SET @qi_condition_source_sql = IF(
+  @qi_condition_source_exists = 0,
+  'ALTER TABLE questionnaire_item ADD COLUMN condition_source_linkid VARCHAR(255) NULL AFTER requires_correct',
+  'DO 1'
+);
+PREPARE stmt FROM @qi_condition_source_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @qi_condition_operator_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item'
+    AND COLUMN_NAME = 'condition_operator'
+);
+SET @qi_condition_operator_sql = IF(
+  @qi_condition_operator_exists = 0,
+  'ALTER TABLE questionnaire_item ADD COLUMN condition_operator VARCHAR(20) NULL AFTER condition_source_linkid',
+  'DO 1'
+);
+PREPARE stmt FROM @qi_condition_operator_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @qi_condition_value_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_item'
+    AND COLUMN_NAME = 'condition_value'
+);
+SET @qi_condition_value_sql = IF(
+  @qi_condition_value_exists = 0,
+  'ALTER TABLE questionnaire_item ADD COLUMN condition_value VARCHAR(500) NULL AFTER condition_operator',
+  'DO 1'
+);
+PREPARE stmt FROM @qi_condition_value_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
