@@ -1847,6 +1847,12 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
     <div class="md-page-header__content">
       <h1 class="md-page-title" id="qb-page-title" tabindex="-1"><?=t($t,'manage_questionnaires','Manage Questionnaires')?></h1>
       <p class="md-page-subtitle"><?=t($t,'qb_builder_intro','Build and organize questionnaires for upcoming assessments.')?></p>
+      <ol class="qb-progress-rail" aria-label="<?=htmlspecialchars(t($t, 'qb_progress_rail', 'Questionnaire build flow'), ENT_QUOTES, 'UTF-8')?>">
+        <li class="qb-progress-step is-active"><?=t($t, 'qb_progress_step_start', '1. Start')?></li>
+        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_structure', '2. Structure')?></li>
+        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_questions', '3. Questions & scoring')?></li>
+        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_publish', '4. Publish')?></li>
+      </ol>
     </div>
   </header>
   <?php if ($msg): ?>
@@ -1904,7 +1910,7 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       </div>
       <div class="qb-start-actions">
         <button class="md-button md-elev-2" id="qb-open-selected"><?=t($t,'edit_selected','Edit selected')?></button>
-        <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
+        <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_selected','Export selected')?></button>
       </div>
     </div>
     <div class="md-card md-elev-2 qb-start-card qb-import-start">
@@ -1948,6 +1954,26 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
               'Assign weights so priority questions total about 100%. Items left at 0 are informational only and do not affect scores or analytics.'
           )?></p>
         </div>
+        <div class="qb-publish-readiness" id="qb-publish-readiness" aria-live="polite">
+          <h4><?=t($t, 'qb_publish_ready_title', 'Publish readiness')?></h4>
+          <ul class="qb-readiness-list">
+            <li data-ready="title"><?=t($t, 'qb_readiness_title', 'Title added')?></li>
+            <li data-ready="content"><?=t($t, 'qb_readiness_content', 'At least one question')?></li>
+            <li data-ready="scoring"><?=t($t, 'qb_readiness_scoring', 'Scoring configured')?></li>
+          </ul>
+        </div>
+      </div>
+      <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone">
+        <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
+        <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
+        <div class="qb-start-actions">
+          <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+            <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+          </button>
+          <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+            <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+          </button>
+        </div>
       </div>
     </aside>
     <div class="qb-manager-main">
@@ -1960,15 +1986,10 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
           <div class="qb-toolbar-actions">
             <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
             <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
-            <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
-            </button>
-            <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
-            </button>
             <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
           </div>
         </div>
+        <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
@@ -1984,7 +2005,8 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
     </div>
   </div>
   <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
-    <?=t($t,'save','Save Changes')?>
+    <span><?=t($t,'save','Save Changes')?></span>
+    <small id="qb-save-floating-label"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></small>
   </button>
 </section>
 <?php if ($recentImportId): ?>

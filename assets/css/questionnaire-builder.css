@@ -1013,3 +1013,85 @@ body.qb-preview-open {
   margin: 0.2rem 0 0;
   color: var(--app-muted, rgba(0, 0, 0, 0.7));
 }
+
+.qb-progress-rail {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.qb-progress-step {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--app-primary-soft);
+  color: var(--app-primary-dark, var(--app-primary));
+}
+
+.qb-progress-step.is-active {
+  background: var(--app-primary);
+  color: var(--md-on-primary, #fff);
+}
+
+.qb-section-nav-search {
+  width: 100%;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+}
+
+.qb-publish-readiness h4 {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.qb-readiness-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.qb-readiness-list li {
+  font-size: 0.86rem;
+  color: var(--app-muted);
+}
+
+.qb-readiness-list li::before {
+  content: '○';
+  margin-right: 0.35rem;
+}
+
+.qb-readiness-list li.is-ready {
+  color: var(--app-success, #1f8a47);
+}
+
+.qb-readiness-list li.is-ready::before {
+  content: '✓';
+}
+
+.qb-danger-zone {
+  border-left: 3px solid var(--app-danger, #b3261e);
+}
+
+.qb-save-status {
+  font-size: 0.84rem;
+  color: var(--app-muted, rgba(0, 0, 0, 0.65));
+  margin-top: -0.2rem;
+}
+
+.qb-floating-save {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.qb-floating-save small {
+  font-size: 0.72rem;
+  opacity: 0.82;
+}
