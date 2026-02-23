@@ -33,6 +33,10 @@ const Builder = (() => {
     message: '#qb-message',
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
+    sectionNavSearch: '#qb-section-nav-search',
+    saveStatus: '#qb-save-status',
+    floatingSaveLabel: '#qb-save-floating-label',
+    publishReadiness: '#qb-publish-readiness',
     metaCsrf: 'meta[name="csrf-token"]',
     scrollTopButton: '#qb-scroll-top',
     pageTitle: '#qb-page-title',
@@ -109,6 +113,11 @@ const Builder = (() => {
     previewTextareaPlaceholder: 'Long answer',
     previewBooleanYes: 'Yes',
     previewBooleanNo: 'No',
+    saveStatusUnsaved: 'Unsaved changes',
+    saveStatusSaved: 'All changes saved',
+    saveStatusSaving: 'Saving…',
+    saveStatusPublished: 'Published successfully',
+    saveStatusLastSaved: 'Last saved just now',
   };
 
   const state = {
@@ -119,6 +128,8 @@ const Builder = (() => {
     loading: false,
     saving: false,
     csrf: '',
+    lastSavedAt: null,
+    navFilter: '',
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -320,6 +331,11 @@ const Builder = (() => {
       if (event.target === previewModal) closePreview();
     });
     document.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
+        event.preventDefault();
+        if (!state.saving && state.dirty) saveAll(false);
+        return;
+      }
       if (event.key === 'Escape') closePreview();
     });
 
@@ -501,6 +517,7 @@ const Builder = (() => {
           : [];
         ensureActive();
         state.dirty = false;
+        state.lastSavedAt = Date.now();
         render();
       })
       .catch((err) => renderMessage(err.message || 'Failed to load questionnaires'))
@@ -772,6 +789,7 @@ const Builder = (() => {
     if (saveBtn) saveBtn.disabled = false;
     if (floatingSaveBtn) floatingSaveBtn.disabled = false;
     if (publishBtn) publishBtn.disabled = false;
+    updateSaveStatus(STRINGS.saveStatusUnsaved || 'Unsaved changes');
   }
 
   function render() {
@@ -781,7 +799,11 @@ const Builder = (() => {
     renderSectionNav();
     renderDeleteButton();
     renderDestroyButton();
+    renderPublishReadiness();
     toggleSaveButtons();
+    if (!state.dirty && state.lastSavedAt) {
+      updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
+    }
     if (pendingImportFocus) {
       pendingImportFocus = false;
       focusActiveQuestionnaire();
@@ -1095,7 +1117,7 @@ const Builder = (() => {
     }
     const rootLabel = nav.dataset.rootLabel || 'Items without a section';
     const untitled = nav.dataset.untitledLabel || 'Untitled questionnaire';
-    const entries = [
+    const allEntries = [
       {
         key: 'root',
         label: truncateWithTooltip(active.title?.trim() || untitled),
@@ -1109,10 +1131,15 @@ const Builder = (() => {
         count: section.items.length,
       })),
     ];
+    const entries = allEntries.filter((entry) => {
+      if (!state.navFilter) return true;
+      return (`${entry.label.title} ${entry.helper.title}`).toLowerCase().includes(state.navFilter);
+    });
     if (!entries.some((entry) => entry.key === state.navActiveKey)) {
       state.navActiveKey = 'root';
     }
     nav.innerHTML = `
+      <input type="search" id="qb-section-nav-search" class="qb-section-nav-search" placeholder="Search sections" value="${escapeAttr(state.navFilter || '')}">
       <ul class="qb-section-nav-list">
         ${entries
           .map(
@@ -1128,6 +1155,15 @@ const Builder = (() => {
           .join('')}
       </ul>
     `;
+    if (!entries.length) {
+      const list = nav.querySelector('.qb-section-nav-list');
+      if (list) list.innerHTML = '<li class="qb-section-nav-empty">No matching sections</li>';
+    }
+    const searchInput = nav.querySelector(selectors.sectionNavSearch);
+    searchInput?.addEventListener('input', (event) => {
+      state.navFilter = String(event.target.value || '').trim().toLowerCase();
+      renderSectionNav();
+    });
     nav.querySelectorAll('button[data-nav]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const targetKey = btn.getAttribute('data-nav');
@@ -1194,6 +1230,37 @@ const Builder = (() => {
       }
     };
     window.requestAnimationFrame(waitForTop);
+  }
+
+
+  function renderPublishReadiness() {
+    const panel = document.querySelector(selectors.publishReadiness);
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!panel || !active) return;
+    const checks = {
+      title: Boolean((active.title || '').trim()),
+      content: countActiveItems(active) > 0,
+      scoring: computeScoringSummary(active).effectiveTotal > 0,
+    };
+    panel.querySelectorAll('[data-ready]').forEach((node) => {
+      const key = node.getAttribute('data-ready');
+      const ok = Boolean(checks[key]);
+      node.classList.toggle('is-ready', ok);
+      node.setAttribute('aria-checked', ok ? 'true' : 'false');
+    });
+  }
+
+  function countActiveItems(questionnaire) {
+    const root = (questionnaire.items || []).filter((item) => item.is_active !== false).length;
+    const section = (questionnaire.sections || []).reduce((sum, sec) => sum + (sec.items || []).filter((item) => item.is_active !== false).length, 0);
+    return root + section;
+  }
+
+  function updateSaveStatus(text) {
+    const status = document.querySelector(selectors.saveStatus);
+    const floating = document.querySelector(selectors.floatingSaveLabel);
+    if (status) status.textContent = text;
+    if (floating) floating.textContent = text;
   }
 
   function toggleSaveButtons() {
@@ -1735,6 +1802,7 @@ const Builder = (() => {
     state.saving = true;
     toggleSaveButtons();
     renderMessage(publish ? 'Publishing…' : 'Saving…');
+    updateSaveStatus(STRINGS.saveStatusSaving || 'Saving…');
 
     const payload = {
       csrf: state.csrf,
@@ -1755,7 +1823,9 @@ const Builder = (() => {
         if (data?.status !== 'ok') throw new Error(data?.message || 'Failed to save');
         state.csrf = data.csrf || state.csrf;
         state.dirty = false;
+        state.lastSavedAt = Date.now();
         renderMessage(data.message || 'Changes saved', 'success');
+        updateSaveStatus(publish ? (STRINGS.saveStatusPublished || 'Published successfully') : (STRINGS.saveStatusSaved || 'All changes saved'));
         const questionnaireMap = data?.idMap?.questionnaires || {};
         state.questionnaires.forEach((q) => {
           if (!q.id && questionnaireMap[q.clientId]) {
@@ -1770,7 +1840,10 @@ const Builder = (() => {
         }
         fetchData({ silent: true });
       })
-      .catch((err) => renderMessage(err.message || 'Save failed', 'error'))
+      .catch((err) => {
+        updateSaveStatus(STRINGS.saveStatusUnsaved || 'Unsaved changes');
+        renderMessage(err.message || 'Save failed', 'error');
+      })
       .finally(() => {
         state.saving = false;
         toggleSaveButtons();
