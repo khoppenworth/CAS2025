@@ -73,8 +73,10 @@ class SimplePdfDocument
         $titleFontSize = 16.0;
         $subtitleFontSize = 11.0;
         $lineGap = 4.0;
-        $topPadding = 8.0;
-        $bottomPadding = 12.0;
+        $topPadding = 10.0;
+        $bottomPadding = 14.0;
+        $ruleGap = 8.0;
+        $contentGap = 12.0;
         $textGap = $image !== null ? 12.0 : 0.0;
 
         $textHeight = 0.0;
@@ -90,7 +92,7 @@ class SimplePdfDocument
 
         $imageHeight = $image['height'] ?? 0.0;
         $contentHeight = max($textHeight, $imageHeight);
-        $this->headerSpacing = $topPadding + $contentHeight + $bottomPadding;
+        $this->headerSpacing = $topPadding + $contentHeight + $bottomPadding + $ruleGap + $contentGap;
 
         $this->headerConfig = [
             'title' => $normalizedTitle,
@@ -100,6 +102,8 @@ class SimplePdfDocument
             'line_gap' => $lineGap,
             'top_padding' => $topPadding,
             'bottom_padding' => $bottomPadding,
+            'rule_gap' => $ruleGap,
+            'content_gap' => $contentGap,
             'text_gap' => $textGap,
             'image' => $image,
         ];
@@ -558,7 +562,9 @@ class SimplePdfDocument
             $this->drawText($config['subtitle'], 'F1', $config['subtitle_font_size'], $textX, $currentTop);
         }
 
-        $ruleY = $topY - $this->headerSpacing + 2.0;
+        $contentGap = (float)($config['content_gap'] ?? 10.0);
+        $ruleGap = (float)($config['rule_gap'] ?? 6.0);
+        $ruleY = $topY - $this->headerSpacing + $contentGap + $ruleGap;
         if ($imageHeight > 0.0 || $config['title'] !== null || $config['subtitle'] !== null) {
             $this->drawLine(
                 $this->marginLeft,
@@ -569,7 +575,7 @@ class SimplePdfDocument
             );
         }
 
-        $this->cursorY = $topY - $this->headerSpacing;
+        $this->cursorY = $topY - $this->headerSpacing + $contentGap;
     }
 
     private function normalizeHeaderText(?string $value): ?string
