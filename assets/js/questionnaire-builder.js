@@ -359,10 +359,17 @@ const Builder = (() => {
       return;
     }
 
-    const previewWindow = window.open('', '_blank', 'noopener,noreferrer');
+    const previewWindow = window.open('about:blank', '_blank');
     if (!previewWindow) {
       renderMessage('Please allow pop-ups to open the questionnaire preview.', 'error');
       return;
+    }
+
+
+    try {
+      previewWindow.opener = null;
+    } catch (_error) {
+      // ignore cross-browser restrictions when clearing opener
     }
 
     previewWindow.document.open();
@@ -1324,7 +1331,7 @@ const Builder = (() => {
     const checks = {
       title: Boolean((active.title || '').trim()),
       content: countActiveItems(active) > 0,
-      scoring: computeScoringSummary(active).effectiveTotal > 0,
+      scoring: computeScoring(active).effectiveTotal > 0,
     };
     panel.querySelectorAll('[data-ready]').forEach((node) => {
       const key = node.getAttribute('data-ready');

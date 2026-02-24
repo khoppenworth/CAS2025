@@ -73,7 +73,7 @@ class FakeDocument {
     this.metaBase = new FakeElement({ content: '' });
     this.card = null;
 
-    ['qb-add-questionnaire','qb-save','qb-save-floating','qb-publish','qb-open-selected','qb-selector','qb-list','qb-tabs','qb-scroll-top','qb-message','qb-section-nav','qb-page-title']
+    ['qb-add-questionnaire','qb-save','qb-save-floating','qb-publish','qb-preview-questionnaire','qb-open-selected','qb-selector','qb-list','qb-tabs','qb-scroll-top','qb-message','qb-section-nav','qb-page-title']
       .forEach((id) => {
         const el = new FakeElement({ id });
         el.doc = this;
@@ -158,6 +158,18 @@ class FakeDocument {
     scrollTo() {},
     addEventListener() {},
     requestAnimationFrame(cb) { cb(); },
+    openCalls: 0,
+    open() {
+      this.openCalls += 1;
+      const doc = {
+        open() {},
+        close() {},
+        write(html) { this.lastHtml = html; },
+        lastHtml: '',
+      };
+      this.lastPreviewDocument = doc;
+      return { document: doc };
+    },
     sessionStorage: { getItem() { return null; }, setItem() {} },
     URL,
     URLSearchParams,
@@ -210,6 +222,14 @@ class FakeDocument {
   document.card.titleInput.dispatch('input');
   document.card.statusInput.value = 'inactive';
   document.card.statusInput.dispatch('change');
+
+  // click preview to ensure standalone preview render does not throw
+  document.byId.get('qb-preview-questionnaire').dispatch('click');
+
+  if (window.openCalls !== 1) throw new Error('preview window did not open');
+  if (!window.lastPreviewDocument?.lastHtml || !window.lastPreviewDocument.lastHtml.includes('New title')) {
+    throw new Error('preview html was not written with questionnaire content');
+  }
 
   // click floating save
   document.byId.get('qb-save-floating').dispatch('click');
