@@ -1995,15 +1995,6 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
       </div>
     </div>
   </div>
-  <div id="qb-preview-modal" class="qb-preview-overlay" hidden>
-    <div class="qb-preview-dialog md-card md-elev-3" role="dialog" aria-modal="true" aria-labelledby="qb-preview-title">
-      <div class="qb-preview-header">
-        <h2 id="qb-preview-title"><?=t($t,'qb_preview_label','Preview questionnaire')?></h2>
-        <button type="button" class="md-button md-outline" id="qb-preview-close"><?=t($t,'close','Close')?></button>
-      </div>
-      <div id="qb-preview-body" class="qb-preview-body"></div>
-    </div>
-  </div>
   <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
     <span><?=t($t,'save','Save Changes')?></span>
     <small id="qb-save-floating-label"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></small>

@@ -40,9 +40,6 @@ const Builder = (() => {
     metaCsrf: 'meta[name="csrf-token"]',
     scrollTopButton: '#qb-scroll-top',
     pageTitle: '#qb-page-title',
-    previewModal: '#qb-preview-modal',
-    previewBody: '#qb-preview-body',
-    previewClose: '#qb-preview-close',
   };
 
   const QUESTION_TYPES = ['choice', 'likert', 'text', 'textarea', 'boolean'];
@@ -300,8 +297,6 @@ const Builder = (() => {
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
     const scrollTopBtn = document.querySelector(selectors.scrollTopButton);
-    const previewClose = document.querySelector(selectors.previewClose);
-    const previewModal = document.querySelector(selectors.previewModal);
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
@@ -327,17 +322,12 @@ const Builder = (() => {
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
-    previewClose?.addEventListener('click', closePreview);
-    previewModal?.addEventListener('click', (event) => {
-      if (event.target === previewModal) closePreview();
-    });
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
         event.preventDefault();
         if (!state.saving && state.dirty) saveAll(false);
         return;
       }
-      if (event.key === 'Escape') closePreview();
     });
 
     selector?.addEventListener('change', (event) => {
@@ -363,28 +353,122 @@ const Builder = (() => {
   }
 
   function openPreview() {
-    const modal = document.querySelector(selectors.previewModal);
-    const body = document.querySelector(selectors.previewBody);
-    if (!modal || !body) {
-      renderMessage('Preview is unavailable right now.', 'error');
-      return;
-    }
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
     if (!active) {
       renderMessage(STRINGS.previewUnavailable, 'error');
       return;
     }
 
-    body.innerHTML = buildPreviewContent(active);
-    modal.hidden = false;
-    document.body.classList.add('qb-preview-open');
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+      renderMessage('Please allow pop-ups to open the questionnaire preview.', 'error');
+      return;
+    }
+
+
+    try {
+      previewWindow.opener = null;
+    } catch (_error) {
+      // ignore cross-browser restrictions when clearing opener
+    }
+
+    previewWindow.document.open();
+    previewWindow.document.write(buildPreviewPage(active));
+    previewWindow.document.close();
   }
 
-  function closePreview() {
-    const modal = document.querySelector(selectors.previewModal);
-    if (!modal || modal.hidden) return;
-    modal.hidden = true;
-    document.body.classList.remove('qb-preview-open');
+  function buildPreviewPage(questionnaire) {
+    const title = questionnaire.title?.trim() || STRINGS.previewEmptyTitle;
+    return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(title)} - ${escapeHtml(STRINGS.previewLabel)}</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        background: #f4f6fb;
+        color: #1f2937;
+        font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .qb-preview-shell {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+      .qb-preview-sheet {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        padding: 1.5rem;
+      }
+      .qb-preview-sheet-title {
+        margin: 0 0 .5rem;
+        font-size: 1.6rem;
+      }
+      .qb-preview-sheet-description {
+        margin: 0 0 1rem;
+        color: #526071;
+      }
+      .qb-preview-section { margin-top: 1rem; }
+      .qb-preview-section h4 {
+        margin: 0 0 .6rem;
+        font-size: 1.05rem;
+      }
+      .qb-preview-section-description {
+        margin: 0 0 .7rem;
+        color: #526071;
+      }
+      .qb-preview-items { display: grid; gap: .85rem; }
+      .qb-preview-item {
+        border: 1px solid #dde3ee;
+        border-radius: 12px;
+        padding: .85rem;
+        background: #fff;
+      }
+      .qb-preview-item-head label { font-weight: 600; }
+      .qb-preview-required {
+        display: inline-block;
+        margin-left: .35rem;
+        padding: .05rem .35rem;
+        border-radius: 999px;
+        background: #fee2e2;
+        color: #991b1b;
+        font-size: .75rem;
+      }
+      .qb-preview-control {
+        margin-top: .5rem;
+        width: 100%;
+        border: 1px solid #cfd7e5;
+        border-radius: 8px;
+        padding: .5rem .65rem;
+        background: #f8fafc;
+        color: #1f2937;
+      }
+      .qb-preview-options {
+        margin-top: .45rem;
+        display: grid;
+        gap: .45rem;
+      }
+      .qb-preview-condition {
+        margin: .55rem 0 0;
+        font-size: .85rem;
+        color: #475569;
+      }
+      .qb-preview-empty {
+        margin: 0;
+        color: #526071;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="qb-preview-shell">
+      ${buildPreviewContent(questionnaire)}
+    </main>
+  </body>
+</html>`;
   }
 
   function buildPreviewContent(questionnaire) {
@@ -1247,7 +1331,7 @@ const Builder = (() => {
     const checks = {
       title: Boolean((active.title || '').trim()),
       content: countActiveItems(active) > 0,
-      scoring: computeScoringSummary(active).effectiveTotal > 0,
+      scoring: computeScoring(active).effectiveTotal > 0,
     };
     panel.querySelectorAll('[data-ready]').forEach((node) => {
       const key = node.getAttribute('data-ready');
