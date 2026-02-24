@@ -1185,6 +1185,33 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    const controlsForLinkId = (linkId) => {
+      const source = String(linkId || '').trim();
+      if (!source) {
+        return [];
+      }
+      const direct = `item_${source}`;
+      const multiple = `item_${source}[]`;
+      const controls = [];
+      for (const element of Array.from(form.elements || [])) {
+        if (!(element instanceof HTMLElement)) {
+          continue;
+        }
+        const name = element.getAttribute('name') || '';
+        if (name === direct || name === multiple) {
+          controls.push(element);
+        }
+      }
+      return controls;
+    };
+
+    const setFieldVisible = (field, show) => {
+      const next = show === true;
+      field.hidden = !next;
+      field.style.display = next ? '' : 'none';
+      field.setAttribute('aria-hidden', next ? 'false' : 'true');
+    };
+
 
     const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
 
@@ -1258,7 +1285,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (!parentLinkId) {
           return;
         }
-        const parentControls = Array.from(document.querySelectorAll(`[name="item_${parentLinkId}"], [name="item_${parentLinkId}[]"]`));
+        const parentControls = controlsForLinkId(parentLinkId);
         const selectedValues = parentControls.flatMap((control) => {
           if (control instanceof HTMLInputElement) {
             if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
@@ -1275,7 +1302,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           return [];
         });
         const show = selectedValues.includes('other');
-        field.hidden = !show;
+        setFieldVisible(field, show);
         const textControls = Array.from(field.querySelectorAll('input, textarea, select'));
         textControls.forEach((control) => {
           if (!(control instanceof HTMLElement)) {
@@ -1309,10 +1336,10 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
         if (!source) {
-          field.hidden = false;
+          setFieldVisible(field, true);
           return;
         }
-        const controls = Array.from(document.querySelectorAll(`[name="item_${source}"], [name="item_${source}[]"]`));
+        const controls = controlsForLinkId(source);
         const selectedValues = controls.flatMap((control) => {
           if (control instanceof HTMLInputElement) {
             if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
@@ -1338,7 +1365,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         } else if (operator === 'not_equals') {
           show = !equals;
         }
-        field.hidden = !show;
+        setFieldVisible(field, show);
         const innerControls = Array.from(field.querySelectorAll('input, textarea, select'));
         innerControls.forEach((control) => {
           if (!(control instanceof HTMLElement)) {
