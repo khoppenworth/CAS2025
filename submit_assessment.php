@@ -1185,6 +1185,33 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    const escapeAttributeValue = (value) => {
+      const raw = String(value || '');
+      if (window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(raw);
+      }
+      return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    };
+
+    const controlsForLinkId = (linkId) => {
+      const source = String(linkId || '').trim();
+      if (!source) {
+        return [];
+      }
+      const escaped = escapeAttributeValue(source);
+      const selector = `[name="item_${escaped}"], [name="item_${escaped}[]"]`;
+      try {
+        return Array.from(form.querySelectorAll(selector));
+      } catch (error) {
+        const direct = `item_${source}`;
+        const multiple = `item_${source}[]`;
+        return Array.from(form.querySelectorAll('[name]')).filter((control) => {
+          const name = control.getAttribute('name') || '';
+          return name === direct || name === multiple;
+        });
+      }
+    };
+
 
     const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
 
@@ -1258,7 +1285,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (!parentLinkId) {
           return;
         }
-        const parentControls = Array.from(document.querySelectorAll(`[name="item_${parentLinkId}"], [name="item_${parentLinkId}[]"]`));
+        const parentControls = controlsForLinkId(parentLinkId);
         const selectedValues = parentControls.flatMap((control) => {
           if (control instanceof HTMLInputElement) {
             if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
@@ -1312,7 +1339,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           field.hidden = false;
           return;
         }
-        const controls = Array.from(document.querySelectorAll(`[name="item_${source}"], [name="item_${source}[]"]`));
+        const controls = controlsForLinkId(source);
         const selectedValues = controls.flatMap((control) => {
           if (control instanceof HTMLInputElement) {
             if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
