@@ -1185,31 +1185,24 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
-    const escapeAttributeValue = (value) => {
-      const raw = String(value || '');
-      if (window.CSS && typeof window.CSS.escape === 'function') {
-        return window.CSS.escape(raw);
-      }
-      return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    };
-
     const controlsForLinkId = (linkId) => {
       const source = String(linkId || '').trim();
       if (!source) {
         return [];
       }
-      const escaped = escapeAttributeValue(source);
-      const selector = `[name="item_${escaped}"], [name="item_${escaped}[]"]`;
-      try {
-        return Array.from(form.querySelectorAll(selector));
-      } catch (error) {
-        const direct = `item_${source}`;
-        const multiple = `item_${source}[]`;
-        return Array.from(form.querySelectorAll('[name]')).filter((control) => {
-          const name = control.getAttribute('name') || '';
-          return name === direct || name === multiple;
-        });
+      const direct = `item_${source}`;
+      const multiple = `item_${source}[]`;
+      const controls = [];
+      for (const element of Array.from(form.elements || [])) {
+        if (!(element instanceof HTMLElement)) {
+          continue;
+        }
+        const name = element.getAttribute('name') || '';
+        if (name === direct || name === multiple) {
+          controls.push(element);
+        }
       }
+      return controls;
     };
 
     const setFieldVisible = (field, show) => {
