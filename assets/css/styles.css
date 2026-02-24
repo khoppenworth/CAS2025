@@ -2384,6 +2384,10 @@ body.theme-dark .email-template-placeholders code {
   box-shadow: 0 10px 28px var(--floating-shadow);
 }
 
+.md-assessment-form .md-field[hidden] {
+  display: none !important;
+}
+
 .md-assessment-form .md-field.md-field--missing {
   border-color: #d92d20;
 }
