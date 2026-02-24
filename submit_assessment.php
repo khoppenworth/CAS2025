@@ -1212,6 +1212,13 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    const setFieldVisible = (field, show) => {
+      const next = show === true;
+      field.hidden = !next;
+      field.style.display = next ? '' : 'none';
+      field.setAttribute('aria-hidden', next ? 'false' : 'true');
+    };
+
 
     const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
 
@@ -1302,7 +1309,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           return [];
         });
         const show = selectedValues.includes('other');
-        field.hidden = !show;
+        setFieldVisible(field, show);
         const textControls = Array.from(field.querySelectorAll('input, textarea, select'));
         textControls.forEach((control) => {
           if (!(control instanceof HTMLElement)) {
@@ -1336,7 +1343,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
         if (!source) {
-          field.hidden = false;
+          setFieldVisible(field, true);
           return;
         }
         const controls = controlsForLinkId(source);
@@ -1365,7 +1372,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         } else if (operator === 'not_equals') {
           show = !equals;
         }
-        field.hidden = !show;
+        setFieldVisible(field, show);
         const innerControls = Array.from(field.querySelectorAll('input, textarea, select'));
         innerControls.forEach((control) => {
           if (!(control instanceof HTMLElement)) {
