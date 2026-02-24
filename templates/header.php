@@ -106,6 +106,7 @@ if ($profileInitials === '') {
   ], JSON_THROW_ON_ERROR)?>;
   window.APP_STRINGS = <?=json_encode($clientStrings, JSON_THROW_ON_ERROR)?>;
 </script>
+<a class="md-skip-link" href="#main-content"><?=htmlspecialchars(t($t, 'skip_to_main_content', 'Skip to main content'), ENT_QUOTES, 'UTF-8')?></a>
 <header class="md-appbar md-elev-2">
   <button class="md-appbar-toggle" aria-label="Toggle navigation" data-drawer-toggle aria-controls="app-topnav" aria-expanded="false">
     <span></span>

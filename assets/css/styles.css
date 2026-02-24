@@ -4421,3 +4421,127 @@ body.md-bg:not(.landing-body) {
 body.theme-dark.md-bg:not(.landing-body) {
   background: #0d1524;
 }
+
+/* Professional UI baseline hardening */
+:root {
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+  --ui-space-1: 0.5rem;
+  --ui-space-2: 0.75rem;
+  --ui-space-3: 1rem;
+  --ui-space-4: 1.5rem;
+  --ui-space-5: 2rem;
+  --ui-focus-ring: 0 0 0 3px color-mix(in srgb, var(--app-primary) 30%, transparent);
+}
+
+body.md-bg {
+  line-height: 1.55;
+  color: var(--app-text-primary, #0f172a);
+}
+
+.md-shell,
+.md-main,
+main {
+  max-width: 1280px;
+  margin-inline: auto;
+}
+
+.md-skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -200px;
+  z-index: 2200;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--app-primary, #0f5cd8);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(15, 35, 70, 0.35);
+}
+
+.md-skip-link:focus,
+.md-skip-link:focus-visible {
+  top: 1rem;
+  outline: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+.md-button:focus-visible,
+.md-topnav-trigger:focus-visible,
+.md-topnav-link:focus-visible,
+.md-appbar-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-primary) 68%, #ffffff 32%);
+  outline-offset: 2px;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.md-card,
+.md-page-header,
+.md-topnav,
+.md-topnav-submenu,
+.md-help-dialog {
+  border-radius: var(--ui-radius-lg);
+}
+
+.md-appbar-link,
+.md-appbar-button,
+.md-button,
+.md-topnav-trigger,
+.md-topnav-link {
+  min-height: 44px;
+}
+
+.md-page-header p,
+.md-card p,
+.md-field span,
+.md-help-list li {
+  color: var(--app-text-secondary, #475467);
+}
+
+.md-alert {
+  border-left: 4px solid currentColor;
+  border-radius: var(--ui-radius-md);
+}
+
+.md-table,
+table.dataTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.md-table thead th,
+table.dataTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--app-surface, #fff);
+}
+
+.md-table tbody tr:hover,
+table.dataTable tbody tr:hover {
+  background: color-mix(in srgb, var(--app-primary) 6%, #ffffff);
+}
+
+.md-table th,
+.md-table td,
+table.dataTable th,
+table.dataTable td {
+  padding: 0.75rem 0.9rem;
+  vertical-align: middle;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
