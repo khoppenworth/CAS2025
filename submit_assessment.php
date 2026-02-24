@@ -90,11 +90,24 @@ $isOtherSelected = static function ($rawValue): bool {
 
 $collectPostedValues = static function (array $postData): array {
     $valuesByLinkId = [];
+    $normalizeConditionLinkId = static function (string $value): string {
+        $normalized = trim($value);
+        if ($normalized === '') {
+            return '';
+        }
+        if (str_starts_with(strtolower($normalized), 'item_')) {
+            $normalized = substr($normalized, 5);
+        }
+        if (str_ends_with($normalized, '[]')) {
+            $normalized = substr($normalized, 0, -2);
+        }
+        return strtolower(trim($normalized));
+    };
     foreach ($postData as $key => $value) {
         if (!is_string($key) || !str_starts_with($key, 'item_')) {
             continue;
         }
-        $linkId = substr($key, 5);
+        $linkId = $normalizeConditionLinkId(substr($key, 5));
         if ($linkId === '') {
             continue;
         }
@@ -116,7 +129,21 @@ $collectPostedValues = static function (array $postData): array {
 };
 
 $matchesCondition = static function (array $item, array $valuesByLinkId): bool {
-    $source = trim((string)($item['condition_source_linkid'] ?? ''));
+    $normalizeConditionLinkId = static function (string $value): string {
+        $normalized = trim($value);
+        if ($normalized === '') {
+            return '';
+        }
+        if (str_starts_with(strtolower($normalized), 'item_')) {
+            $normalized = substr($normalized, 5);
+        }
+        if (str_ends_with($normalized, '[]')) {
+            $normalized = substr($normalized, 0, -2);
+        }
+        return strtolower(trim($normalized));
+    };
+
+    $source = $normalizeConditionLinkId((string)($item['condition_source_linkid'] ?? ''));
     if ($source === '') {
         return true;
     }
@@ -1185,20 +1212,33 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    const normalizeConditionLinkId = (value) => {
+      const raw = String(value || '').trim();
+      if (!raw) {
+        return '';
+      }
+      let normalized = raw;
+      if (normalized.toLowerCase().startsWith('item_')) {
+        normalized = normalized.slice(5);
+      }
+      if (normalized.endsWith('[]')) {
+        normalized = normalized.slice(0, -2);
+      }
+      return normalized.trim().toLowerCase();
+    };
+
     const controlsForLinkId = (linkId) => {
-      const source = String(linkId || '').trim();
+      const source = normalizeConditionLinkId(linkId);
       if (!source) {
         return [];
       }
-      const direct = `item_${source}`;
-      const multiple = `item_${source}[]`;
       const controls = [];
       for (const element of Array.from(form.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
-        const name = element.getAttribute('name') || '';
-        if (name === direct || name === multiple) {
+        const name = normalizeConditionLinkId(element.getAttribute('name') || '');
+        if (name === source) {
           controls.push(element);
         }
       }
@@ -1332,7 +1372,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     const toggleConditionalVisibility = () => {
       const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
       conditionalFields.forEach((field) => {
-        const source = field.getAttribute('data-condition-source') || '';
+        const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
         if (!source) {
@@ -1395,7 +1435,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     };
 
-    document.addEventListener('change', (event) => {
+    const handleQuestionValueChange = (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
         return;
@@ -1404,7 +1444,10 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         toggleOtherFollowupVisibility();
         toggleConditionalVisibility();
       }
-    });
+    };
+
+    document.addEventListener('change', handleQuestionValueChange);
+    document.addEventListener('input', handleQuestionValueChange);
 
     toggleOtherFollowupVisibility();
     toggleConditionalVisibility();
