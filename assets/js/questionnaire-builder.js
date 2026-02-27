@@ -1144,10 +1144,11 @@ const Builder = (() => {
           <div class="qb-item-config-row">
             <div class="qb-field qb-field--item-type qb-field--item-control">
               <label>Response Type</label>
-              <input class="qb-input" data-role="item-type" list="qb-item-type-options-${item.clientId}" value="${escapeAttr(item.type)}">
-              <datalist id="qb-item-type-options-${item.clientId}">
-                ${QUESTION_TYPES.map((type) => `<option value="${type}">${QUESTION_TYPE_LABELS[type] || type}</option>`).join('')}
-              </datalist>
+              <select class="qb-select qb-select--singleline" data-role="item-type" size="1">
+                ${QUESTION_TYPES
+                  .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
+                  .join('')}
+              </select>
             </div>
             <div class="qb-item-toggles">
               <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
@@ -1171,10 +1172,11 @@ const Builder = (() => {
               </div>
               <div class="qb-field qb-field--item-condition qb-field--item-control">
                 <label>Condition</label>
-                <input class="qb-input" data-role="item-condition-operator" list="qb-condition-operator-options-${item.clientId}" value="${escapeAttr(item.condition_operator || 'equals')}" ${conditionEnabled ? '' : 'disabled'}>
-                <datalist id="qb-condition-operator-options-${item.clientId}">
-                  ${CONDITION_OPERATORS.map((operator) => `<option value="${operator}">${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`).join('')}
-                </datalist>
+                <select class="qb-select qb-select--singleline" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
+                  ${CONDITION_OPERATORS
+                    .map((operator) => `<option value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'selected' : ''}>${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`)
+                    .join('')}
+                </select>
               </div>
               <div class="qb-field">
                 <label>Condition value</label>

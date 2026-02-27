@@ -771,6 +771,24 @@
 }
 
 
+
+.qb-select--singleline {
+  appearance: auto;
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  display: block;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qb-select--singleline[multiple],
+.qb-select--singleline[size]:not([size="1"]) {
+  min-height: 2.2rem !important;
+  height: 2.2rem !important;
+}
+
 .qb-item-toggles {
   display: flex;
   flex-wrap: wrap;
