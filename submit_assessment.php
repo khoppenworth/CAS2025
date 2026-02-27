@@ -1430,6 +1430,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           if (field.hidden === show) {
             changed = true;
           }
+          applyFieldVisibility(field, show);
         });
 
         nextVisibility.forEach((show, field) => {
