@@ -1318,53 +1318,22 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     });
 
-    const toggleOtherFollowupVisibility = () => {
-      const followups = Array.from(document.querySelectorAll('[data-other-followup][data-other-parent-linkid]'));
-      followups.forEach((field) => {
-        const parentLinkId = field.getAttribute('data-other-parent-linkid');
-        if (!parentLinkId) {
-          return;
+    const selectedValuesForLinkId = (linkId) => {
+      const controls = controlsForLinkId(linkId);
+      return controls.flatMap((control) => {
+        if (control instanceof HTMLInputElement) {
+          if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
+            return [];
+          }
+          return [String(control.value || '').trim()];
         }
-        const parentControls = controlsForLinkId(parentLinkId);
-        const selectedValues = parentControls.flatMap((control) => {
-          if (control instanceof HTMLInputElement) {
-            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
-              return [];
-            }
-            return [String(control.value || '').trim().toLowerCase()];
-          }
-          if (control instanceof HTMLTextAreaElement) {
-            return [String(control.value || '').trim().toLowerCase()];
-          }
-          if (control instanceof HTMLSelectElement) {
-            return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim().toLowerCase());
-          }
-          return [];
-        });
-        const show = selectedValues.includes('other');
-        setFieldVisible(field, show);
-        const textControls = Array.from(field.querySelectorAll('input, textarea, select'));
-        textControls.forEach((control) => {
-          if (!(control instanceof HTMLElement)) {
-            return;
-          }
-          if (show) {
-            if (control.dataset.wasRequired === 'true') {
-              control.required = true;
-            }
-          } else {
-            control.dataset.wasRequired = control.required ? 'true' : 'false';
-            control.required = false;
-            if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-              control.value = '';
-            }
-            if (control instanceof HTMLSelectElement) {
-              Array.from(control.options).forEach((option) => {
-                option.selected = false;
-              });
-            }
-          }
-        });
+        if (control instanceof HTMLTextAreaElement) {
+          return [String(control.value || '').trim()];
+        }
+        if (control instanceof HTMLSelectElement) {
+          return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
+        }
+        return [];
       });
     };
 
@@ -1375,39 +1344,33 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
-        if (!source) {
-          setFieldVisible(field, true);
-          return;
+
+        let showByFollowup = true;
+        if (followupParentLinkId) {
+          const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
+          showByFollowup = selectedLower.includes('other');
         }
-        const controls = controlsForLinkId(source);
-        const selectedValues = controls.flatMap((control) => {
-          if (control instanceof HTMLInputElement) {
-            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
-              return [];
-            }
-            return [String(control.value || '').trim()];
+
+        let showByCondition = true;
+        if (source) {
+          const selectedValues = selectedValuesForLinkId(source);
+          const expectedLower = expected.toLowerCase();
+          const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
+          const equals = normalizedSelected.includes(expectedLower);
+          const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
+          if (operator === 'contains') {
+            showByCondition = contains;
+          } else if (operator === 'not_equals') {
+            showByCondition = !equals;
+          } else {
+            showByCondition = equals;
           }
-          if (control instanceof HTMLTextAreaElement) {
-            return [String(control.value || '').trim()];
-          }
-          if (control instanceof HTMLSelectElement) {
-            return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
-          }
-          return [];
-        });
-        const expectedLower = expected.toLowerCase();
-        const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
-        const equals = normalizedSelected.includes(expectedLower);
-        const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
-        let show = equals;
-        if (operator === 'contains') {
-          show = contains;
-        } else if (operator === 'not_equals') {
-          show = !equals;
         }
+
+        const show = showByFollowup && showByCondition;
         setFieldVisible(field, show);
-        const innerControls = Array.from(field.querySelectorAll('input, textarea, select'));
-        innerControls.forEach((control) => {
+        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+        controls.forEach((control) => {
           if (!(control instanceof HTMLElement)) {
             return;
           }
@@ -1415,21 +1378,21 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
             if (control.dataset.wasRequired === 'true') {
               control.required = true;
             }
-          } else {
-            control.dataset.wasRequired = control.required ? 'true' : 'false';
-            control.required = false;
-            if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-              if (control.type === 'checkbox' || control.type === 'radio') {
-                control.checked = false;
-              } else {
-                control.value = '';
-              }
+            return;
+          }
+          control.dataset.wasRequired = control.required ? 'true' : 'false';
+          control.required = false;
+          if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+            if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
+              control.checked = false;
+            } else {
+              control.value = '';
             }
-            if (control instanceof HTMLSelectElement) {
-              Array.from(control.options).forEach((option) => {
-                option.selected = false;
-              });
-            }
+          }
+          if (control instanceof HTMLSelectElement) {
+            Array.from(control.options).forEach((option) => {
+              option.selected = false;
+            });
           }
         });
       });
@@ -1441,16 +1404,21 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        toggleOtherFollowupVisibility();
-        toggleConditionalVisibility();
+        for (let pass = 0; pass < 10; pass += 1) {
+          refreshDependentVisibility();
+        }
       }
     };
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    toggleOtherFollowupVisibility();
-    toggleConditionalVisibility();
+    document.addEventListener('change', handleQuestionValueChange);
+    document.addEventListener('input', handleQuestionValueChange);
+
+    for (let pass = 0; pass < 10; pass += 1) {
+      refreshDependentVisibility();
+    }
     const isAppOnline = () => {
       if (connectivity) {
         try {
