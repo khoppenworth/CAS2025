@@ -1822,6 +1822,16 @@ if (isset($_POST['import'])) {
 }
 
 $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
+$qbCssHref = asset_url('assets/css/questionnaire-builder.css');
+$qbCssVersion = @filemtime(__DIR__ . '/../assets/css/questionnaire-builder.css');
+if ($qbCssVersion) {
+    $qbCssHref .= (strpos($qbCssHref, '?') === false ? '?' : '&') . 'v=' . rawurlencode((string)$qbCssVersion);
+}
+$qbJsHref = asset_url('assets/js/questionnaire-builder.js');
+$qbJsVersion = @filemtime(__DIR__ . '/../assets/js/questionnaire-builder.js');
+if ($qbJsVersion) {
+    $qbJsHref .= (strpos($qbJsHref, '?') === false ? '?' : '&') . 'v=' . rawurlencode((string)$qbJsVersion);
+}
 ?>
 <!doctype html>
 <html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
@@ -1834,11 +1844,11 @@ $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
 <link rel="manifest" href="<?=asset_url('manifest.php')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
-<link rel="stylesheet" href="<?=asset_url('assets/css/questionnaire-builder.css')?>">
+<link rel="stylesheet" href="<?=htmlspecialchars($qbCssHref, ENT_QUOTES, 'UTF-8')?>">
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_STRINGS = <?=json_encode($qbStrings, JSON_THROW_ON_ERROR)?>;</script>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_BOOTSTRAP = <?=json_encode($bootstrapQuestionnaires, JSON_THROW_ON_ERROR)?>;</script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" defer></script>
-<script type="module" src="<?=asset_url('assets/js/questionnaire-builder.js')?>" defer></script>
+<script type="module" src="<?=htmlspecialchars($qbJsHref, ENT_QUOTES, 'UTF-8')?>" defer></script>
 </head>
 <body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>" style="<?=htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/../templates/header.php'; ?>
