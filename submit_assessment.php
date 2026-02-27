@@ -1319,25 +1319,56 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     });
 
-    const selectedValuesForLinkId = (linkId) => {
-      const controls = controlsForLinkId(linkId);
-      return controls.flatMap((control) => {
-        if (control instanceof HTMLInputElement) {
-          if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
-            return [];
-          }
-          return [String(control.value || '').trim()];
+    const collectAnswerValues = () => {
+      const valuesByLinkId = new Map();
+      const formData = new FormData(form);
+      for (const [key, value] of formData.entries()) {
+        const normalizedKey = normalizeConditionLinkId(key);
+        if (!normalizedKey) {
+          continue;
         }
-        if (control instanceof HTMLTextAreaElement) {
-          return [String(control.value || '').trim()];
+        const textValue = String(value || '').trim();
+        if (textValue === '') {
+          continue;
         }
-        if (control instanceof HTMLSelectElement) {
-          return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
-        }
-        return [];
-      });
+        const existing = valuesByLinkId.get(normalizedKey) || [];
+        existing.push(textValue);
+        valuesByLinkId.set(normalizedKey, existing);
+      }
+      return valuesByLinkId;
     };
 
+    const selectedValuesForLinkId = (valuesByLinkId, linkId) => {
+      const source = normalizeConditionLinkId(linkId);
+      if (!source) {
+        return [];
+      }
+      return valuesByLinkId.get(source) || [];
+    };
+
+    const evaluateCondition = (valuesByLinkId, source, operator, expected) => {
+      if (!source) {
+        return true;
+      }
+      const selectedValues = selectedValuesForLinkId(valuesByLinkId, source);
+      const expectedLower = String(expected || '').trim().toLowerCase();
+      const normalizedSelected = selectedValues
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => value !== '');
+
+      if (operator === 'contains') {
+        if (!expectedLower) {
+          return false;
+        }
+        return normalizedSelected.some((value) => value.includes(expectedLower));
+      }
+
+      const equals = normalizedSelected.includes(expectedLower);
+      if (operator === 'not_equals') {
+        return !equals;
+      }
+      return equals;
+    };
 
     const toggleConditionalVisibility = () => {
       if (!activeAssessmentForm) {
@@ -1377,39 +1408,59 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           } else if (operator === 'not_equals') {
             showByCondition = !equals;
           } else {
-            showByCondition = equals;
+            control.value = '';
           }
         }
-
-        const show = showByFollowup && showByCondition;
-        setFieldVisible(field, show);
-        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
-        controls.forEach((control) => {
-          if (!(control instanceof HTMLElement)) {
-            return;
-          }
-          if (show) {
-            if (control.dataset.wasRequired === 'true') {
-              control.required = true;
-            }
-            return;
-          }
-          control.dataset.wasRequired = control.required ? 'true' : 'false';
-          control.required = false;
-          if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-            if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
-              control.checked = false;
-            } else {
-              control.value = '';
-            }
-          }
-          if (control instanceof HTMLSelectElement) {
-            Array.from(control.options).forEach((option) => {
-              option.selected = false;
-            });
-          }
-        });
+        if (control instanceof HTMLSelectElement) {
+          Array.from(control.options).forEach((option) => {
+            option.selected = false;
+          });
+        }
       });
+    };
+
+    const refreshDependentVisibility = () => {
+      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'))
+        .filter((field) => field instanceof HTMLElement)
+        .filter((field) => {
+          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+          const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+          return source !== '' || (field.hasAttribute('data-other-followup') && followupParentLinkId !== '');
+        });
+
+      for (let pass = 0; pass < 8; pass += 1) {
+        const valuesByLinkId = collectAnswerValues();
+        let changed = false;
+        const nextVisibility = new Map();
+
+        conditionalFields.forEach((field) => {
+          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+          const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
+          const expected = (field.getAttribute('data-condition-value') || '').trim();
+          const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+          const hasCondition = source !== '';
+          const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+
+          const showByFollowup = hasFollowupRule
+            ? selectedValuesForLinkId(valuesByLinkId, followupParentLinkId).map((value) => value.toLowerCase()).includes('other')
+            : true;
+          const showByCondition = hasCondition ? evaluateCondition(valuesByLinkId, source, operator, expected) : true;
+          const show = showByFollowup && showByCondition;
+          nextVisibility.set(field, show);
+          if (field.hidden === show) {
+            changed = true;
+          }
+          applyFieldVisibility(field, show);
+        });
+
+        nextVisibility.forEach((show, field) => {
+          applyFieldVisibility(field, show);
+        });
+
+        if (!changed) {
+          break;
+        }
+      }
     };
 
     const handleQuestionValueChange = (event) => {
@@ -1418,9 +1469,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        for (let pass = 0; pass < 10; pass += 1) {
-          refreshDependentVisibility();
-        }
+        refreshDependentVisibility();
       }
     };
 
