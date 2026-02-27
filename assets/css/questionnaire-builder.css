@@ -757,7 +757,9 @@
 }
 
 .qb-field--item-type .qb-select,
-.qb-field--item-condition .qb-select {
+.qb-field--item-condition .qb-select,
+.qb-field--item-type .qb-input,
+.qb-field--item-condition .qb-input {
   min-width: 0;
   width: 100%;
   min-height: 2.2rem !important;
@@ -815,7 +817,8 @@
   gap: 0.5rem;
 }
 
-.qb-field--item-control .qb-select {
+.qb-field--item-control .qb-select,
+.qb-field--item-control .qb-input {
   min-width: 0;
 }
 
