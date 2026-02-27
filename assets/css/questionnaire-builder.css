@@ -683,15 +683,31 @@
 
 .qb-item-main {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.qb-item-main-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.4rem 0.55rem;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.qb-item-config-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 210px) minmax(0, 1fr) auto;
+  gap: 0.55rem;
   align-items: end;
 }
 
 .qb-item-main .qb-actions {
   align-self: end;
   justify-content: flex-end;
+}
+
+.qb-item-actions .md-button {
+  min-width: 110px;
 }
 
 .qb-inactive {
@@ -737,12 +753,13 @@
 .qb-field--item-type,
 .qb-field--item-condition {
   min-width: 160px;
-  max-width: 210px;
-  flex: 0 0 190px;
+  max-width: none;
 }
 
 .qb-field--item-type .qb-select,
-.qb-field--item-condition .qb-select {
+.qb-field--item-condition .qb-select,
+.qb-field--item-type .qb-input,
+.qb-field--item-condition .qb-input {
   min-width: 0;
   width: 100%;
   min-height: 2.2rem !important;
@@ -751,6 +768,92 @@
   height: 2.2rem;
   min-height: 2.2rem;
   padding: 0.3rem 0.55rem;
+}
+
+
+
+.qb-select--singleline {
+  appearance: auto;
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  display: block;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qb-select--singleline[multiple],
+.qb-select--singleline[size]:not([size="1"]) {
+  min-height: 2.2rem !important;
+  height: 2.2rem !important;
+}
+
+.qb-item-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.qb-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: var(--app-primary-soft, rgba(32, 84, 147, 0.08));
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.qb-chip-toggle input[type="checkbox"] {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.qb-item-condition-card {
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--app-surface-alt, rgba(32, 84, 147, 0.05));
+  padding: 0.55rem 0.65rem;
+}
+
+.qb-item-condition-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: var(--app-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.qb-item-condition-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+
+.qb-field--item-control .qb-select,
+.qb-field--item-control .qb-input {
+  min-width: 0;
+}
+
+.qb-field--item-link {
+  min-width: 170px;
+}
+
+@media (max-width: 920px) {
+  .qb-item-main-grid,
+  .qb-item-config-row,
+  .qb-item-condition-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qb-item-actions {
+    justify-content: flex-start;
+  }
 }
 
 .qb-weight-field {

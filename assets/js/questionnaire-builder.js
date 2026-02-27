@@ -51,6 +51,12 @@ const Builder = (() => {
     boolean: 'boolean',
   };
   const STATUS_OPTIONS = ['draft', 'published', 'inactive'];
+  const CONDITION_OPERATORS = ['equals', 'not_equals', 'contains'];
+  const CONDITION_OPERATOR_LABELS = {
+    equals: 'Equals',
+    not_equals: 'Does not equal',
+    contains: 'Contains',
+  };
   const NON_SCORABLE_TYPES = ['display', 'group', 'section'];
   const LIKERT_DEFAULT_LABELS = [
     '1 - Strongly Disagree',
@@ -156,6 +162,23 @@ const Builder = (() => {
     return Boolean(value);
   }
 
+
+  function normalizeTypeValue(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (QUESTION_TYPES.includes(raw)) return raw;
+    const byLabel = Object.entries(QUESTION_TYPE_LABELS).find(([, label]) => label === raw);
+    if (byLabel) return byLabel[0];
+    return 'choice';
+  }
+
+  function normalizeConditionOperatorValue(value) {
+    const raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (CONDITION_OPERATORS.includes(raw)) return raw;
+    const byLabel = Object.entries(CONDITION_OPERATOR_LABELS).find(([, label]) => label.toLowerCase() === String(value || '').trim().toLowerCase());
+    if (byLabel) return byLabel[0];
+    return 'equals';
+  }
+
   function normalizeQuestionnaire(raw) {
     const sections = Array.isArray(raw.sections)
       ? raw.sections.map((section) => normalizeSection(section))
@@ -196,9 +219,7 @@ const Builder = (() => {
     const options = Array.isArray(item.options)
       ? item.options.map((opt) => normalizeOption(opt))
       : [];
-    const type = QUESTION_TYPES.includes(String(item.type || '').toLowerCase())
-      ? String(item.type).toLowerCase()
-      : 'choice';
+    const type = normalizeTypeValue(item.type);
     const allowMultiple = type === 'choice' && toBoolean(item.allow_multiple);
     const requiresCorrect =
       type === 'choice' && !allowMultiple ? toBoolean(item.requires_correct) : false;
@@ -218,7 +239,7 @@ const Builder = (() => {
       hasResponses: toBoolean(item.has_responses),
       requires_correct: requiresCorrect,
       condition_source_linkid: item.condition_source_linkid || '',
-      condition_operator: item.condition_operator || 'equals',
+      condition_operator: normalizeConditionOperatorValue(item.condition_operator),
       condition_value: item.condition_value || '',
     };
     ensureSingleChoiceCorrect(normalized);
@@ -733,8 +754,8 @@ const Builder = (() => {
         const itemClientId = itemNode.getAttribute('data-item') || uuid('i');
         const existing = existingMap.get(itemClientId) || {};
         const typeInput = itemNode.querySelector('[data-role="item-type"]');
-        const typeValue = typeInput ? String(typeInput.value || '').toLowerCase() : (existing.type || 'choice');
-        const type = QUESTION_TYPES.includes(typeValue) ? typeValue : 'choice';
+        const typeValue = typeInput ? typeInput.value : (existing.type || 'choice');
+        const type = normalizeTypeValue(typeValue);
         const allowMultipleInput = itemNode.querySelector('[data-role="item-multi"]');
         const allowMultiple = type === 'choice' && Boolean(allowMultipleInput && allowMultipleInput.checked);
         const requiresCorrectInput = itemNode.querySelector('[data-role="item-requires-correct"]');
@@ -753,7 +774,7 @@ const Builder = (() => {
           hasResponses: Boolean(existing.hasResponses),
           requires_correct: type === 'choice' && !allowMultiple && Boolean(requiresCorrectInput && requiresCorrectInput.checked),
           condition_source_linkid: itemNode.querySelector('[data-role="item-condition-source"]')?.value || '',
-          condition_operator: itemNode.querySelector('[data-role="item-condition-operator"]')?.value || 'equals',
+          condition_operator: normalizeConditionOperatorValue(itemNode.querySelector('[data-role="item-condition-operator"]')?.value || 'equals'),
           condition_value: itemNode.querySelector('[data-role="item-condition-value"]')?.value || '',
         };
         ensureSingleChoiceCorrect(parsed);
@@ -1102,60 +1123,66 @@ const Builder = (() => {
   function buildItemRow(questionnaire, sectionClientId, item) {
     const scorable = isScorable(item.type);
     const showRequiresCorrect = item.type === 'choice' && !item.allow_multiple;
+    const conditionEnabled = Boolean(item.condition_source_linkid);
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item)
       : '';
     return `
       <div class="qb-item" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
         <div class="qb-item-main">
-          <div class="qb-field">
-            <label>Question Code</label>
-            <input type="text" data-role="item-link" value="${escapeAttr(item.linkId)}">
+          <div class="qb-item-main-grid">
+            <div class="qb-field qb-field--item-link">
+              <label>Question Code</label>
+              <input type="text" data-role="item-link" value="${escapeAttr(item.linkId)}" placeholder="e.g. q_team_support">
+            </div>
+            <div class="qb-field qb-field--item-text">
+              <label>Question</label>
+              <input type="text" data-role="item-text" value="${escapeAttr(item.text)}" placeholder="Question prompt shown to employees">
+            </div>
           </div>
-          <div class="qb-field">
-            <label>Question</label>
-            <input type="text" data-role="item-text" value="${escapeAttr(item.text)}">
+
+          <div class="qb-item-config-row">
+            <div class="qb-field qb-field--item-type qb-field--item-control">
+              <label>Response Type</label>
+              <select class="qb-select qb-select--singleline" data-role="item-type" size="1">
+                ${QUESTION_TYPES
+                  .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <div class="qb-item-toggles">
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
+              ${showRequiresCorrect
+                ? `<label class="qb-chip-toggle"><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>`
+                : ''}
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
+            </div>
+            <div class="qb-actions qb-item-actions">
+              <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
+            </div>
           </div>
-          <div class="qb-field qb-field--item-type">
-            <label>Type</label>
-            <select class="qb-select" data-role="item-type">
-              ${QUESTION_TYPES
-                .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
-                .join('')}
-            </select>
-          </div>
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
-          </div>
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
-          </div>
-          ${showRequiresCorrect
-            ? `<div class="qb-field qb-toggle">
-                <label><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>
-              </div>`
-            : ''}
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
-          </div>
-          <div class="qb-field">
-            <label>Show when question code</label>
-            <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
-          </div>
-          <div class="qb-field qb-field--item-condition">
-            <label>Condition</label>
-            <select class="qb-select" data-role="item-condition-operator">
-              <option value="equals" ${(item.condition_operator || 'equals') === 'equals' ? 'selected' : ''}>Equals</option>
-              <option value="not_equals" ${(item.condition_operator || '') === 'not_equals' ? 'selected' : ''}>Does not equal</option>
-              <option value="contains" ${(item.condition_operator || '') === 'contains' ? 'selected' : ''}>Contains</option>
-            </select>
-          </div>
-          <div class="qb-field">
-            <label>Condition value</label>
-            <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer">
-          </div>
-          <div class="qb-actions">
-            <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
+
+          <div class="qb-item-condition-card">
+            <p class="qb-item-condition-title">Display condition (optional)</p>
+            <div class="qb-item-condition-grid">
+              <div class="qb-field">
+                <label>Show when question code</label>
+                <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
+              </div>
+              <div class="qb-field qb-field--item-condition qb-field--item-control">
+                <label>Condition</label>
+                <select class="qb-select qb-select--singleline" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
+                  ${CONDITION_OPERATORS
+                    .map((operator) => `<option value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'selected' : ''}>${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`)
+                    .join('')}
+                </select>
+              </div>
+              <div class="qb-field">
+                <label>Condition value</label>
+                <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${conditionEnabled ? '' : 'disabled'}>
+              </div>
+            </div>
           </div>
         </div>
         <div class="qb-item-secondary">
@@ -1413,7 +1440,7 @@ const Builder = (() => {
         return;
     }
     markDirty();
-    if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
+    if (['item-type', 'item-multi', 'item-requires-correct', 'item-condition-source'].includes(role)) {
       const itemRow = event.target.closest('[data-item]');
       rerenderItemRow(questionnaire, itemRow);
     }
@@ -1509,7 +1536,7 @@ const Builder = (() => {
         item.text = input.value;
         break;
       case 'item-type':
-        item.type = QUESTION_TYPES.includes(input.value) ? input.value : 'choice';
+        item.type = normalizeTypeValue(input.value);
         if (item.type !== 'choice') {
           item.allow_multiple = false;
           item.requires_correct = false;
@@ -1546,9 +1573,13 @@ const Builder = (() => {
         break;
       case 'item-condition-source':
         item.condition_source_linkid = input.value.trim();
+        if (!item.condition_source_linkid) {
+          item.condition_operator = 'equals';
+          item.condition_value = '';
+        }
         break;
       case 'item-condition-operator':
-        item.condition_operator = input.value || 'equals';
+        item.condition_operator = normalizeConditionOperatorValue(input.value || 'equals');
         break;
       case 'item-condition-value':
         item.condition_value = input.value;
@@ -1985,7 +2016,7 @@ const Builder = (() => {
       is_required: item.is_required,
       requires_correct: item.requires_correct && item.type === 'choice' && !item.allow_multiple,
       condition_source_linkid: (item.condition_source_linkid || '').trim(),
-      condition_operator: (item.condition_operator || 'equals').trim() || 'equals',
+      condition_operator: normalizeConditionOperatorValue(item.condition_operator || 'equals'),
       condition_value: item.condition_value || '',
       is_active: item.is_active,
       options: ['choice', 'likert'].includes(item.type)
