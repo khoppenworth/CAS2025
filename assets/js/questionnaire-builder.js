@@ -1116,7 +1116,7 @@ const Builder = (() => {
             <label>Question</label>
             <input type="text" data-role="item-text" value="${escapeAttr(item.text)}">
           </div>
-          <div class="qb-field">
+          <div class="qb-field qb-field--item-type">
             <label>Type</label>
             <select class="qb-select" data-role="item-type">
               ${QUESTION_TYPES
@@ -1142,7 +1142,7 @@ const Builder = (() => {
             <label>Show when question code</label>
             <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
           </div>
-          <div class="qb-field">
+          <div class="qb-field qb-field--item-condition">
             <label>Condition</label>
             <select class="qb-select" data-role="item-condition-operator">
               <option value="equals" ${(item.condition_operator || 'equals') === 'equals' ? 'selected' : ''}>Equals</option>
