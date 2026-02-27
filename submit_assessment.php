@@ -1318,65 +1318,38 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     });
 
-    const selectedValuesForLinkId = (linkId) => {
+    const collectAnswerValues = () => {
+      const valuesByLinkId = new Map();
+      const formData = new FormData(form);
+      for (const [key, value] of formData.entries()) {
+        const normalizedKey = normalizeConditionLinkId(key);
+        if (!normalizedKey) {
+          continue;
+        }
+        const textValue = String(value || '').trim();
+        if (textValue === '') {
+          continue;
+        }
+        const existing = valuesByLinkId.get(normalizedKey) || [];
+        existing.push(textValue);
+        valuesByLinkId.set(normalizedKey, existing);
+      }
+      return valuesByLinkId;
+    };
+
+    const selectedValuesForLinkId = (valuesByLinkId, linkId) => {
       const source = normalizeConditionLinkId(linkId);
       if (!source) {
         return [];
       }
-
-      const values = [];
-      const normalizedName = `item_${source}`;
-      const formData = new FormData(form);
-      for (const [key, value] of formData.entries()) {
-        const normalizedKey = normalizeConditionLinkId(key);
-        if (normalizedKey !== source) {
-          continue;
-        }
-        const textValue = String(value || '').trim();
-        if (textValue !== '') {
-          values.push(textValue);
-        }
-      }
-
-      // Some unchecked/empty controls are skipped by FormData; use direct controls as fallback.
-      if (values.length === 0) {
-        controlsForLinkId(normalizedName).forEach((control) => {
-          if (control instanceof HTMLTextAreaElement) {
-            const textValue = String(control.value || '').trim();
-            if (textValue !== '') {
-              values.push(textValue);
-            }
-            return;
-          }
-          if (control instanceof HTMLInputElement) {
-            if ((control.type === 'radio' || control.type === 'checkbox') && !control.checked) {
-              return;
-            }
-            const textValue = String(control.value || '').trim();
-            if (textValue !== '') {
-              values.push(textValue);
-            }
-            return;
-          }
-          if (control instanceof HTMLSelectElement) {
-            Array.from(control.selectedOptions).forEach((option) => {
-              const textValue = String(option.value || '').trim();
-              if (textValue !== '') {
-                values.push(textValue);
-              }
-            });
-          }
-        });
-      }
-
-      return values;
+      return valuesByLinkId.get(source) || [];
     };
 
-    const evaluateCondition = (source, operator, expected) => {
+    const evaluateCondition = (valuesByLinkId, source, operator, expected) => {
       if (!source) {
         return true;
       }
-      const selectedValues = selectedValuesForLinkId(source);
+      const selectedValues = selectedValuesForLinkId(valuesByLinkId, source);
       const expectedLower = String(expected || '').trim().toLowerCase();
       const normalizedSelected = selectedValues
         .map((value) => String(value || '').trim().toLowerCase())
@@ -1427,13 +1400,20 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     };
 
     const refreshDependentVisibility = () => {
-      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'));
+      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'))
+        .filter((field) => field instanceof HTMLElement)
+        .filter((field) => {
+          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+          const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+          return source !== '' || (field.hasAttribute('data-other-followup') && followupParentLinkId !== '');
+        });
+
       for (let pass = 0; pass < 8; pass += 1) {
+        const valuesByLinkId = collectAnswerValues();
         let changed = false;
+        const nextVisibility = new Map();
+
         conditionalFields.forEach((field) => {
-          if (!(field instanceof HTMLElement)) {
-            return;
-          }
           const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
           const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
           const expected = (field.getAttribute('data-condition-value') || '').trim();
@@ -1441,20 +1421,22 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
           const hasCondition = source !== '';
           const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
 
-          if (!hasCondition && !hasFollowupRule) {
-            return;
-          }
-
           const showByFollowup = hasFollowupRule
-            ? selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase()).includes('other')
+            ? selectedValuesForLinkId(valuesByLinkId, followupParentLinkId).map((value) => value.toLowerCase()).includes('other')
             : true;
-          const showByCondition = hasCondition ? evaluateCondition(source, operator, expected) : true;
+          const showByCondition = hasCondition ? evaluateCondition(valuesByLinkId, source, operator, expected) : true;
           const show = showByFollowup && showByCondition;
+          nextVisibility.set(field, show);
           if (field.hidden === show) {
             changed = true;
           }
           applyFieldVisibility(field, show);
         });
+
+        nextVisibility.forEach((show, field) => {
+          applyFieldVisibility(field, show);
+        });
+
         if (!changed) {
           break;
         }
