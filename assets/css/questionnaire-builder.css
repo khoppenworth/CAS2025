@@ -745,23 +745,8 @@
 .qb-field--item-condition .qb-select {
   min-width: 0;
   width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-
-.qb-field--item-type,
-.qb-field--item-condition {
-  min-width: 160px;
-  max-width: 210px;
-  flex: 0 0 190px;
-}
-
-.qb-field--item-type .qb-select,
-.qb-field--item-condition .qb-select {
-  min-width: 0;
-  width: 100%;
+  min-height: 2.2rem !important;
+  height: 2.2rem !important;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
