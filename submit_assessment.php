@@ -1337,10 +1337,10 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     };
 
-    const refreshDependentVisibility = () => {
-      const allFields = questionFields();
-      allFields.forEach((field) => {
-        const followupParentLinkId = field.getAttribute('data-other-parent-linkid') || '';
+
+    const toggleConditionalVisibility = () => {
+      const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
+      conditionalFields.forEach((field) => {
         const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
@@ -1409,6 +1409,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         }
       }
     };
+
+    document.addEventListener('change', handleQuestionValueChange);
+    document.addEventListener('input', handleQuestionValueChange);
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
