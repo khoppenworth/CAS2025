@@ -722,6 +722,9 @@
 .qb-field--item-type .qb-select,
 .qb-field--item-condition .qb-select {
   white-space: nowrap;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  padding: 0.3rem 0.55rem;
 }
 
 .qb-weight-field {
