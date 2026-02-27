@@ -1135,6 +1135,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     const questionnaireSelect = form.querySelector('[data-questionnaire-select]');
     const periodSelect = form.querySelector('[data-performance-period-select]');
     const assessmentForm = document.getElementById('assessment-form');
+    const activeAssessmentForm = assessmentForm instanceof HTMLFormElement ? assessmentForm : null;
     const layout = document.querySelector('[data-questionnaire-layout]');
     const nav = document.querySelector('[data-questionnaire-nav]');
     const navLinks = nav ? Array.from(nav.querySelectorAll('[data-nav-link]')) : [];
@@ -1229,11 +1230,11 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const controlsForLinkId = (linkId) => {
       const source = normalizeConditionLinkId(linkId);
-      if (!source) {
+      if (!source || !activeAssessmentForm) {
         return [];
       }
       const controls = [];
-      for (const element of Array.from(form.elements || [])) {
+      for (const element of Array.from(activeAssessmentForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
@@ -1339,14 +1340,27 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
 
     const toggleConditionalVisibility = () => {
-      const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
+      if (!activeAssessmentForm) {
+        return;
+      }
+      const conditionalFields = Array.from(activeAssessmentForm.querySelectorAll('[data-question-anchor]'));
       conditionalFields.forEach((field) => {
+        if (!(field instanceof HTMLElement)) {
+          return;
+        }
         const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
+        const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+        const hasCondition = source !== '';
+        const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+
+        if (!hasCondition && !hasFollowupRule) {
+          return;
+        }
 
         let showByFollowup = true;
-        if (followupParentLinkId) {
+        if (hasFollowupRule) {
           const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
           showByFollowup = selectedLower.includes('other');
         }
@@ -1413,8 +1427,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    document.addEventListener('change', handleQuestionValueChange);
-    document.addEventListener('input', handleQuestionValueChange);
+    const refreshDependentVisibility = () => {
+      toggleConditionalVisibility();
+    };
 
     for (let pass = 0; pass < 10; pass += 1) {
       refreshDependentVisibility();
