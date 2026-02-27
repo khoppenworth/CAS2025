@@ -1319,93 +1319,146 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     });
 
     const selectedValuesForLinkId = (linkId) => {
-      const controls = controlsForLinkId(linkId);
-      return controls.flatMap((control) => {
-        if (control instanceof HTMLInputElement) {
-          if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) {
-            return [];
-          }
-          return [String(control.value || '').trim()];
-        }
-        if (control instanceof HTMLTextAreaElement) {
-          return [String(control.value || '').trim()];
-        }
-        if (control instanceof HTMLSelectElement) {
-          return Array.from(control.selectedOptions).map((option) => String(option.value || '').trim());
-        }
+      const source = normalizeConditionLinkId(linkId);
+      if (!source) {
         return [];
-      });
-    };
+      }
 
-
-    const toggleConditionalVisibility = () => {
-      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'));
-      conditionalFields.forEach((field) => {
-        if (!(field instanceof HTMLElement)) {
-          return;
+      const values = [];
+      const normalizedName = `item_${source}`;
+      const formData = new FormData(form);
+      for (const [key, value] of formData.entries()) {
+        const normalizedKey = normalizeConditionLinkId(key);
+        if (normalizedKey !== source) {
+          continue;
         }
-        const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
-        const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
-        const expected = (field.getAttribute('data-condition-value') || '').trim();
-        const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
-        const hasCondition = source !== '';
-        const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
-
-        if (!hasCondition && !hasFollowupRule) {
-          return;
+        const textValue = String(value || '').trim();
+        if (textValue !== '') {
+          values.push(textValue);
         }
+      }
 
-        let showByFollowup = true;
-        if (hasFollowupRule) {
-          const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
-          showByFollowup = selectedLower.includes('other');
-        }
-
-        let showByCondition = true;
-        if (source) {
-          const selectedValues = selectedValuesForLinkId(source);
-          const expectedLower = expected.toLowerCase();
-          const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
-          const equals = normalizedSelected.includes(expectedLower);
-          const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
-          if (operator === 'contains') {
-            showByCondition = contains;
-          } else if (operator === 'not_equals') {
-            showByCondition = !equals;
-          } else {
-            showByCondition = equals;
-          }
-        }
-
-        const show = showByFollowup && showByCondition;
-        setFieldVisible(field, show);
-        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
-        controls.forEach((control) => {
-          if (!(control instanceof HTMLElement)) {
-            return;
-          }
-          if (show) {
-            if (control.dataset.wasRequired === 'true') {
-              control.required = true;
+      // Some unchecked/empty controls are skipped by FormData; use direct controls as fallback.
+      if (values.length === 0) {
+        controlsForLinkId(normalizedName).forEach((control) => {
+          if (control instanceof HTMLTextAreaElement) {
+            const textValue = String(control.value || '').trim();
+            if (textValue !== '') {
+              values.push(textValue);
             }
             return;
           }
-          control.dataset.wasRequired = control.required ? 'true' : 'false';
-          control.required = false;
-          if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-            if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
-              control.checked = false;
-            } else {
-              control.value = '';
+          if (control instanceof HTMLInputElement) {
+            if ((control.type === 'radio' || control.type === 'checkbox') && !control.checked) {
+              return;
             }
+            const textValue = String(control.value || '').trim();
+            if (textValue !== '') {
+              values.push(textValue);
+            }
+            return;
           }
           if (control instanceof HTMLSelectElement) {
-            Array.from(control.options).forEach((option) => {
-              option.selected = false;
+            Array.from(control.selectedOptions).forEach((option) => {
+              const textValue = String(option.value || '').trim();
+              if (textValue !== '') {
+                values.push(textValue);
+              }
             });
           }
         });
+      }
+
+      return values;
+    };
+
+    const evaluateCondition = (source, operator, expected) => {
+      if (!source) {
+        return true;
+      }
+      const selectedValues = selectedValuesForLinkId(source);
+      const expectedLower = String(expected || '').trim().toLowerCase();
+      const normalizedSelected = selectedValues
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => value !== '');
+
+      if (operator === 'contains') {
+        if (!expectedLower) {
+          return false;
+        }
+        return normalizedSelected.some((value) => value.includes(expectedLower));
+      }
+
+      const equals = normalizedSelected.includes(expectedLower);
+      if (operator === 'not_equals') {
+        return !equals;
+      }
+      return equals;
+    };
+
+    const applyFieldVisibility = (field, show) => {
+      setFieldVisible(field, show);
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      controls.forEach((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return;
+        }
+        if (show) {
+          if (control.dataset.wasRequired === 'true') {
+            control.required = true;
+          }
+          return;
+        }
+        control.dataset.wasRequired = control.required ? 'true' : 'false';
+        control.required = false;
+        if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+          if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
+            control.checked = false;
+          } else {
+            control.value = '';
+          }
+        }
+        if (control instanceof HTMLSelectElement) {
+          Array.from(control.options).forEach((option) => {
+            option.selected = false;
+          });
+        }
       });
+    };
+
+    const refreshDependentVisibility = () => {
+      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'));
+      for (let pass = 0; pass < 8; pass += 1) {
+        let changed = false;
+        conditionalFields.forEach((field) => {
+          if (!(field instanceof HTMLElement)) {
+            return;
+          }
+          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+          const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
+          const expected = (field.getAttribute('data-condition-value') || '').trim();
+          const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+          const hasCondition = source !== '';
+          const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+
+          if (!hasCondition && !hasFollowupRule) {
+            return;
+          }
+
+          const showByFollowup = hasFollowupRule
+            ? selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase()).includes('other')
+            : true;
+          const showByCondition = hasCondition ? evaluateCondition(source, operator, expected) : true;
+          const show = showByFollowup && showByCondition;
+          if (field.hidden === show) {
+            changed = true;
+          }
+          applyFieldVisibility(field, show);
+        });
+        if (!changed) {
+          break;
+        }
+      }
     };
 
     const handleQuestionValueChange = (event) => {
@@ -1414,22 +1467,14 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        for (let pass = 0; pass < 10; pass += 1) {
-          refreshDependentVisibility();
-        }
+        refreshDependentVisibility();
       }
     };
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    const refreshDependentVisibility = () => {
-      toggleConditionalVisibility();
-    };
-
-    for (let pass = 0; pass < 10; pass += 1) {
-      refreshDependentVisibility();
-    }
+    refreshDependentVisibility();
     const isAppOnline = () => {
       if (connectivity) {
         try {
