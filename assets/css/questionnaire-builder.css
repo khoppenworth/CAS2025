@@ -721,11 +721,11 @@
 
 .qb-field--item-type .qb-select,
 .qb-field--item-condition .qb-select {
+  min-width: 0;
+  width: 100%;
   white-space: nowrap;
-  height: 2rem !important;
-  min-height: 2rem !important;
-  padding: 0.2rem 0.5rem !important;
-  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .qb-weight-field {
