@@ -1339,14 +1339,24 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
 
     const toggleConditionalVisibility = () => {
-      const conditionalFields = Array.from(document.querySelectorAll('[data-condition-source][data-condition-operator][data-condition-value]'));
+      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'));
       conditionalFields.forEach((field) => {
+        if (!(field instanceof HTMLElement)) {
+          return;
+        }
         const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
         const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
         const expected = (field.getAttribute('data-condition-value') || '').trim();
+        const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+        const hasCondition = source !== '';
+        const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+
+        if (!hasCondition && !hasFollowupRule) {
+          return;
+        }
 
         let showByFollowup = true;
-        if (followupParentLinkId) {
+        if (hasFollowupRule) {
           const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
           showByFollowup = selectedLower.includes('other');
         }
@@ -1413,8 +1423,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    document.addEventListener('change', handleQuestionValueChange);
-    document.addEventListener('input', handleQuestionValueChange);
+    const refreshDependentVisibility = () => {
+      toggleConditionalVisibility();
+    };
 
     for (let pass = 0; pass < 10; pass += 1) {
       refreshDependentVisibility();
