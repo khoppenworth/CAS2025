@@ -1102,60 +1102,66 @@ const Builder = (() => {
   function buildItemRow(questionnaire, sectionClientId, item) {
     const scorable = isScorable(item.type);
     const showRequiresCorrect = item.type === 'choice' && !item.allow_multiple;
+    const conditionEnabled = Boolean(item.condition_source_linkid);
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item)
       : '';
     return `
       <div class="qb-item" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
         <div class="qb-item-main">
-          <div class="qb-field">
-            <label>Question Code</label>
-            <input type="text" data-role="item-link" value="${escapeAttr(item.linkId)}">
+          <div class="qb-item-main-grid">
+            <div class="qb-field qb-field--item-link">
+              <label>Question Code</label>
+              <input type="text" data-role="item-link" value="${escapeAttr(item.linkId)}" placeholder="e.g. q_team_support">
+            </div>
+            <div class="qb-field qb-field--item-text">
+              <label>Question</label>
+              <input type="text" data-role="item-text" value="${escapeAttr(item.text)}" placeholder="Question prompt shown to employees">
+            </div>
           </div>
-          <div class="qb-field">
-            <label>Question</label>
-            <input type="text" data-role="item-text" value="${escapeAttr(item.text)}">
+
+          <div class="qb-item-config-row">
+            <div class="qb-field qb-field--item-type qb-field--item-control">
+              <label>Response Type</label>
+              <select class="qb-select" data-role="item-type">
+                ${QUESTION_TYPES
+                  .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <div class="qb-item-toggles">
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
+              ${showRequiresCorrect
+                ? `<label class="qb-chip-toggle"><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>`
+                : ''}
+              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
+            </div>
+            <div class="qb-actions qb-item-actions">
+              <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
+            </div>
           </div>
-          <div class="qb-field qb-field--item-type">
-            <label>Type</label>
-            <select class="qb-select" data-role="item-type">
-              ${QUESTION_TYPES
-                .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
-                .join('')}
-            </select>
-          </div>
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
-          </div>
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
-          </div>
-          ${showRequiresCorrect
-            ? `<div class="qb-field qb-toggle">
-                <label><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>
-              </div>`
-            : ''}
-          <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
-          </div>
-          <div class="qb-field">
-            <label>Show when question code</label>
-            <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
-          </div>
-          <div class="qb-field qb-field--item-condition">
-            <label>Condition</label>
-            <select class="qb-select" data-role="item-condition-operator">
-              <option value="equals" ${(item.condition_operator || 'equals') === 'equals' ? 'selected' : ''}>Equals</option>
-              <option value="not_equals" ${(item.condition_operator || '') === 'not_equals' ? 'selected' : ''}>Does not equal</option>
-              <option value="contains" ${(item.condition_operator || '') === 'contains' ? 'selected' : ''}>Contains</option>
-            </select>
-          </div>
-          <div class="qb-field">
-            <label>Condition value</label>
-            <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer">
-          </div>
-          <div class="qb-actions">
-            <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
+
+          <div class="qb-item-condition-card">
+            <p class="qb-item-condition-title">Display condition (optional)</p>
+            <div class="qb-item-condition-grid">
+              <div class="qb-field">
+                <label>Show when question code</label>
+                <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
+              </div>
+              <div class="qb-field qb-field--item-condition qb-field--item-control">
+                <label>Condition</label>
+                <select class="qb-select" data-role="item-condition-operator" ${conditionEnabled ? '' : 'disabled'}>
+                  <option value="equals" ${(item.condition_operator || 'equals') === 'equals' ? 'selected' : ''}>Equals</option>
+                  <option value="not_equals" ${(item.condition_operator || '') === 'not_equals' ? 'selected' : ''}>Does not equal</option>
+                  <option value="contains" ${(item.condition_operator || '') === 'contains' ? 'selected' : ''}>Contains</option>
+                </select>
+              </div>
+              <div class="qb-field">
+                <label>Condition value</label>
+                <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${conditionEnabled ? '' : 'disabled'}>
+              </div>
+            </div>
           </div>
         </div>
         <div class="qb-item-secondary">
@@ -1413,7 +1419,7 @@ const Builder = (() => {
         return;
     }
     markDirty();
-    if (['item-type', 'item-multi', 'item-requires-correct'].includes(role)) {
+    if (['item-type', 'item-multi', 'item-requires-correct', 'item-condition-source'].includes(role)) {
       const itemRow = event.target.closest('[data-item]');
       rerenderItemRow(questionnaire, itemRow);
     }
@@ -1546,6 +1552,10 @@ const Builder = (() => {
         break;
       case 'item-condition-source':
         item.condition_source_linkid = input.value.trim();
+        if (!item.condition_source_linkid) {
+          item.condition_operator = 'equals';
+          item.condition_value = '';
+        }
         break;
       case 'item-condition-operator':
         item.condition_operator = input.value || 'equals';
