@@ -748,8 +748,9 @@
   min-height: 2.2rem !important;
   height: 2.2rem !important;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  padding: 0.3rem 0.55rem;
 }
 
 .qb-weight-field {

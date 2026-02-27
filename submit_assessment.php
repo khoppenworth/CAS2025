@@ -1135,6 +1135,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     const questionnaireSelect = form.querySelector('[data-questionnaire-select]');
     const periodSelect = form.querySelector('[data-performance-period-select]');
     const assessmentForm = document.getElementById('assessment-form');
+    const activeAssessmentForm = assessmentForm instanceof HTMLFormElement ? assessmentForm : null;
     const layout = document.querySelector('[data-questionnaire-layout]');
     const nav = document.querySelector('[data-questionnaire-nav]');
     const navLinks = nav ? Array.from(nav.querySelectorAll('[data-nav-link]')) : [];
@@ -1229,11 +1230,11 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const controlsForLinkId = (linkId) => {
       const source = normalizeConditionLinkId(linkId);
-      if (!source) {
+      if (!source || !activeAssessmentForm) {
         return [];
       }
       const controls = [];
-      for (const element of Array.from(form.elements || [])) {
+      for (const element of Array.from(activeAssessmentForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
@@ -1369,24 +1370,43 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       return equals;
     };
 
-    const applyFieldVisibility = (field, show) => {
-      setFieldVisible(field, show);
-      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
-      controls.forEach((control) => {
-        if (!(control instanceof HTMLElement)) {
+    const toggleConditionalVisibility = () => {
+      if (!activeAssessmentForm) {
+        return;
+      }
+      const conditionalFields = Array.from(activeAssessmentForm.querySelectorAll('[data-question-anchor]'));
+      conditionalFields.forEach((field) => {
+        if (!(field instanceof HTMLElement)) {
           return;
         }
-        if (show) {
-          if (control.dataset.wasRequired === 'true') {
-            control.required = true;
-          }
+        const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+        const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
+        const expected = (field.getAttribute('data-condition-value') || '').trim();
+        const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
+        const hasCondition = source !== '';
+        const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+
+        if (!hasCondition && !hasFollowupRule) {
           return;
         }
-        control.dataset.wasRequired = control.required ? 'true' : 'false';
-        control.required = false;
-        if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-          if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
-            control.checked = false;
+
+        let showByFollowup = true;
+        if (hasFollowupRule) {
+          const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
+          showByFollowup = selectedLower.includes('other');
+        }
+
+        let showByCondition = true;
+        if (source) {
+          const selectedValues = selectedValuesForLinkId(source);
+          const expectedLower = expected.toLowerCase();
+          const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
+          const equals = normalizedSelected.includes(expectedLower);
+          const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
+          if (operator === 'contains') {
+            showByCondition = contains;
+          } else if (operator === 'not_equals') {
+            showByCondition = !equals;
           } else {
             control.value = '';
           }
@@ -1456,7 +1476,13 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    refreshDependentVisibility();
+    const refreshDependentVisibility = () => {
+      toggleConditionalVisibility();
+    };
+
+    for (let pass = 0; pass < 10; pass += 1) {
+      refreshDependentVisibility();
+    }
     const isAppOnline = () => {
       if (connectivity) {
         try {
