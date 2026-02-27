@@ -1253,6 +1253,31 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       field.setAttribute('aria-hidden', next ? 'false' : 'true');
     };
 
+    const applyFieldVisibility = (field, show) => {
+      const next = show === true;
+      setFieldVisible(field, next);
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      controls.forEach((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return;
+        }
+        if (next) {
+          if (control.dataset.wasRequired === '1') {
+            control.required = true;
+            delete control.dataset.wasRequired;
+          }
+          control.disabled = false;
+          return;
+        }
+
+        if (control.required) {
+          control.dataset.wasRequired = '1';
+          control.required = false;
+        }
+        control.disabled = true;
+      });
+    };
+
 
     const questionFields = () => Array.from(document.querySelectorAll('#assessment-form [data-question-anchor]'));
 
@@ -1370,55 +1395,6 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       return equals;
     };
 
-    const toggleConditionalVisibility = () => {
-      if (!activeAssessmentForm) {
-        return;
-      }
-      const conditionalFields = Array.from(activeAssessmentForm.querySelectorAll('[data-question-anchor]'));
-      conditionalFields.forEach((field) => {
-        if (!(field instanceof HTMLElement)) {
-          return;
-        }
-        const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
-        const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
-        const expected = (field.getAttribute('data-condition-value') || '').trim();
-        const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
-        const hasCondition = source !== '';
-        const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
-
-        if (!hasCondition && !hasFollowupRule) {
-          return;
-        }
-
-        let showByFollowup = true;
-        if (hasFollowupRule) {
-          const selectedLower = selectedValuesForLinkId(followupParentLinkId).map((value) => value.toLowerCase());
-          showByFollowup = selectedLower.includes('other');
-        }
-
-        let showByCondition = true;
-        if (source) {
-          const selectedValues = selectedValuesForLinkId(source);
-          const expectedLower = expected.toLowerCase();
-          const normalizedSelected = selectedValues.map((value) => value.toLowerCase());
-          const equals = normalizedSelected.includes(expectedLower);
-          const contains = expectedLower !== '' && normalizedSelected.some((value) => value.includes(expectedLower));
-          if (operator === 'contains') {
-            showByCondition = contains;
-          } else if (operator === 'not_equals') {
-            showByCondition = !equals;
-          } else {
-            control.value = '';
-          }
-        }
-        if (control instanceof HTMLSelectElement) {
-          Array.from(control.options).forEach((option) => {
-            option.selected = false;
-          });
-        }
-      });
-    };
-
     const refreshDependentVisibility = () => {
       const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'))
         .filter((field) => field instanceof HTMLElement)
@@ -1475,10 +1451,6 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
-
-    const refreshDependentVisibility = () => {
-      toggleConditionalVisibility();
-    };
 
     for (let pass = 0; pass < 10; pass += 1) {
       refreshDependentVisibility();
