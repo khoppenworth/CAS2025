@@ -105,6 +105,19 @@ $normalizeConditionLinkId = static function (string $value): string {
 
 $collectPostedValues = static function (array $postData) use ($normalizeConditionLinkId): array {
     $valuesByLinkId = [];
+    $normalizeConditionLinkId = static function (string $value): string {
+        $normalized = trim($value);
+        if ($normalized === '') {
+            return '';
+        }
+        if (str_starts_with(strtolower($normalized), 'item_')) {
+            $normalized = substr($normalized, 5);
+        }
+        if (str_ends_with($normalized, '[]')) {
+            $normalized = substr($normalized, 0, -2);
+        }
+        return strtolower(trim($normalized));
+    };
     foreach ($postData as $key => $value) {
         if (!is_string($key) || !str_starts_with($key, 'item_')) {
             continue;
@@ -1252,6 +1265,31 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       field.hidden = !next;
       field.style.display = next ? '' : 'none';
       field.setAttribute('aria-hidden', next ? 'false' : 'true');
+    };
+
+    const applyFieldVisibility = (field, show) => {
+      const next = show === true;
+      setFieldVisible(field, next);
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      controls.forEach((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return;
+        }
+        if (next) {
+          if (control.dataset.wasRequired === '1') {
+            control.required = true;
+            delete control.dataset.wasRequired;
+          }
+          control.disabled = false;
+          return;
+        }
+
+        if (control.required) {
+          control.dataset.wasRequired = '1';
+          control.required = false;
+        }
+        control.disabled = true;
+      });
     };
 
 

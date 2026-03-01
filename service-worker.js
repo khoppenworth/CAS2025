@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-performance-cache-v4';
+const CACHE_NAME = 'my-performance-cache-v5';
 const BASE_SCOPE = (self.registration && self.registration.scope) ? self.registration.scope.replace(/\/+$/, '') : '';
 const OFFLINE_URL = withBase('offline.html');
 
@@ -24,10 +24,8 @@ const CORE_ASSETS = [
   OFFLINE_URL,
   withBase('assets/css/material.css'),
   withBase('assets/css/styles.css'),
-  withBase('assets/css/questionnaire-builder.css'),
   withBase('assets/js/app.js'),
   withBase('assets/js/phone-input.js'),
-  withBase('assets/js/questionnaire-builder.js'),
   withBase('logo.php')
 ];
 
@@ -264,6 +262,12 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(fetch(request, { cache: 'no-store' }));
       return;
     }
+  }
+
+  if (requestURL.pathname.endsWith('/assets/css/questionnaire-builder.css')
+    || requestURL.pathname.endsWith('/assets/js/questionnaire-builder.js')) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
   }
 
   const acceptHeader = request.headers.get('accept') || '';
