@@ -22,6 +22,21 @@
   const themeOverrideStorageKey = 'hrassess:theme:override';
   const darkModeDisabled = body && body.getAttribute('data-disable-dark-mode') === '1';
 
+  const ensureMainLandmark = () => {
+    const main = document.querySelector('main, [role="main"], .md-main');
+    if (!main) {
+      return;
+    }
+    if (!main.id) {
+      main.id = 'main-content';
+    }
+    if (!main.getAttribute('role')) {
+      main.setAttribute('role', 'main');
+    }
+  };
+
+  ensureMainLandmark();
+
 
   const isAssessmentProtected = document.body && document.body.getAttribute('data-assessment-protected') === 'true';
   const hasEditableTarget = (eventTarget) => {
