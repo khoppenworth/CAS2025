@@ -88,7 +88,22 @@ $isOtherSelected = static function ($rawValue): bool {
 };
 
 
-$collectPostedValues = static function (array $postData): array {
+$normalizeConditionLinkId = static function (string $value): string {
+    $normalized = trim($value);
+    if ($normalized === '') {
+        return '';
+    }
+    if (str_starts_with(strtolower($normalized), 'item_')) {
+        $normalized = substr($normalized, 5);
+    }
+    if (str_ends_with($normalized, '[]')) {
+        $normalized = substr($normalized, 0, -2);
+    }
+    return strtolower(trim($normalized));
+};
+
+
+$collectPostedValues = static function (array $postData) use ($normalizeConditionLinkId): array {
     $valuesByLinkId = [];
     $normalizeConditionLinkId = static function (string $value): string {
         $normalized = trim($value);
@@ -128,21 +143,7 @@ $collectPostedValues = static function (array $postData): array {
     return $valuesByLinkId;
 };
 
-$matchesCondition = static function (array $item, array $valuesByLinkId): bool {
-    $normalizeConditionLinkId = static function (string $value): string {
-        $normalized = trim($value);
-        if ($normalized === '') {
-            return '';
-        }
-        if (str_starts_with(strtolower($normalized), 'item_')) {
-            $normalized = substr($normalized, 5);
-        }
-        if (str_ends_with($normalized, '[]')) {
-            $normalized = substr($normalized, 0, -2);
-        }
-        return strtolower(trim($normalized));
-    };
-
+$matchesCondition = static function (array $item, array $valuesByLinkId) use ($normalizeConditionLinkId): bool {
     $source = $normalizeConditionLinkId((string)($item['condition_source_linkid'] ?? ''));
     if ($source === '') {
         return true;
@@ -782,12 +783,24 @@ if ($qid) {
     }
 }
 
-$renderQuestionField = static function (array $it, array $t, array $answers) use ($buildAnchorId): string {
+$renderQuestionField = static function (array $it, array $t, array $answers) use ($buildAnchorId, $normalizeConditionLinkId): string {
     $options = $it['options'] ?? [];
     $allowMultiple = !empty($it['allow_multiple']);
     $linkId = (string)($it['linkId'] ?? '');
+    $normalizedLinkId = $normalizeConditionLinkId($linkId);
     $anchorId = $it['question_anchor'] ?? $buildAnchorId('question', $linkId !== '' ? $linkId : (string)($it['id'] ?? uniqid('item')));
     $answerEntries = $answers[$linkId] ?? [];
+    if ($answerEntries === [] && $normalizedLinkId !== '') {
+        foreach ($answers as $answerKey => $entries) {
+            if (!is_string($answerKey)) {
+                continue;
+            }
+            if ($normalizeConditionLinkId($answerKey) === $normalizedLinkId) {
+                $answerEntries = is_array($entries) ? $entries : [];
+                break;
+            }
+        }
+    }
     $checkedValues = [];
     if (is_array($answerEntries)) {
         foreach ($answerEntries as $entry) {
@@ -810,7 +823,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     $ariaRequired = $required ? ' aria-required="true"' : '';
     $followupParentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
     $followupVisible = true;
-    if ($followupParentLinkId !== '') {
+    if ($followupParentLinkId !== '' && $conditionSource === '') {
         $parentAnswerEntries = $answers[$followupParentLinkId] ?? [];
         $followupVisible = false;
         if (is_array($parentAnswerEntries)) {
@@ -818,7 +831,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
                 if (!is_array($entry) || !isset($entry['valueString'])) {
                     continue;
                 }
-                if (strtolower(trim((string)$entry['valueString'])) === 'other') {
+                if (str_contains(strtolower(trim((string)$entry['valueString'])), 'other')) {
                     $followupVisible = true;
                     break;
                 }
@@ -1128,14 +1141,15 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
   <?php endif; ?>
   <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function() {
-    const form = document.querySelector('[data-questionnaire-form]');
-    if (!form) {
+    const selectorForm = document.querySelector('[data-questionnaire-form]');
+    const assessmentForm = document.getElementById('assessment-form');
+    if (!assessmentForm) {
       return;
     }
-    const questionnaireSelect = form.querySelector('[data-questionnaire-select]');
-    const periodSelect = form.querySelector('[data-performance-period-select]');
-    const assessmentForm = document.getElementById('assessment-form');
-    const activeAssessmentForm = assessmentForm instanceof HTMLFormElement ? assessmentForm : null;
+    const form = selectorForm || assessmentForm;
+    const questionnaireSelect = selectorForm ? selectorForm.querySelector('[data-questionnaire-select]') : null;
+    const periodSelect = selectorForm ? selectorForm.querySelector('[data-performance-period-select]') : null;
+    const responseForm = assessmentForm;
     const layout = document.querySelector('[data-questionnaire-layout]');
     const nav = document.querySelector('[data-questionnaire-nav]');
     const navLinks = nav ? Array.from(nav.querySelectorAll('[data-nav-link]')) : [];
@@ -1230,11 +1244,11 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const controlsForLinkId = (linkId) => {
       const source = normalizeConditionLinkId(linkId);
-      if (!source || !activeAssessmentForm) {
+      if (!source) {
         return [];
       }
       const controls = [];
-      for (const element of Array.from(activeAssessmentForm.elements || [])) {
+      for (const element of Array.from(responseForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
@@ -1344,93 +1358,154 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     });
 
-    const collectAnswerValues = () => {
-      const valuesByLinkId = new Map();
-      const formData = new FormData(form);
-      for (const [key, value] of formData.entries()) {
-        const normalizedKey = normalizeConditionLinkId(key);
-        if (!normalizedKey) {
+    const collectCurrentValuesByLinkId = () => {
+      const valuesByLinkId = {};
+      for (const element of Array.from(responseForm.elements || [])) {
+        if (!(element instanceof HTMLElement)) {
           continue;
         }
-        const textValue = String(value || '').trim();
-        if (textValue === '') {
+        const normalizedName = normalizeConditionLinkId(element.getAttribute('name') || '');
+        if (!normalizedName) {
           continue;
         }
-        const existing = valuesByLinkId.get(normalizedKey) || [];
-        existing.push(textValue);
-        valuesByLinkId.set(normalizedKey, existing);
+
+        if (element instanceof HTMLInputElement) {
+          if ((element.type === 'checkbox' || element.type === 'radio') && !element.checked) {
+            continue;
+          }
+          const value = String(element.value || '').trim();
+          if (!value) {
+            continue;
+          }
+          if (!Array.isArray(valuesByLinkId[normalizedName])) {
+            valuesByLinkId[normalizedName] = [];
+          }
+          valuesByLinkId[normalizedName].push(value);
+          continue;
+        }
+
+        if (element instanceof HTMLTextAreaElement) {
+          const value = String(element.value || '').trim();
+          if (!value) {
+            continue;
+          }
+          if (!Array.isArray(valuesByLinkId[normalizedName])) {
+            valuesByLinkId[normalizedName] = [];
+          }
+          valuesByLinkId[normalizedName].push(value);
+          continue;
+        }
+
+        if (element instanceof HTMLSelectElement) {
+          const selected = Array.from(element.selectedOptions || [])
+            .map((option) => String(option.value || '').trim())
+            .filter((value) => value !== '');
+          if (selected.length === 0) {
+            continue;
+          }
+          if (!Array.isArray(valuesByLinkId[normalizedName])) {
+            valuesByLinkId[normalizedName] = [];
+          }
+          valuesByLinkId[normalizedName].push(...selected);
+        }
       }
       return valuesByLinkId;
     };
 
-    const selectedValuesForLinkId = (valuesByLinkId, linkId) => {
-      const source = normalizeConditionLinkId(linkId);
-      if (!source) {
-        return [];
+    const ensureOriginalRequiredState = (control) => {
+      if (!(control instanceof HTMLElement)) {
+        return;
       }
-      return valuesByLinkId.get(source) || [];
+      if (!Object.prototype.hasOwnProperty.call(control.dataset, 'originalRequired')) {
+        control.dataset.originalRequired = control.required ? 'true' : 'false';
+      }
     };
 
-    const evaluateCondition = (valuesByLinkId, source, operator, expected) => {
-      if (!source) {
-        return true;
-      }
-      const selectedValues = selectedValuesForLinkId(valuesByLinkId, source);
-      const expectedLower = String(expected || '').trim().toLowerCase();
-      const normalizedSelected = selectedValues
-        .map((value) => String(value || '').trim().toLowerCase())
-        .filter((value) => value !== '');
-
-      if (operator === 'contains') {
-        if (!expectedLower) {
-          return false;
+    const clearControlValue = (control) => {
+      if (control instanceof HTMLInputElement) {
+        if (control.type === 'checkbox' || control.type === 'radio') {
+          control.checked = false;
+        } else {
+          control.value = '';
         }
-        return normalizedSelected.some((value) => value.includes(expectedLower));
+        return;
       }
+      if (control instanceof HTMLTextAreaElement) {
+        control.value = '';
+        return;
+      }
+      if (control instanceof HTMLSelectElement) {
+        Array.from(control.options).forEach((option) => {
+          option.selected = false;
+        });
+      }
+    };
 
-      const equals = normalizedSelected.includes(expectedLower);
+    const setFieldControlState = (field, visible) => {
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      controls.forEach((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return;
+        }
+        ensureOriginalRequiredState(control);
+        if (visible) {
+          control.disabled = false;
+          control.required = control.dataset.originalRequired === 'true';
+          return;
+        }
+        control.required = false;
+        control.disabled = true;
+        clearControlValue(control);
+      });
+    };
+
+    const evaluateConditionMatch = (operator, expected, candidateValues) => {
+      const expectedLower = String(expected || '').trim().toLowerCase();
+      const normalizedCandidates = candidateValues.map((value) => String(value || '').trim().toLowerCase());
+      const equals = normalizedCandidates.includes(expectedLower);
+      const contains = expectedLower !== '' && normalizedCandidates.some((value) => value.includes(expectedLower));
+      if (operator === 'contains') {
+        return contains;
+      }
       if (operator === 'not_equals') {
         return !equals;
       }
       return equals;
     };
 
-    const refreshDependentVisibility = () => {
-      const conditionalFields = Array.from(document.querySelectorAll('[data-question-anchor]'))
-        .filter((field) => field instanceof HTMLElement)
-        .filter((field) => {
-          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
-          const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
-          return source !== '' || (field.hasAttribute('data-other-followup') && followupParentLinkId !== '');
-        });
+    const runVisibilityEngine = () => {
+      const fields = questionFields();
+      const maxPasses = 25;
 
-      for (let pass = 0; pass < 8; pass += 1) {
-        const valuesByLinkId = collectAnswerValues();
+      for (let pass = 0; pass < maxPasses; pass += 1) {
+        const valuesByLinkId = collectCurrentValuesByLinkId();
         let changed = false;
-        const nextVisibility = new Map();
 
-        conditionalFields.forEach((field) => {
-          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
-          const operator = (field.getAttribute('data-condition-operator') || 'equals').toLowerCase();
-          const expected = (field.getAttribute('data-condition-value') || '').trim();
+        fields.forEach((field) => {
           const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
-          const hasCondition = source !== '';
-          const hasFollowupRule = field.hasAttribute('data-other-followup') && followupParentLinkId !== '';
+          const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
+          const operator = String(field.getAttribute('data-condition-operator') || 'equals').trim().toLowerCase();
+          const expected = String(field.getAttribute('data-condition-value') || '').trim();
 
-          const showByFollowup = hasFollowupRule
-            ? selectedValuesForLinkId(valuesByLinkId, followupParentLinkId).map((value) => value.toLowerCase()).includes('other')
-            : true;
-          const showByCondition = hasCondition ? evaluateCondition(valuesByLinkId, source, operator, expected) : true;
-          const show = showByFollowup && showByCondition;
-          nextVisibility.set(field, show);
-          if (field.hidden === show) {
+          let visible = true;
+
+          const hasExplicitCondition = source !== '';
+          if (followupParentLinkId && !hasExplicitCondition) {
+            const parentValues = valuesByLinkId[followupParentLinkId] || [];
+            visible = parentValues.some((value) => String(value || '').trim().toLowerCase().includes('other'));
+          }
+
+          if (visible && hasExplicitCondition) {
+            const sourceValues = valuesByLinkId[source] || [];
+            visible = evaluateConditionMatch(operator, expected, sourceValues);
+          }
+
+          const currentlyVisible = !field.hidden;
+          if (currentlyVisible !== visible) {
             changed = true;
           }
-          applyFieldVisibility(field, show);
-        });
-
-        nextVisibility.forEach((show, field) => {
-          applyFieldVisibility(field, show);
+          setFieldVisible(field, visible);
+          setFieldControlState(field, visible);
         });
 
         if (!changed) {
@@ -1445,16 +1520,14 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        refreshDependentVisibility();
+        runVisibilityEngine();
       }
     };
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    for (let pass = 0; pass < 10; pass += 1) {
-      refreshDependentVisibility();
-    }
+    runVisibilityEngine();
     const isAppOnline = () => {
       if (connectivity) {
         try {
