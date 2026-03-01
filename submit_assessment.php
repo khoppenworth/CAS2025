@@ -255,7 +255,14 @@ try {
     $fallback = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title");
     $q = $fallback ? $fallback->fetchAll() : [];
 }
-$periods = $pdo->query("SELECT id, label, period_start, period_end FROM performance_period ORDER BY period_start DESC")->fetchAll();
+$periods = $pdo->query(
+    "SELECT id, label, period_start, period_end FROM performance_period " .
+    "WHERE period_start IS NULL OR period_start <= CURDATE() ORDER BY period_start DESC"
+)->fetchAll();
+$availablePeriodIds = [];
+foreach ($periods as $periodRow) {
+    $availablePeriodIds[(int)($periodRow['id'] ?? 0)] = true;
+}
 $qid = (int)($_GET['qid'] ?? ($q[0]['id'] ?? 0));
 $availableQuestionnaireIds = array_map(static fn($row) => (int)$row['id'], $q);
 if ($qid && !in_array($qid, $availableQuestionnaireIds, true)) {
@@ -285,11 +292,11 @@ $findBestPeriodId = static function (array $periodRows, ?string $targetDate): in
     }
     return $fallbackId;
 };
-$periodTargetDate = trim((string)($user['next_assessment_date'] ?? ''));
-if ($periodTargetDate === '') {
-    $periodTargetDate = date('Y-m-d');
-}
+$periodTargetDate = date('Y-m-d');
 $periodId = (int)($_GET['performance_period_id'] ?? $findBestPeriodId($periods, $periodTargetDate));
+if ($periodId && !isset($availablePeriodIds[$periodId])) {
+    $periodId = $findBestPeriodId($periods, $periodTargetDate);
+}
 
 $draftSaved = $_GET['saved'] ?? '';
 if ($draftSaved === 'draft') {
@@ -307,6 +314,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = t($t, 'invalid_questionnaire_selection', 'The selected questionnaire is not available.');
     } elseif (!$periodId) {
         $err = t($t,'select_period','Please select a performance period.');
+    } elseif (!isset($availablePeriodIds[$periodId])) {
+        $err = t($t, 'select_period', 'Please select a performance period.');
     } else {
         $responseColumns = [];
         try {
