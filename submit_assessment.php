@@ -810,7 +810,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     $ariaRequired = $required ? ' aria-required="true"' : '';
     $followupParentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
     $followupVisible = true;
-    if ($followupParentLinkId !== '') {
+    if ($followupParentLinkId !== '' && $conditionSource === '') {
         $parentAnswerEntries = $answers[$followupParentLinkId] ?? [];
         $followupVisible = false;
         if (is_array($parentAnswerEntries)) {
@@ -818,7 +818,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
                 if (!is_array($entry) || !isset($entry['valueString'])) {
                     continue;
                 }
-                if (strtolower(trim((string)$entry['valueString'])) === 'other') {
+                if (str_contains(strtolower(trim((string)$entry['valueString'])), 'other')) {
                     $followupVisible = true;
                     break;
                 }
@@ -1449,12 +1449,13 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
           let visible = true;
 
-          if (followupParentLinkId) {
+          const hasExplicitCondition = source !== '';
+          if (followupParentLinkId && !hasExplicitCondition) {
             const parentValues = valuesByLinkId[followupParentLinkId] || [];
-            visible = parentValues.some((value) => String(value || '').trim().toLowerCase() === 'other');
+            visible = parentValues.some((value) => String(value || '').trim().toLowerCase().includes('other'));
           }
 
-          if (visible && source) {
+          if (visible && hasExplicitCondition) {
             const sourceValues = valuesByLinkId[source] || [];
             visible = evaluateConditionMatch(operator, expected, sourceValues);
           }
