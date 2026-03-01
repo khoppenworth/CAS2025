@@ -1129,12 +1129,13 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
   <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function() {
     const form = document.querySelector('[data-questionnaire-form]');
-    if (!form) {
+    const assessmentForm = document.getElementById('assessment-form');
+    if (!form || !assessmentForm) {
       return;
     }
     const questionnaireSelect = form.querySelector('[data-questionnaire-select]');
     const periodSelect = form.querySelector('[data-performance-period-select]');
-    const assessmentForm = document.getElementById('assessment-form');
+    const responseForm = assessmentForm;
     const layout = document.querySelector('[data-questionnaire-layout]');
     const nav = document.querySelector('[data-questionnaire-nav]');
     const navLinks = nav ? Array.from(nav.querySelectorAll('[data-nav-link]')) : [];
@@ -1233,7 +1234,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return [];
       }
       const controls = [];
-      for (const element of Array.from(form.elements || [])) {
+      for (const element of Array.from(responseForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
@@ -1320,7 +1321,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const collectCurrentValuesByLinkId = () => {
       const valuesByLinkId = {};
-      for (const element of Array.from(form.elements || [])) {
+      for (const element of Array.from(responseForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
