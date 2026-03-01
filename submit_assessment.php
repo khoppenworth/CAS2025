@@ -1128,13 +1128,14 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
   <?php endif; ?>
   <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function() {
-    const form = document.querySelector('[data-questionnaire-form]');
+    const selectorForm = document.querySelector('[data-questionnaire-form]');
     const assessmentForm = document.getElementById('assessment-form');
-    if (!form || !assessmentForm) {
+    if (!assessmentForm) {
       return;
     }
-    const questionnaireSelect = form.querySelector('[data-questionnaire-select]');
-    const periodSelect = form.querySelector('[data-performance-period-select]');
+    const form = selectorForm || assessmentForm;
+    const questionnaireSelect = selectorForm ? selectorForm.querySelector('[data-questionnaire-select]') : null;
+    const periodSelect = selectorForm ? selectorForm.querySelector('[data-performance-period-select]') : null;
     const responseForm = assessmentForm;
     const layout = document.querySelector('[data-questionnaire-layout]');
     const nav = document.querySelector('[data-questionnaire-nav]');
