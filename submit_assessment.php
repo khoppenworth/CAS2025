@@ -88,21 +88,23 @@ $isOtherSelected = static function ($rawValue): bool {
 };
 
 
-$collectPostedValues = static function (array $postData): array {
+$normalizeConditionLinkId = static function (string $value): string {
+    $normalized = trim($value);
+    if ($normalized === '') {
+        return '';
+    }
+    if (str_starts_with(strtolower($normalized), 'item_')) {
+        $normalized = substr($normalized, 5);
+    }
+    if (str_ends_with($normalized, '[]')) {
+        $normalized = substr($normalized, 0, -2);
+    }
+    return strtolower(trim($normalized));
+};
+
+
+$collectPostedValues = static function (array $postData) use ($normalizeConditionLinkId): array {
     $valuesByLinkId = [];
-    $normalizeConditionLinkId = static function (string $value): string {
-        $normalized = trim($value);
-        if ($normalized === '') {
-            return '';
-        }
-        if (str_starts_with(strtolower($normalized), 'item_')) {
-            $normalized = substr($normalized, 5);
-        }
-        if (str_ends_with($normalized, '[]')) {
-            $normalized = substr($normalized, 0, -2);
-        }
-        return strtolower(trim($normalized));
-    };
     foreach ($postData as $key => $value) {
         if (!is_string($key) || !str_starts_with($key, 'item_')) {
             continue;
@@ -128,21 +130,7 @@ $collectPostedValues = static function (array $postData): array {
     return $valuesByLinkId;
 };
 
-$matchesCondition = static function (array $item, array $valuesByLinkId): bool {
-    $normalizeConditionLinkId = static function (string $value): string {
-        $normalized = trim($value);
-        if ($normalized === '') {
-            return '';
-        }
-        if (str_starts_with(strtolower($normalized), 'item_')) {
-            $normalized = substr($normalized, 5);
-        }
-        if (str_ends_with($normalized, '[]')) {
-            $normalized = substr($normalized, 0, -2);
-        }
-        return strtolower(trim($normalized));
-    };
-
+$matchesCondition = static function (array $item, array $valuesByLinkId) use ($normalizeConditionLinkId): bool {
     $source = $normalizeConditionLinkId((string)($item['condition_source_linkid'] ?? ''));
     if ($source === '') {
         return true;
@@ -782,12 +770,24 @@ if ($qid) {
     }
 }
 
-$renderQuestionField = static function (array $it, array $t, array $answers) use ($buildAnchorId): string {
+$renderQuestionField = static function (array $it, array $t, array $answers) use ($buildAnchorId, $normalizeConditionLinkId): string {
     $options = $it['options'] ?? [];
     $allowMultiple = !empty($it['allow_multiple']);
     $linkId = (string)($it['linkId'] ?? '');
+    $normalizedLinkId = $normalizeConditionLinkId($linkId);
     $anchorId = $it['question_anchor'] ?? $buildAnchorId('question', $linkId !== '' ? $linkId : (string)($it['id'] ?? uniqid('item')));
     $answerEntries = $answers[$linkId] ?? [];
+    if ($answerEntries === [] && $normalizedLinkId !== '') {
+        foreach ($answers as $answerKey => $entries) {
+            if (!is_string($answerKey)) {
+                continue;
+            }
+            if ($normalizeConditionLinkId($answerKey) === $normalizedLinkId) {
+                $answerEntries = is_array($entries) ? $entries : [];
+                break;
+            }
+        }
+    }
     $checkedValues = [];
     if (is_array($answerEntries)) {
         foreach ($answerEntries as $entry) {
