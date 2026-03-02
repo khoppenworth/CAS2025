@@ -12,8 +12,6 @@ $logoRenderPath = site_logo_url($cfg);
 $logo = htmlspecialchars($logoRenderPath, ENT_QUOTES, 'UTF-8');
 $logoAlt = htmlspecialchars($cfg['site_name'] ?? 'Logo', ENT_QUOTES, 'UTF-8');
 $siteName = htmlspecialchars($cfg['site_name'] ?? 'My Performance', ENT_QUOTES, 'UTF-8');
-$address = htmlspecialchars($cfg['address'] ?? '', ENT_QUOTES, 'UTF-8');
-$contact = htmlspecialchars($cfg['contact'] ?? '', ENT_QUOTES, 'UTF-8');
 $bodyClass = trim(htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8') . ' landing-body');
 $bodyStyle = htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8');
 $brandStyle = site_brand_style($cfg);
@@ -27,8 +25,6 @@ $heroSubtitle = htmlspecialchars(t($t, 'hero_subtitle', 'From planning to recogn
 $heroBadgeOne = htmlspecialchars(t($t, 'hero_badge_one', 'Goal alignment'), ENT_QUOTES, 'UTF-8');
 $heroBadgeTwo = htmlspecialchars(t($t, 'hero_badge_two', '360° feedback'), ENT_QUOTES, 'UTF-8');
 $heroBadgeThree = htmlspecialchars(t($t, 'hero_badge_three', 'Learning insights'), ENT_QUOTES, 'UTF-8');
-$addressLabel = htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8');
-$contactLabel = htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8');
 $featureItems = [
     [
         'title' => htmlspecialchars(t($t, 'feature_insights_title', 'Actionable insights'), ENT_QUOTES, 'UTF-8'),
@@ -84,7 +80,6 @@ $newsCards = [
     htmlspecialchars(t($t, 'news_three', 'Supervisor scorecards include stronger competency benchmarking insights.'), ENT_QUOTES, 'UTF-8'),
 ];
 
-$partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR Council'];
 ?>
 <!doctype html>
 <html lang="<?= $langAttr ?>" data-base-url="<?= $baseUrl ?>">
@@ -194,17 +189,6 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
         </div>
       </section>
 
-      <section class="landing-section landing-section--partners">
-        <div class="landing-section__header">
-          <h2><?= htmlspecialchars(t($t, 'partners_heading', 'Trusted partners'), ENT_QUOTES, 'UTF-8') ?></h2>
-        </div>
-        <div class="landing-partners-grid">
-          <?php foreach ($partners as $partner): ?>
-            <span><?= htmlspecialchars($partner, ENT_QUOTES, 'UTF-8') ?></span>
-          <?php endforeach; ?>
-        </div>
-      </section>
-
       <section class="landing-section landing-section--cta">
         <div class="landing-section__content">
           <h2><?= htmlspecialchars(t($t, 'cta_heading', 'Start your next performance cycle with confidence'), ENT_QUOTES, 'UTF-8') ?></h2>
@@ -216,21 +200,6 @@ $partners = ['MoPS', 'MoE', 'Civil Service Commission', 'Regional Bureaus', 'HR 
     </main>
 
     <footer class="landing-footer" id="contact">
-      <div class="landing-footer__contact" aria-label="<?= htmlspecialchars(t($t, 'contact_details_label', 'Contact details'), ENT_QUOTES, 'UTF-8') ?>">
-        <h3><?= htmlspecialchars(t($t, 'contact_us', 'Contact us'), ENT_QUOTES, 'UTF-8') ?></h3>
-        <?php if ($address !== ''): ?>
-          <div><strong><?= $addressLabel ?>:</strong> <?= $address ?></div>
-        <?php endif; ?>
-        <?php if ($contact !== ''): ?>
-          <div><strong><?= $contactLabel ?>:</strong> <?= $contact ?></div>
-        <?php endif; ?>
-      </div>
-      <div class="landing-footer__links">
-        <h3><?= htmlspecialchars(t($t, 'quick_links', 'Quick links'), ENT_QUOTES, 'UTF-8') ?></h3>
-        <a href="#services"><?= htmlspecialchars(t($t, 'services', 'Services'), ENT_QUOTES, 'UTF-8') ?></a>
-        <a href="#events"><?= htmlspecialchars(t($t, 'events', 'Events'), ENT_QUOTES, 'UTF-8') ?></a>
-        <a href="#news"><?= htmlspecialchars(t($t, 'news', 'News'), ENT_QUOTES, 'UTF-8') ?></a>
-      </div>
       <div class="landing-footer__meta">
         <h3><?= htmlspecialchars(t($t, 'languages', 'Languages'), ENT_QUOTES, 'UTF-8') ?></h3>
         <div class="landing-footer__languages" aria-label="<?= htmlspecialchars(t($t, 'language_switch_label', 'Change language'), ENT_QUOTES, 'UTF-8') ?>">
