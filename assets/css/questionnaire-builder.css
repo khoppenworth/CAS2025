@@ -21,6 +21,10 @@
   justify-content: flex-end;
 }
 
+.qb-toolbar-actions--secondary .md-button {
+  --md-button-padding-x: 0.8rem;
+}
+
 .qb-select-label {
   font-weight: 600;
 }
@@ -61,6 +65,29 @@
   gap: 0.75rem;
 }
 
+.qb-workspace-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0.15rem 0.35rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.qb-workspace-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 240px;
+}
+
+.qb-workspace-head-copy .md-overline,
+.qb-workspace-head-copy .md-card-title,
+.qb-workspace-head-copy .md-hint {
+  margin: 0;
+}
+
 .qb-start-grid {
   display: grid;
   gap: 0.4rem;
@@ -87,6 +114,11 @@
 
 .qb-start-card .md-hint {
   margin-top: 0.15rem;
+}
+
+.qb-start-inline-note {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
 .qb-start-card-header {
@@ -175,6 +207,7 @@
   top: 1rem;
   align-self: start;
   padding-inline: 0.25rem;
+  max-height: calc(100vh - 2rem);
 }
 
 .qb-sidebar-card {
@@ -182,6 +215,45 @@
   flex-direction: column;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
+}
+
+
+.qb-danger-drawer {
+  margin-top: auto;
+  position: relative;
+  border: 1px solid #d1242f;
+  background: #fff5f5;
+  box-shadow: 0 0 0 1px rgba(209, 36, 47, 0.08);
+}
+
+.qb-danger-drawer .md-card-title {
+  color: #9a1c23;
+}
+
+.qb-danger-drawer .md-hint {
+  margin: 0;
+  color: #6e1a1f;
+}
+
+.qb-danger-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.qb-danger-actions .md-button {
+  width: 100%;
+  justify-content: center;
+  border-color: #d1242f;
+  color: #9a1c23;
+  background: #fff;
+}
+
+.qb-danger-actions .md-button:hover,
+.qb-danger-actions .md-button:focus-visible {
+  background: #d1242f;
+  color: #fff;
+  border-color: #d1242f;
 }
 
 .qb-tabs-vertical {
@@ -201,6 +273,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.qb-manager-sidebar > .qb-sidebar-card:first-child {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .qb-section-nav-help {
@@ -309,6 +389,24 @@
     flex: 1 1 auto;
     position: static;
     top: auto;
+    max-height: none;
+  }
+
+  .qb-workspace-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .qb-toolbar {
+    justify-content: flex-start;
+  }
+
+  .qb-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qb-danger-drawer {
+    position: static;
   }
 }
 
@@ -488,6 +586,54 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+
+.qb-card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.qb-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.35fr) minmax(180px, 240px);
+  gap: 0.7rem;
+  align-items: end;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.qb-header .qb-field > label {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--app-muted);
+}
+
+.qb-header .qb-select,
+.qb-header input[data-role="q-title"],
+.qb-header textarea[data-role="q-description"] {
+  background: var(--app-surface-alt, #fff);
+}
+
+.qb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.qb-root-items > .md-card-title {
+  margin: 0;
+}
+
+.qb-root-actions,
+.qb-section-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.45rem;
 }
 
 .qb-questionnaire {
