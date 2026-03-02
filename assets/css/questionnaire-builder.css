@@ -696,7 +696,7 @@
 
 .qb-item-config-row {
   display: grid;
-  grid-template-columns: minmax(170px, 210px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr) auto;
   gap: 0.55rem;
   align-items: end;
 }
@@ -762,31 +762,23 @@
 .qb-field--item-condition .qb-input {
   min-width: 0;
   width: 100%;
-  min-height: 2.2rem !important;
-  height: 2.2rem !important;
-  white-space: nowrap;
-  height: 2.2rem;
   min-height: 2.2rem;
+  height: 2.2rem;
+  white-space: nowrap;
   padding: 0.3rem 0.55rem;
 }
 
-
-
 .qb-select--singleline {
-  appearance: auto;
+  appearance: menulist;
   -webkit-appearance: menulist;
   -moz-appearance: menulist;
   display: block;
+  min-height: 2.2rem;
+  height: 2.2rem;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.qb-select--singleline[multiple],
-.qb-select--singleline[size]:not([size="1"]) {
-  min-height: 2.2rem !important;
-  height: 2.2rem !important;
 }
 
 .qb-item-toggles {
@@ -831,7 +823,7 @@
 
 .qb-item-condition-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-columns: minmax(180px, 1.1fr) minmax(170px, 0.9fr) minmax(180px, 1fr);
   gap: 0.5rem;
 }
 
