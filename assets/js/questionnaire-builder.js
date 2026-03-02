@@ -753,7 +753,7 @@ const Builder = (() => {
       return Array.from(nodes).map((itemNode) => {
         const itemClientId = itemNode.getAttribute('data-item') || uuid('i');
         const existing = existingMap.get(itemClientId) || {};
-        const typeInput = itemNode.querySelector('[data-role="item-type"]');
+        const typeInput = itemNode.querySelector('[data-role="item-type"]:checked') || itemNode.querySelector('[data-role="item-type"]');
         const typeValue = typeInput ? typeInput.value : (existing.type || 'choice');
         const type = normalizeTypeValue(typeValue);
         const allowMultipleInput = itemNode.querySelector('[data-role="item-multi"]');
@@ -774,7 +774,7 @@ const Builder = (() => {
           hasResponses: Boolean(existing.hasResponses),
           requires_correct: type === 'choice' && !allowMultiple && Boolean(requiresCorrectInput && requiresCorrectInput.checked),
           condition_source_linkid: itemNode.querySelector('[data-role="item-condition-source"]')?.value || '',
-          condition_operator: normalizeConditionOperatorValue(itemNode.querySelector('[data-role="item-condition-operator"]')?.value || 'equals'),
+          condition_operator: normalizeConditionOperatorValue((itemNode.querySelector('[data-role="item-condition-operator"]:checked') || itemNode.querySelector('[data-role="item-condition-operator"]'))?.value || 'equals'),
           condition_value: itemNode.querySelector('[data-role="item-condition-value"]')?.value || '',
         };
         ensureSingleChoiceCorrect(parsed);
@@ -972,7 +972,6 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
-    const deleteButton = card.querySelector('[data-role="remove-questionnaire"]');
 
     const handleTitle = () => {
       questionnaire.title = titleInput.value;
@@ -999,7 +998,6 @@ const Builder = (() => {
     };
     statusInput?.addEventListener('input', handleStatus);
     statusInput?.addEventListener('change', handleStatus);
-    deleteButton?.addEventListener('click', () => removeQuestionnaire(questionnaire));
   }
 
   function renderDeleteButton() {
@@ -1041,9 +1039,6 @@ const Builder = (() => {
   function buildQuestionnaireCard(questionnaire) {
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
-    const deleteDisabled = questionnaire.hasResponses;
-    const deleteTitle = deleteDisabled ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
-
     return `
       <div class="qb-card" data-q="${questionnaire.clientId}">
         <div class="qb-header">
@@ -1062,12 +1057,6 @@ const Builder = (() => {
                 .map((status) => `<option value="${status}" ${status === questionnaire.status ? 'selected' : ''}>${formatStatusLabel(status)}</option>`)
                 .join('')}
             </select>
-          </div>
-          <div class="qb-field qb-actions">
-            <label class="md-visually-hidden">${escapeHtml(STRINGS.deleteQuestionnaireLabel)}</label>
-            <button type="button" class="md-button md-outline qb-danger" data-role="remove-questionnaire" ${deleteDisabled ? 'disabled' : ''} title="${escapeAttr(deleteTitle)}">
-              ${escapeHtml(STRINGS.deleteQuestionnaireLabel)}
-            </button>
           </div>
         </div>
         <div class="qb-body">
@@ -1146,9 +1135,9 @@ const Builder = (() => {
               <label>Response Type</label>
               <select class="qb-select qb-select--userlike" data-role="item-type" size="1">
                 ${QUESTION_TYPES
-                  .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
+                  .map((type) => `<label class="qb-choice-chip"><input type="radio" name="item_type_${item.clientId}" data-role="item-type" value="${type}" ${type === item.type ? 'checked' : ''}><span>${QUESTION_TYPE_LABELS[type] || type}</span></label>`)
                   .join('')}
-              </select>
+              </div>
             </div>
             <div class="qb-item-toggles">
               <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
@@ -1174,9 +1163,9 @@ const Builder = (() => {
                 <label>Condition</label>
                 <select class="qb-select qb-select--userlike" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
                   ${CONDITION_OPERATORS
-                    .map((operator) => `<option value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'selected' : ''}>${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`)
+                    .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${conditionEnabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
                     .join('')}
-                </select>
+                </div>
               </div>
               <div class="qb-field">
                 <label>Condition value</label>
