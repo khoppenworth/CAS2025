@@ -408,6 +408,21 @@
   .qb-danger-drawer {
     position: static;
   }
+
+  .qb-workspace-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .qb-toolbar {
+    justify-content: flex-start;
+  }
+
+
+  .qb-danger-drawer {
+    position: static;
+    bottom: auto;
+  }
 }
 
 .qb-toolbar-spacer {
