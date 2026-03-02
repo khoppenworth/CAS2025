@@ -191,6 +191,8 @@ $user = current_user();
 try {
     if (($user['role'] ?? '') !== 'admin') {
         $assigned = [];
+        $departmentAssigned = [];
+        $directAssigned = [];
         $isStaff = (($user['role'] ?? '') === 'staff');
 
         if ($isStaff) {
@@ -206,12 +208,16 @@ try {
                 );
                 $departmentStmt->execute([':department' => $department]);
                 foreach ($departmentStmt->fetchAll() as $row) {
-                    $assigned[(int)$row['id']] = $row;
+                    $questionnaireId = (int)($row['id'] ?? 0);
+                    if ($questionnaireId <= 0) {
+                        continue;
+                    }
+                    $departmentAssigned[$questionnaireId] = $row;
                 }
             }
 
             // Legacy fallback for environments that have not migrated defaults yet.
-            if ($assigned === []) {
+            if ($departmentAssigned === []) {
                 $definitions = work_function_definitions($pdo);
                 $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
                 if ($workFunction !== '') {
@@ -229,9 +235,61 @@ try {
                         );
                         $stmt->execute($assignedQuestionnaireIds);
                         foreach ($stmt->fetchAll() as $row) {
-                            $assigned[(int)$row['id']] = $row;
+                            $questionnaireId = (int)($row['id'] ?? 0);
+                            if ($questionnaireId <= 0) {
+                                continue;
+                            }
+                            $departmentAssigned[$questionnaireId] = $row;
                         }
                     }
+                }
+            }
+
+            $definitions = work_function_definitions($pdo);
+            $workRole = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
+            if ($workRole !== '' && $departmentAssigned !== []) {
+                $departmentQuestionnaireIds = array_map(
+                    static fn(array $questionnaire): int => (int)($questionnaire['id'] ?? 0),
+                    $departmentAssigned
+                );
+                $departmentQuestionnaireIds = array_values(array_unique(array_filter($departmentQuestionnaireIds, static fn($id) => $id > 0)));
+
+                if ($departmentQuestionnaireIds !== []) {
+                    $rolePlaceholders = implode(',', array_fill(0, count($departmentQuestionnaireIds), '?'));
+                    $roleFilterStmt = $pdo->prepare(
+                        "SELECT questionnaire_id, work_function FROM questionnaire_work_function WHERE questionnaire_id IN ($rolePlaceholders)"
+                    );
+                    $roleFilterStmt->execute($departmentQuestionnaireIds);
+
+                    $roleRowsByQuestionnaire = [];
+                    foreach ($roleFilterStmt->fetchAll(PDO::FETCH_ASSOC) as $roleRow) {
+                        $questionnaireId = (int)($roleRow['questionnaire_id'] ?? 0);
+                        if ($questionnaireId <= 0) {
+                            continue;
+                        }
+                        $roleRowsByQuestionnaire[$questionnaireId][] = canonical_work_function_key(
+                            (string)($roleRow['work_function'] ?? ''),
+                            $definitions
+                        );
+                    }
+
+                    $departmentAssigned = array_filter(
+                        $departmentAssigned,
+                        static function (array $questionnaire) use ($roleRowsByQuestionnaire, $workRole): bool {
+                            $questionnaireId = (int)($questionnaire['id'] ?? 0);
+                            if ($questionnaireId <= 0) {
+                                return false;
+                            }
+
+                            $allowedRoles = $roleRowsByQuestionnaire[$questionnaireId] ?? [];
+                            if ($allowedRoles === []) {
+                                // If no role scoping is configured for this questionnaire, keep default visibility.
+                                return true;
+                            }
+
+                            return in_array($workRole, $allowedRoles, true);
+                        }
+                    );
                 }
             }
         }
@@ -243,8 +301,14 @@ try {
         );
         $directAssignmentStmt->execute([':staff_id' => (int)($user['id'] ?? 0)]);
         foreach ($directAssignmentStmt->fetchAll() as $row) {
-            $assigned[(int)$row['id']] = $row;
+            $questionnaireId = (int)($row['id'] ?? 0);
+            if ($questionnaireId <= 0) {
+                continue;
+            }
+            $directAssigned[$questionnaireId] = $row;
         }
+
+        $assigned = $departmentAssigned + $directAssigned;
 
         $q = array_values($assigned);
     } else {
