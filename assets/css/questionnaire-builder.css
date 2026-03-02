@@ -696,7 +696,7 @@
 
 .qb-item-config-row {
   display: grid;
-  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) auto;
   gap: 0.55rem;
   align-items: end;
 }
@@ -756,29 +756,62 @@
   max-width: none;
 }
 
-.qb-field--item-type .qb-select,
-.qb-field--item-condition .qb-select,
 .qb-field--item-type .qb-input,
 .qb-field--item-condition .qb-input {
   min-width: 0;
   width: 100%;
   min-height: 2.2rem;
   height: 2.2rem;
-  white-space: nowrap;
   padding: 0.3rem 0.55rem;
 }
 
-.qb-select--singleline {
-  appearance: menulist;
-  -webkit-appearance: menulist;
-  -moz-appearance: menulist;
-  display: block;
+
+
+.qb-choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   min-height: 2.2rem;
-  height: 2.2rem;
-  line-height: 1.2;
+}
+
+.qb-choice-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.qb-choice-chip input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qb-choice-chip span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  padding: 0.32rem 0.65rem;
+  background: var(--app-surface);
+  font-size: 0.8rem;
+  line-height: 1.1;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.qb-choice-chip input[type="radio"]:checked + span {
+  border-color: var(--app-primary, #1d4ed8);
+  background: var(--app-primary-soft, rgba(32, 84, 147, 0.12));
+  color: var(--app-primary-strong, #1e3a8a);
+}
+
+.qb-choice-chip input[type="radio"]:focus-visible + span {
+  box-shadow: 0 0 0 2px var(--app-primary-softer, rgba(32, 84, 147, 0.2));
+}
+
+.qb-choice-chip input[type="radio"]:disabled + span {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .qb-item-toggles {
@@ -823,7 +856,7 @@
 
 .qb-item-condition-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) minmax(170px, 0.9fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.3fr) minmax(180px, 1fr);
   gap: 0.5rem;
 }
 
