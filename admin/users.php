@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
         $role = $_POST['role'] ?? 'staff';
-        $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
+        $workFunction = trim((string)($_POST['work_function'] ?? ''));
         $accountStatus = $_POST['account_status'] ?? 'active';
         $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
         $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
@@ -124,6 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($workFunction === '' || !isset($workFunctionOptions[$workFunction])) {
+                $msg = t($t,'invalid_work_function','Select a valid work function.');
+                $msgVariant = 'error';
             } elseif ($department === '' || !isset($departmentOptions[$department])) {
                 $msg = t($t,'invalid_department','Select a valid department.');
                 $msgVariant = 'error';
@@ -131,7 +134,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = t($t,'invalid_team_department','Select a valid team in the department.');
                 $msgVariant = 'error';
             } else {
-                if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 try {
                     $stm = $pdo->prepare("INSERT INTO users (username,password,role,full_name,email,department,cadre,work_function,account_status,must_reset_password,next_assessment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
@@ -183,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['id'] ?? 0);
         $newPassword = $_POST['new_password'] ?? '';
         $role = $_POST['role'] ?? 'staff';
-        $workFunction = $_POST['work_function'] ?? $defaultWorkFunction;
+        $workFunction = trim((string)($_POST['work_function'] ?? ''));
         $accountStatus = $_POST['account_status'] ?? 'active';
         $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
         $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
@@ -210,6 +212,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
+            } elseif ($workFunction === '' || !isset($workFunctionOptions[$workFunction])) {
+                $msg = t($t,'invalid_work_function','Select a valid work function.');
+                $msgVariant = 'error';
             } elseif ($department === '' || !isset($departmentOptions[$department])) {
                 $msg = t($t,'invalid_department','Select a valid department.');
                 $msgVariant = 'error';
@@ -217,7 +222,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = t($t,'invalid_team_department','Select a valid team in the department.');
                 $msgVariant = 'error';
             } else {
-                if (!isset($workFunctionOptions[$workFunction])) { $workFunction = $defaultWorkFunction; }
                 $existingUser = null;
                 if ($id > 0) {
                     try {
@@ -584,7 +588,8 @@ foreach ($rows as $r) {
   </select>
 </label>
 <label class="md-field"><span><?=t($t,'work_function','Work Role')?></span>
-  <select name="work_function">
+  <select name="work_function" required>
+    <option value="" disabled selected><?=t($t,'select_option','Select')?></option>
     <?php foreach ($workFunctionOptions as $function => $label): ?>
       <option value="<?=$function?>"><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
     <?php endforeach; ?>
@@ -682,7 +687,7 @@ foreach ($rows as $r) {
                 </label>
                 <label class="md-field md-field--compact">
                   <span><?=t($t,'work_function','Work Role')?></span>
-                  <select name="work_function">
+                  <select name="work_function" required>
                     <?php foreach ($workFunctionOptions as $function => $label): ?>
                       <option value="<?=$function?>" <?=$record['work_function_key']===$function?'selected':''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
                     <?php endforeach; ?>
