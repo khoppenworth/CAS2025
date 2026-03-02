@@ -753,7 +753,7 @@ const Builder = (() => {
       return Array.from(nodes).map((itemNode) => {
         const itemClientId = itemNode.getAttribute('data-item') || uuid('i');
         const existing = existingMap.get(itemClientId) || {};
-        const typeInput = itemNode.querySelector('[data-role="item-type"]');
+        const typeInput = itemNode.querySelector('[data-role="item-type"]:checked') || itemNode.querySelector('[data-role="item-type"]');
         const typeValue = typeInput ? typeInput.value : (existing.type || 'choice');
         const type = normalizeTypeValue(typeValue);
         const allowMultipleInput = itemNode.querySelector('[data-role="item-multi"]');
@@ -774,7 +774,7 @@ const Builder = (() => {
           hasResponses: Boolean(existing.hasResponses),
           requires_correct: type === 'choice' && !allowMultiple && Boolean(requiresCorrectInput && requiresCorrectInput.checked),
           condition_source_linkid: itemNode.querySelector('[data-role="item-condition-source"]')?.value || '',
-          condition_operator: normalizeConditionOperatorValue(itemNode.querySelector('[data-role="item-condition-operator"]')?.value || 'equals'),
+          condition_operator: normalizeConditionOperatorValue((itemNode.querySelector('[data-role="item-condition-operator"]:checked') || itemNode.querySelector('[data-role="item-condition-operator"]'))?.value || 'equals'),
           condition_value: itemNode.querySelector('[data-role="item-condition-value"]')?.value || '',
         };
         ensureSingleChoiceCorrect(parsed);
@@ -1144,11 +1144,11 @@ const Builder = (() => {
           <div class="qb-item-config-row">
             <div class="qb-field qb-field--item-type qb-field--item-control">
               <label>Response Type</label>
-              <select class="qb-select qb-select--singleline" data-role="item-type" size="1">
+              <div class="qb-choice-chips" role="radiogroup" aria-label="Response Type">
                 ${QUESTION_TYPES
-                  .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
+                  .map((type) => `<label class="qb-choice-chip"><input type="radio" name="item_type_${item.clientId}" data-role="item-type" value="${type}" ${type === item.type ? 'checked' : ''}><span>${QUESTION_TYPE_LABELS[type] || type}</span></label>`)
                   .join('')}
-              </select>
+              </div>
             </div>
             <div class="qb-item-toggles">
               <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
@@ -1172,11 +1172,11 @@ const Builder = (() => {
               </div>
               <div class="qb-field qb-field--item-condition qb-field--item-control">
                 <label>Condition</label>
-                <select class="qb-select qb-select--singleline" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
+                <div class="qb-choice-chips" role="radiogroup" aria-label="Condition">
                   ${CONDITION_OPERATORS
-                    .map((operator) => `<option value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'selected' : ''}>${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`)
+                    .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${conditionEnabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
                     .join('')}
-                </select>
+                </div>
               </div>
               <div class="qb-field">
                 <label>Condition value</label>
