@@ -1144,7 +1144,7 @@ const Builder = (() => {
           <div class="qb-item-config-row">
             <div class="qb-field qb-field--item-type qb-field--item-control">
               <label>Response Type</label>
-              <select class="qb-select qb-select--singleline" data-role="item-type" size="1">
+              <select class="qb-select qb-select--userlike" data-role="item-type" size="1">
                 ${QUESTION_TYPES
                   .map((type) => `<option value="${type}" ${type === item.type ? 'selected' : ''}>${QUESTION_TYPE_LABELS[type] || type}</option>`)
                   .join('')}
@@ -1172,7 +1172,7 @@ const Builder = (() => {
               </div>
               <div class="qb-field qb-field--item-condition qb-field--item-control">
                 <label>Condition</label>
-                <select class="qb-select qb-select--singleline" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
+                <select class="qb-select qb-select--userlike" data-role="item-condition-operator" size="1" ${conditionEnabled ? '' : 'disabled'}>
                   ${CONDITION_OPERATORS
                     .map((operator) => `<option value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'selected' : ''}>${CONDITION_OPERATOR_LABELS[operator] || operator}</option>`)
                     .join('')}
