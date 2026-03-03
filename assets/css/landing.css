@@ -20,10 +20,7 @@ body.landing-body {
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--app-text-primary, #0f1c31);
-  background:
-    radial-gradient(140% 140% at 15% 20%, color-mix(in srgb, var(--md-primary) 18%, transparent) 0%, transparent 72%),
-    radial-gradient(120% 120% at 85% 5%, color-mix(in srgb, var(--md-accent) 14%, transparent) 0%, transparent 74%),
-    color-mix(in srgb, var(--md-bg) 78%, #0f172a 22%);
+  background: linear-gradient(135deg, #f4f7fb 0%, #eaf0f7 100%);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -38,9 +35,12 @@ body.landing-body {
   position: sticky;
   top: 0;
   z-index: 12;
-  backdrop-filter: blur(12px);
-  background: color-mix(in srgb, var(--md-surface) 90%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+  background: linear-gradient(
+    135deg,
+    var(--app-primary, #0d63d9) 0%,
+    color-mix(in srgb, var(--app-primary, #0d63d9) 70%, #2ba7ff 30%) 100%
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--app-primary, #0d63d9) 72%, #ffffff 28%);
 }
 
 .landing-topbar__inner {
@@ -62,7 +62,7 @@ body.landing-body {
 
 .landing-nav a {
   text-decoration: none;
-  color: var(--app-text-primary, #10213d);
+  color: #f7fbff;
   font-weight: 600;
   font-size: 0.95rem;
   padding: 0.4rem 0.65rem;
@@ -71,8 +71,8 @@ body.landing-body {
 
 .landing-nav a:hover,
 .landing-nav a:focus-visible {
-  color: var(--landing-primary);
-  background: color-mix(in srgb, var(--landing-primary) 10%, transparent);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
 }
 
 
@@ -187,6 +187,7 @@ body.landing-body {
   backdrop-filter: blur(12px);
   box-shadow: var(--landing-shadow-sm);
   text-decoration: none;
+  color: #f7fbff;
 }
 
 .landing-brand__logo {

@@ -972,7 +972,6 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
-    const deleteButton = card.querySelector('[data-role="remove-questionnaire"]');
 
     const handleTitle = () => {
       questionnaire.title = titleInput.value;
@@ -999,7 +998,6 @@ const Builder = (() => {
     };
     statusInput?.addEventListener('input', handleStatus);
     statusInput?.addEventListener('change', handleStatus);
-    deleteButton?.addEventListener('click', () => removeQuestionnaire(questionnaire));
   }
 
   function renderDeleteButton() {
@@ -1041,9 +1039,6 @@ const Builder = (() => {
   function buildQuestionnaireCard(questionnaire) {
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
-    const deleteDisabled = questionnaire.hasResponses;
-    const deleteTitle = deleteDisabled ? STRINGS.deleteQuestionnaireBlocked : STRINGS.deleteQuestionnaireLabel;
-
     return `
       <div class="qb-card" data-q="${questionnaire.clientId}">
         <div class="qb-header">
@@ -1062,12 +1057,6 @@ const Builder = (() => {
                 .map((status) => `<option value="${status}" ${status === questionnaire.status ? 'selected' : ''}>${formatStatusLabel(status)}</option>`)
                 .join('')}
             </select>
-          </div>
-          <div class="qb-field qb-actions">
-            <label class="md-visually-hidden">${escapeHtml(STRINGS.deleteQuestionnaireLabel)}</label>
-            <button type="button" class="md-button md-outline qb-danger" data-role="remove-questionnaire" ${deleteDisabled ? 'disabled' : ''} title="${escapeAttr(deleteTitle)}">
-              ${escapeHtml(STRINGS.deleteQuestionnaireLabel)}
-            </button>
           </div>
         </div>
         <div class="qb-body">
