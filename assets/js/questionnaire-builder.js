@@ -1133,7 +1133,7 @@ const Builder = (() => {
           <div class="qb-item-config-row">
             <div class="qb-field qb-field--item-type qb-field--item-control">
               <label>Response Type</label>
-              <select class="qb-select qb-select--userlike" data-role="item-type">
+              <div class="qb-choice-chips" role="radiogroup" aria-label="Response Type">
                 ${QUESTION_TYPES
                   .map((type) => `<label class="qb-choice-chip"><input type="radio" name="item_type_${item.clientId}" data-role="item-type" value="${type}" ${type === item.type ? 'checked' : ''}><span>${QUESTION_TYPE_LABELS[type] || type}</span></label>`)
                   .join('')}
@@ -1161,7 +1161,7 @@ const Builder = (() => {
               </div>
               <div class="qb-field qb-field--item-condition qb-field--item-control">
                 <label>Condition</label>
-                <select class="qb-select qb-select--userlike" data-role="item-condition-operator" ${conditionEnabled ? '' : 'disabled'}>
+                <div class="qb-choice-chips" role="radiogroup" aria-label="Condition">
                   ${CONDITION_OPERATORS
                     .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${conditionEnabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
                     .join('')}
