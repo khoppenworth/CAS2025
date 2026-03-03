@@ -933,8 +933,13 @@
   appearance: auto;
   -webkit-appearance: menulist;
   -moz-appearance: menulist;
+  display: block;
+  min-height: 2rem;
+  height: 2rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
   line-height: 1.2;
-  white-space: nowrap;
+  font-size: 0.9rem;
   background: var(--app-input-bg, var(--app-surface));
 }
 
