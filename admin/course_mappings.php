@@ -43,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $questionnaireIdValue = $questionnaireId > 0 ? $questionnaireId : null;
         $minScore = max(0, min(100, (int)($_POST['min_score'] ?? 0)));
         $maxScore = max(0, min(100, (int)($_POST['max_score'] ?? 100)));
+        $isActive = isset($_POST['is_active']) ? 1 : 0;
 
         if ($code === '' || $title === '') {
             $errors[] = t($t, 'course_mapping_error_required', 'Code and title are required.');
@@ -59,10 +60,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($errors === []) {
             $stmt = $pdo->prepare(
-                'INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score) VALUES (?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             );
-            $stmt->execute([$code, $title, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore]);
+            $stmt->execute([$code, $title, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive]);
             $_SESSION['course_mapping_flash'] = t($t, 'course_mapping_saved', 'Course mapping saved.');
+            header('Location: ' . url_for('admin/course_mappings.php'));
+            exit;
+        }
+    }
+
+    if ($action === 'update') {
+        $courseId = (int)($_POST['course_id'] ?? 0);
+        $minScore = max(0, min(100, (int)($_POST['min_score'] ?? 0)));
+        $maxScore = max(0, min(100, (int)($_POST['max_score'] ?? 100)));
+        $isActive = isset($_POST['is_active']) ? 1 : 0;
+
+        if ($courseId <= 0) {
+            $errors[] = t($t, 'course_mapping_error_not_found', 'Select a valid course mapping.');
+        }
+        if ($minScore > $maxScore) {
+            $errors[] = t($t, 'course_mapping_error_score_range', 'Minimum score must be less than or equal to maximum score.');
+        }
+
+        if ($errors === []) {
+            $pdo->prepare('UPDATE course_catalogue SET min_score = ?, max_score = ?, is_active = ? WHERE id = ?')->execute([$minScore, $maxScore, $isActive, $courseId]);
+            $_SESSION['course_mapping_flash'] = t($t, 'course_mapping_updated', 'Course mapping updated.');
             header('Location: ' . url_for('admin/course_mappings.php'));
             exit;
         }
@@ -80,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $listStmt = $pdo->query(
-    'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
+    'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active '
     . 'FROM course_catalogue ORDER BY recommended_for, questionnaire_id IS NULL, questionnaire_id, min_score, title'
 );
 $mappings = $listStmt ? $listStmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -139,6 +161,9 @@ $drawerKey = 'admin.course_mappings';
       <label><?=t($t, 'max_score', 'Maximum Score')?>
         <input class="md-input" type="number" name="max_score" min="0" max="100" value="100" required>
       </label>
+      <label class="md-check">
+        <input type="checkbox" name="is_active" value="1" checked> <?=t($t, 'active', 'Active')?>
+      </label>
       <button type="submit" class="md-button"><?=t($t, 'save', 'Save')?></button>
     </form>
   </div>
@@ -146,7 +171,7 @@ $drawerKey = 'admin.course_mappings';
   <div class="md-card md-elev-2">
     <h3 class="md-card-title"><?=t($t, 'configured_course_mappings', 'Configured Mappings')?></h3>
     <table class="md-table">
-      <thead><tr><th><?=t($t, 'course_code', 'Course Code')?></th><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'moodle_url', 'Moodle URL')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
+      <thead><tr><th><?=t($t, 'course_code', 'Course Code')?></th><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'moodle_url', 'Moodle URL')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
       <tbody>
       <?php foreach ($mappings as $row): ?>
         <?php $rowQuestionnaireId = (int)($row['questionnaire_id'] ?? 0); ?>
@@ -155,10 +180,23 @@ $drawerKey = 'admin.course_mappings';
           <td><?=htmlspecialchars((string)$row['title'])?></td>
           <td><?=htmlspecialchars((string)($workFunctions[(string)$row['recommended_for']] ?? $row['recommended_for']))?></td>
           <td><?=htmlspecialchars($rowQuestionnaireId > 0 ? ($questionnaireOptions[$rowQuestionnaireId] ?? ('#' . $rowQuestionnaireId)) : t($t, 'all_questionnaires', 'All Questionnaires'), ENT_QUOTES, 'UTF-8')?></td>
-          <td><?= (int)$row['min_score'] ?> - <?= (int)$row['max_score'] ?>%</td>
+          <td>
+            <form method="post" class="md-form-inline">
+              <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
+              <input class="md-input" style="width:70px" type="number" name="min_score" min="0" max="100" value="<?= (int)$row['min_score'] ?>" required>
+              -
+              <input class="md-input" style="width:70px" type="number" name="max_score" min="0" max="100" value="<?= (int)$row['max_score'] ?>" required>%
+          </td>
+          <td>
+              <label class="md-check"><input type="checkbox" name="is_active" value="1" <?=((int)($row['is_active'] ?? 1) === 1 ? 'checked' : '')?>> <?=((int)($row['is_active'] ?? 1) === 1 ? t($t, 'active', 'Active') : t($t, 'inactive', 'Inactive'))?></label>
+          </td>
           <td><?php if (!empty($row['moodle_url'])): ?><a href="<?=htmlspecialchars((string)$row['moodle_url'])?>" target="_blank" rel="noopener"><?=htmlspecialchars((string)$row['moodle_url'])?></a><?php else: ?>—<?php endif; ?></td>
           <td>
-            <form method="post" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_mapping', 'Delete this mapping?'), ENT_QUOTES, 'UTF-8')?>');">
+              <button type="submit" class="md-button md-outline"><?=t($t, 'save', 'Save')?></button>
+            </form>
+            <form method="post" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_mapping', 'Delete this mapping?'), ENT_QUOTES, 'UTF-8')?>');" style="margin-top:8px;">
               <input type="hidden" name="csrf" value="<?=csrf_token()?>">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">

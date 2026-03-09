@@ -21,6 +21,7 @@ function ensure_course_recommendation_schema(PDO $pdo): void
                 . 'questionnaire_id INTEGER NULL, '
                 . 'min_score INTEGER NOT NULL DEFAULT 0, '
                 . 'max_score INTEGER NOT NULL DEFAULT 100, '
+                . 'is_active INTEGER NOT NULL DEFAULT 1, '
                 . 'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'
                 . ')');
             $pdo->exec('CREATE TABLE IF NOT EXISTS training_recommendation ('
@@ -32,6 +33,11 @@ function ensure_course_recommendation_schema(PDO $pdo): void
                 . ')');
             try {
                 $pdo->exec('ALTER TABLE course_catalogue ADD COLUMN questionnaire_id INTEGER NULL');
+            } catch (Throwable $e) {
+                // Ignore duplicate-column errors.
+            }
+            try {
+                $pdo->exec('ALTER TABLE course_catalogue ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
             } catch (Throwable $e) {
                 // Ignore duplicate-column errors.
             }
@@ -47,6 +53,7 @@ function ensure_course_recommendation_schema(PDO $pdo): void
             . 'questionnaire_id INT NULL, '
             . 'min_score INT NOT NULL DEFAULT 0, '
             . 'max_score INT NOT NULL DEFAULT 100, '
+            . 'is_active TINYINT(1) NOT NULL DEFAULT 1, '
             . 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, '
             . 'INDEX idx_course_catalogue_match (recommended_for, questionnaire_id, min_score, max_score)'
             . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
@@ -59,6 +66,11 @@ function ensure_course_recommendation_schema(PDO $pdo): void
             $pdo->exec('CREATE INDEX idx_course_catalogue_match ON course_catalogue (recommended_for, questionnaire_id, min_score, max_score)');
         } catch (Throwable $e) {
             // Ignore duplicate index errors.
+        }
+        try {
+            $pdo->exec('ALTER TABLE course_catalogue ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER max_score');
+        } catch (Throwable $e) {
+            // Ignore duplicate-column errors.
         }
 
         $pdo->exec('CREATE TABLE IF NOT EXISTS training_recommendation ('
@@ -85,7 +97,7 @@ function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $q
             $stmt = $pdo->prepare(
                 'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
                 . 'FROM course_catalogue '
-                . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? '
+                . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? AND is_active = 1 '
                 . 'AND (questionnaire_id = ? OR questionnaire_id IS NULL) '
                 . 'ORDER BY questionnaire_id IS NULL ASC, min_score ASC, title ASC'
             );
@@ -97,7 +109,7 @@ function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $q
         $stmt = $pdo->prepare(
             'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
             . 'FROM course_catalogue '
-            . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? '
+            . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? AND is_active = 1 '
             . 'AND questionnaire_id IS NULL '
             . 'ORDER BY min_score ASC, title ASC'
         );
