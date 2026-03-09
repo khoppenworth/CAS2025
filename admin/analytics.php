@@ -577,6 +577,7 @@ usort($kpiBreakdownRows, static function (array $a, array $b): int {
 
 $selectedResponses = [];
 $selectedUserBreakdown = [];
+$trainingRecommendationReport = [];
 $sectionColumns = [];
 $sectionScoresByResponse = [];
 $sectionAggregates = [];
@@ -895,6 +896,19 @@ $workFunctionSummary = [];
 $departmentSummary = [];
 $teamSummary = [];
 try {
+    $trainingRecommendationStmt = $pdo->query(
+        'SELECT cc.id AS course_id, cc.title AS course_title, '
+        . 'COUNT(DISTINCT qr.user_id) AS recommended_staff_count, '
+        . "GROUP_CONCAT(DISTINCT CONCAT_WS(' ', NULLIF(u.full_name, ''), CONCAT('(', u.username, ')')) ORDER BY u.full_name, u.username SEPARATOR '; ') AS recommended_staff "
+        . 'FROM training_recommendation tr '
+        . 'JOIN course_catalogue cc ON cc.id = tr.course_id '
+        . 'JOIN questionnaire_response qr ON qr.id = tr.questionnaire_response_id '
+        . 'JOIN users u ON u.id = qr.user_id '
+        . 'GROUP BY cc.id, cc.title '
+        . 'ORDER BY recommended_staff_count DESC, cc.title ASC'
+    );
+    $trainingRecommendationReport = $trainingRecommendationStmt ? $trainingRecommendationStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
     $workFunctionStmt = $pdo->query(
         "SELECT u.work_function, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
@@ -1788,6 +1802,32 @@ $pageHelpKey = 'team.analytics';
       <?php endif; ?>
     </div>
   <?php endif; ?>
+
+  <div class="md-card md-elev-2">
+    <h2 class="md-card-title"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></h2>
+    <?php if ($trainingRecommendationReport): ?>
+      <table class="md-table">
+        <thead>
+          <tr>
+            <th><?=t($t, 'training_course', 'Training')?></th>
+            <th><?=t($t, 'recommended_staff_count', 'Recommended staff')?></th>
+            <th><?=t($t, 'staff_members', 'Staff members')?></th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($trainingRecommendationReport as $row): ?>
+            <tr>
+              <td><?=htmlspecialchars($row['course_title'] ?? t($t, 'unknown', 'Unknown'), ENT_QUOTES, 'UTF-8')?></td>
+              <td><?= (int)($row['recommended_staff_count'] ?? 0) ?></td>
+              <td><?=htmlspecialchars((string)($row['recommended_staff'] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php else: ?>
+      <p class="md-upgrade-meta"><?=t($t, 'training_recommendation_report_empty', 'No training recommendations have been recorded yet.')?></p>
+    <?php endif; ?>
+  </div>
 
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'department_performance', 'Department Performance')?></h2>
