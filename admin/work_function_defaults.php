@@ -113,6 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
             header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
         }
+        if ($mode === 'role_add') {
+            $label = trim((string)($_POST['label'] ?? ''));
+            if ($label === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
+            create_work_function($pdo, $label);
+            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_created','Work function added.');
+            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+        }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             $label = trim((string)($_POST['label'] ?? ''));
@@ -260,6 +267,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <span class="md-defaults-meta"><?=count($workRoles)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </summary>
       <div class="md-defaults-group-body">
+        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="role_add"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" placeholder="<?=htmlspecialchars(t($t,'work_function_label_placeholder','e.g. Community Health'), ENT_QUOTES, 'UTF-8')?>" required></label><button type="submit" class="md-button md-primary"><?=t($t,'work_function_add','Add work function')?></button></form>
         <?php foreach ($workRoles as $slug => $record): if (($record['archived_at'] ?? null)!==null) continue; ?>
           <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="role_archive" onclick="return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');"><?=t($t,'work_function_archive','Archive')?></button></form>
         <?php endforeach; ?>
