@@ -241,9 +241,40 @@ const Builder = (() => {
       condition_source_linkid: item.condition_source_linkid || '',
       condition_operator: normalizeConditionOperatorValue(item.condition_operator),
       condition_value: item.condition_value || '',
+      condition_enabled: toBoolean(item.condition_enabled, Boolean((item.condition_source_linkid || '').trim())),
+      condition_draft_source_linkid: item.condition_source_linkid || '',
+      condition_draft_operator: normalizeConditionOperatorValue(item.condition_operator),
+      condition_draft_value: item.condition_value || '',
     };
     ensureSingleChoiceCorrect(normalized);
     return normalized;
+  }
+
+  function conditionOperatorLabel(operator) {
+    const normalized = normalizeConditionOperatorValue(operator);
+    return CONDITION_OPERATOR_LABELS[normalized] || normalized;
+  }
+
+  function isConditionEnabled(item) {
+    return toBoolean(item.condition_enabled, Boolean((item.condition_source_linkid || '').trim()));
+  }
+
+  function setConditionEnabled(item, enabled) {
+    const nextEnabled = Boolean(enabled);
+    item.condition_enabled = nextEnabled;
+    if (!nextEnabled) {
+      item.condition_draft_source_linkid = item.condition_source_linkid || item.condition_draft_source_linkid || '';
+      item.condition_draft_operator = normalizeConditionOperatorValue(item.condition_operator || item.condition_draft_operator || 'equals');
+      item.condition_draft_value = item.condition_value || item.condition_draft_value || '';
+      item.condition_source_linkid = '';
+      item.condition_operator = 'equals';
+      item.condition_value = '';
+      return;
+    }
+
+    item.condition_source_linkid = item.condition_draft_source_linkid || item.condition_source_linkid || '';
+    item.condition_operator = normalizeConditionOperatorValue(item.condition_draft_operator || item.condition_operator || 'equals');
+    item.condition_value = item.condition_draft_value || item.condition_value || '';
   }
 
   function normalizeOption(option) {
@@ -547,7 +578,7 @@ const Builder = (() => {
     const label = item.text?.trim() || STRINGS.previewOptionPlaceholder;
     const required = item.is_required ? `<span class="qb-preview-required">${escapeHtml(STRINGS.previewRequiredTag)}</span>` : '';
     const condition = item.condition_source_linkid
-      ? `<p class="qb-preview-condition">${escapeHtml(STRINGS.previewConditionPrefix)} <code>${escapeHtml(item.condition_source_linkid)}</code> ${escapeHtml(item.condition_operator || 'equals')} <strong>${escapeHtml(item.condition_value || '')}</strong></p>`
+      ? `<p class="qb-preview-condition">${escapeHtml(STRINGS.previewConditionPrefix)} <code>${escapeHtml(item.condition_source_linkid)}</code> ${escapeHtml(conditionOperatorLabel(item.condition_operator || 'equals'))} <strong>${escapeHtml(item.condition_value || '')}</strong></p>`
       : '';
 
     return `
@@ -776,7 +807,16 @@ const Builder = (() => {
           condition_source_linkid: itemNode.querySelector('[data-role="item-condition-source"]')?.value || '',
           condition_operator: normalizeConditionOperatorValue((itemNode.querySelector('[data-role="item-condition-operator"]:checked') || itemNode.querySelector('[data-role="item-condition-operator"]'))?.value || 'equals'),
           condition_value: itemNode.querySelector('[data-role="item-condition-value"]')?.value || '',
+          condition_enabled: Boolean(itemNode.querySelector('[data-role="item-condition-enabled"]')?.checked),
         };
+        parsed.condition_draft_source_linkid = parsed.condition_source_linkid;
+        parsed.condition_draft_operator = parsed.condition_operator;
+        parsed.condition_draft_value = parsed.condition_value;
+        if (!parsed.condition_enabled) {
+          parsed.condition_source_linkid = '';
+          parsed.condition_operator = 'equals';
+          parsed.condition_value = '';
+        }
         ensureSingleChoiceCorrect(parsed);
         return parsed;
       });
@@ -1112,8 +1152,7 @@ const Builder = (() => {
   function buildItemRow(questionnaire, sectionClientId, item) {
     const scorable = isScorable(item.type);
     const showRequiresCorrect = item.type === 'choice' && !item.allow_multiple;
-    const conditionEnabled = Boolean(item.condition_source_linkid);
-    const optionsHtml = ['choice', 'likert'].includes(item.type)
+        const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item)
       : '';
     return `
@@ -1152,30 +1191,49 @@ const Builder = (() => {
             </div>
           </div>
 
-          <div class="qb-item-condition-card">
-            <p class="qb-item-condition-title">Display condition (optional)</p>
-            <div class="qb-item-condition-grid">
-              <div class="qb-field">
-                <label>Show when question code</label>
-                <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
-              </div>
-              <div class="qb-field qb-field--item-condition qb-field--item-control">
-                <label>Condition</label>
-                <div class="qb-choice-chips" role="radiogroup" aria-label="Condition">
-                  ${CONDITION_OPERATORS
-                    .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${conditionEnabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
-                    .join('')}
-                </div>
-              </div>
-              <div class="qb-field">
-                <label>Condition value</label>
-                <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${conditionEnabled ? '' : 'disabled'}>
-              </div>
-            </div>
-          </div>
+          ${buildConditionTile(item)}
         </div>
         <div class="qb-item-secondary">
           ${optionsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+
+  function buildConditionTile(item) {
+    const enabled = isConditionEnabled(item);
+    const sourceValue = enabled ? (item.condition_source_linkid || '') : (item.condition_draft_source_linkid || '');
+    const operatorValue = enabled
+      ? normalizeConditionOperatorValue(item.condition_operator || 'equals')
+      : normalizeConditionOperatorValue(item.condition_draft_operator || 'equals');
+    const conditionValue = enabled ? (item.condition_value || '') : (item.condition_draft_value || '');
+    const sourceError = enabled && !String(sourceValue).trim();
+    return `
+      <div class="qb-item-condition-card ${enabled ? 'is-enabled' : 'is-disabled'}">
+        <div class="qb-item-condition-head">
+          <p class="qb-item-condition-title">Display condition (optional)</p>
+          <label class="qb-chip-toggle qb-chip-toggle--condition-enable"><input type="checkbox" data-role="item-condition-enabled" ${enabled ? 'checked' : ''}> Show this question conditionally</label>
+        </div>
+        <p class="qb-item-condition-help">When enabled, this question appears only when another question response matches this rule.</p>
+        <div class="qb-item-condition-grid">
+          <div class="qb-field">
+            <label>When question code is</label>
+            <input type="text" data-role="item-condition-source" value="${escapeAttr(sourceValue)}" placeholder="e.g. q_department" ${enabled ? '' : 'disabled'}>
+            ${sourceError ? '<span class="qb-field-hint qb-field-hint--error">Select a source question code to use conditional display.</span>' : '<span class="qb-field-hint">Use the exact Question Code from another item.</span>'}
+          </div>
+          <div class="qb-field qb-field--item-condition qb-field--item-control">
+            <label>Rule</label>
+            <div class="qb-choice-chips" role="radiogroup" aria-label="Condition">
+              ${CONDITION_OPERATORS
+                .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === operatorValue ? 'checked' : ''} ${enabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
+                .join('')}
+            </div>
+          </div>
+          <div class="qb-field">
+            <label>Expected value</label>
+            <input type="text" data-role="item-condition-value" value="${escapeAttr(conditionValue)}" placeholder="Expected answer" ${enabled ? '' : 'disabled'}>
+          </div>
         </div>
       </div>
     `;
@@ -1419,6 +1477,7 @@ const Builder = (() => {
       case 'item-requires-correct':
       case 'item-active':
       case 'item-condition-source':
+      case 'item-condition-enabled':
       case 'item-condition-operator':
       case 'item-condition-value':
       case 'option-value':
@@ -1429,7 +1488,7 @@ const Builder = (() => {
         return;
     }
     markDirty();
-    if (['item-type', 'item-multi', 'item-requires-correct', 'item-condition-source'].includes(role)) {
+    if (['item-type', 'item-multi', 'item-requires-correct', 'item-condition-enabled'].includes(role)) {
       const itemRow = event.target.closest('[data-item]');
       rerenderItemRow(questionnaire, itemRow);
     }
@@ -1561,17 +1620,31 @@ const Builder = (() => {
         if (!item.hasResponses) item.is_active = input.checked;
         break;
       case 'item-condition-source':
-        item.condition_source_linkid = input.value.trim();
-        if (!item.condition_source_linkid) {
-          item.condition_operator = 'equals';
-          item.condition_value = '';
+        if (isConditionEnabled(item)) {
+          item.condition_source_linkid = input.value.trim();
+          item.condition_draft_source_linkid = item.condition_source_linkid;
+        } else {
+          item.condition_draft_source_linkid = input.value.trim();
         }
         break;
+      case 'item-condition-enabled':
+        setConditionEnabled(item, input.checked);
+        break;
       case 'item-condition-operator':
-        item.condition_operator = normalizeConditionOperatorValue(input.value || 'equals');
+        if (isConditionEnabled(item)) {
+          item.condition_operator = normalizeConditionOperatorValue(input.value || 'equals');
+          item.condition_draft_operator = item.condition_operator;
+        } else {
+          item.condition_draft_operator = normalizeConditionOperatorValue(input.value || 'equals');
+        }
         break;
       case 'item-condition-value':
-        item.condition_value = input.value;
+        if (isConditionEnabled(item)) {
+          item.condition_value = input.value;
+          item.condition_draft_value = input.value;
+        } else {
+          item.condition_draft_value = input.value;
+        }
         break;
       case 'option-value': {
         const optId = input.closest('[data-option]')?.getAttribute('data-option');
@@ -1993,6 +2066,7 @@ const Builder = (() => {
   }
 
   function serializeItem(item, orderIndex) {
+    const conditionEnabled = isConditionEnabled(item);
     return {
       id: item.id || undefined,
       clientId: item.clientId,
@@ -2004,9 +2078,11 @@ const Builder = (() => {
       allow_multiple: item.allow_multiple && item.type === 'choice',
       is_required: item.is_required,
       requires_correct: item.requires_correct && item.type === 'choice' && !item.allow_multiple,
-      condition_source_linkid: (item.condition_source_linkid || '').trim(),
-      condition_operator: normalizeConditionOperatorValue(item.condition_operator || 'equals'),
-      condition_value: item.condition_value || '',
+      condition_source_linkid: conditionEnabled ? (item.condition_source_linkid || '').trim() : '',
+      condition_operator: conditionEnabled
+        ? normalizeConditionOperatorValue(item.condition_operator || 'equals')
+        : 'equals',
+      condition_value: conditionEnabled ? (item.condition_value || '') : '',
       is_active: item.is_active,
       options: ['choice', 'likert'].includes(item.type)
         ? item.options.map((opt, idx) => ({
