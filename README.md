@@ -173,6 +173,8 @@ permissions, and relevant PHP configuration such as `upload_max_filesize`, `post
 
 A built-in Swagger UI is available to administrators at `/swagger.php` (linked under **Administration → API Documentation**).
 The page renders the OpenAPI definition stored at `docs/openapi.json`, covering FHIR resources and internal helper endpoints.
+For SAP ERP integrations, see `docs/sap-erp-integration-mapping-template.md` for a practical field-mapping and reliability
+checklist template.
 
 ## Internationalisation
 
