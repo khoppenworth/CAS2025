@@ -41,6 +41,44 @@ $departmentOptions = department_options($pdo);
 $teams = department_team_catalog($pdo);
 $workRoles = work_function_catalog($pdo);
 
+$statusFilter = strtolower(trim((string)($_GET['status'] ?? 'active')));
+if (!in_array($statusFilter, ['active', 'inactive', 'all'], true)) {
+    $statusFilter = 'active';
+}
+$buildRedirect = static function () use ($statusFilter): string {
+    $path = url_for('admin/work_function_defaults.php');
+    return $statusFilter === 'active' ? $path : $path . '?status=' . urlencode($statusFilter);
+};
+
+
+$matchesStatusFilter = static function (?string $archivedAt) use ($statusFilter): bool {
+    if ($statusFilter === 'all') {
+        return true;
+    }
+    $isArchived = $archivedAt !== null && trim((string)$archivedAt) !== '';
+    if ($statusFilter === 'inactive') {
+        return $isArchived;
+    }
+    return !$isArchived;
+};
+
+$activeDepartmentCount = count($departmentOptions);
+$totalDepartmentCount = count($departments);
+$activeTeamCount = 0;
+foreach ($teams as $record) {
+    if (($record['archived_at'] ?? null) === null) {
+        $activeTeamCount++;
+    }
+}
+$totalTeamCount = count($teams);
+$activeWorkRoleCount = 0;
+foreach ($workRoles as $record) {
+    if (($record['archived_at'] ?? null) === null) {
+        $activeWorkRoleCount++;
+    }
+}
+$totalWorkRoleCount = count($workRoles);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode = (string)($_POST['mode'] ?? '');
@@ -58,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sort = count($departments) + 1;
             $pdo->prepare('INSERT INTO department_catalog (slug,label,sort_order) VALUES (?,?,?)')->execute([$slug,$label,$sort]);
             $_SESSION[$metadataFlashKey] = t($t,'department_created','Department added.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'department_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -66,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET label=? WHERE slug=?')->execute([$label,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'department_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -78,8 +116,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
-            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department disabled.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department archived.');
+            header('Location: ' . $buildRedirect()); exit;
+        }
+        if ($mode === 'department_activate') {
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
+            $pdo->prepare('UPDATE department_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
+            $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'team_add') {
             $label = trim((string)($_POST['label'] ?? ''));
@@ -93,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sort = count($teams) + 1;
             $pdo->prepare('INSERT INTO department_team_catalog (slug,department_slug,label,sort_order) VALUES (?,?,?,?)')->execute([$slug,$departmentSlug,$label,$sort]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_created','Team added.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'team_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -102,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '' || !isset($departmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
             $pdo->prepare('UPDATE department_team_catalog SET label=?, department_slug=? WHERE slug=?')->execute([$label,$departmentSlug,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'team_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -110,15 +155,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $teamLabel = (string)($teams[$slug]['label'] ?? '');
             $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
-            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team disabled.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
+            header('Location: ' . $buildRedirect()); exit;
         }
-        if ($mode === 'role_add') {
-            $label = trim((string)($_POST['label'] ?? ''));
-            if ($label === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
-            create_work_function($pdo, $label);
-            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_created','Work function added.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+        if ($mode === 'team_activate') {
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '') throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
+            $pdo->prepare('UPDATE department_team_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
+            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -126,14 +171,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
             update_work_function_label($pdo, $slug, $label);
             $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
         if ($mode === 'role_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
             archive_work_function($pdo, $slug);
-            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_archived','Work function disabled.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_archived','Work function archived.');
+            header('Location: ' . $buildRedirect()); exit;
+        }
+        if ($mode === 'role_activate') {
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
+            $pdo->prepare('UPDATE work_function_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
+            reset_work_function_caches($pdo);
+            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
+            header('Location: ' . $buildRedirect()); exit;
         }
 
         if ($mode === 'assignments_save') {
@@ -157,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
-            header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
+            header('Location: ' . $buildRedirect()); exit;
         }
     } catch (InvalidArgumentException $e) {
         $metadataErrors[] = $e->getMessage();
@@ -225,6 +278,9 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-assignment-picker summary { padding: .5rem .7rem; cursor: pointer; font-weight: 600; }
   .md-assignment-options { max-height: 220px; overflow: auto; padding: .2rem .7rem .6rem; }
   .md-assignment-options label { display: block; margin-bottom: .28rem; font-size: .92rem; }
+  .md-filter-row { display: flex; gap: .4rem; margin: .35rem 0 .9rem; flex-wrap: wrap; }
+  .md-filter-chip { padding: .3rem .65rem; border: 1px solid rgba(0,0,0,.2); border-radius: 999px; text-decoration: none; color: inherit; font-size: .86rem; }
+  .md-filter-chip.is-active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
 </style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
@@ -235,15 +291,21 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
+    <div class="md-filter-row">
+      <a class="md-filter-chip <?=$statusFilter==='active'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>">Active</a>
+      <a class="md-filter-chip <?=$statusFilter==='inactive'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?status=inactive', ENT_QUOTES, 'UTF-8')?>">Inactive</a>
+      <a class="md-filter-chip <?=$statusFilter==='all'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?status=all', ENT_QUOTES, 'UTF-8')?>">All</a>
+    </div>
+
     <details class="md-defaults-group">
       <summary>
         <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
-        <span class="md-defaults-meta"><?=count($departmentOptions)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeDepartmentCount : ($statusFilter === 'inactive' ? ($totalDepartmentCount - $activeDepartmentCount) : $totalDepartmentCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </summary>
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
-        <?php foreach ($departments as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="department_archive"><?=t($t,'disable','Disable')?></button></form>
+        <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
@@ -251,12 +313,12 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <details class="md-defaults-group">
       <summary>
         <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></span>
-        <span class="md-defaults-meta"><?=count($teams)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeTeamCount : ($statusFilter === 'inactive' ? ($totalTeamCount - $activeTeamCount) : $totalTeamCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </summary>
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
-        <?php foreach ($teams as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="team_archive"><?=t($t,'disable','Disable')?></button></form>
+        <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
@@ -264,12 +326,11 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <details class="md-defaults-group">
       <summary>
         <span><?=htmlspecialchars(t($t,'work_function','Work Role'), ENT_QUOTES, 'UTF-8')?></span>
-        <span class="md-defaults-meta"><?=count($workRoles)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeWorkRoleCount : ($statusFilter === 'inactive' ? ($totalWorkRoleCount - $activeWorkRoleCount) : $totalWorkRoleCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </summary>
       <div class="md-defaults-group-body">
-        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="role_add"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" placeholder="<?=htmlspecialchars(t($t,'work_function_label_placeholder','e.g. Community Health'), ENT_QUOTES, 'UTF-8')?>" required></label><button type="submit" class="md-button md-primary"><?=t($t,'work_function_add','Add work function')?></button></form>
-        <?php foreach ($workRoles as $slug => $record): if (($record['archived_at'] ?? null)!==null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="role_archive" onclick="return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Disable this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');"><?=t($t,'work_function_archive','Disable')?></button></form>
+        <?php foreach ($workRoles as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
