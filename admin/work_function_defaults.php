@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
-            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department archived.');
+            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department disabled.');
             header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
         }
         if ($mode === 'team_add') {
@@ -110,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $teamLabel = (string)($teams[$slug]['label'] ?? '');
             $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
-            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
+            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team disabled.');
             header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
         }
         if ($mode === 'role_add') {
@@ -132,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
             archive_work_function($pdo, $slug);
-            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_archived','Work function archived.');
+            $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_archived','Work function disabled.');
             header('Location: ' . url_for('admin/work_function_defaults.php')); exit;
         }
 
@@ -243,7 +243,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
         <?php foreach ($departments as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="department_archive"><?=t($t,'archive','Archive')?></button></form>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="department_archive"><?=t($t,'disable','Disable')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
@@ -256,7 +256,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
         <?php foreach ($teams as $slug => $record): if (($record['archived_at'] ?? null) !== null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="team_archive"><?=t($t,'archive','Archive')?></button></form>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="team_archive"><?=t($t,'disable','Disable')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
@@ -269,7 +269,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="role_add"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" placeholder="<?=htmlspecialchars(t($t,'work_function_label_placeholder','e.g. Community Health'), ENT_QUOTES, 'UTF-8')?>" required></label><button type="submit" class="md-button md-primary"><?=t($t,'work_function_add','Add work function')?></button></form>
         <?php foreach ($workRoles as $slug => $record): if (($record['archived_at'] ?? null)!==null) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="role_archive" onclick="return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');"><?=t($t,'work_function_archive','Archive')?></button></form>
+          <form method="post" class="md-work-function-row md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="role_archive" onclick="return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Disable this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');"><?=t($t,'work_function_archive','Disable')?></button></form>
         <?php endforeach; ?>
       </div>
     </details>
