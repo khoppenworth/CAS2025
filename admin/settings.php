@@ -2,6 +2,98 @@
 $fatalError = null;
 $fatalDebugDetails = null;
 
+
+if (!function_exists('settings_sanitize_sql')) {
+    function settings_sanitize_sql(string $sql): string
+    {
+        $sql = preg_replace('/\/\*.*?\*\//s', '', $sql) ?? $sql;
+        $lines = preg_split('/\r\n|\r|\n/', $sql) ?: [];
+        $clean = [];
+        foreach ($lines as $line) {
+            $trimmed = ltrim($line);
+            if (str_starts_with($trimmed, '--') || str_starts_with($trimmed, '#')) {
+                continue;
+            }
+            $clean[] = $line;
+        }
+        return implode("\n", $clean);
+    }
+}
+
+if (!function_exists('settings_split_sql_statements')) {
+    function settings_split_sql_statements(string $sql): array
+    {
+        $statements = [];
+        $buffer = '';
+        $inString = false;
+        $stringChar = '';
+        $len = strlen($sql);
+
+        for ($i = 0; $i < $len; $i++) {
+            $char = $sql[$i];
+            if ($inString) {
+                if ($char === $stringChar) {
+                    $escaped = $i > 0 && $sql[$i - 1] === '\\';
+                    if (!$escaped) {
+                        $inString = false;
+                        $stringChar = '';
+                    }
+                }
+                $buffer .= $char;
+                continue;
+            }
+
+            if ($char === '\'' || $char === '"') {
+                $inString = true;
+                $stringChar = $char;
+                $buffer .= $char;
+                continue;
+            }
+
+            if ($char === ';') {
+                $trimmed = trim($buffer);
+                if ($trimmed !== '') {
+                    $statements[] = $trimmed;
+                }
+                $buffer = '';
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        $trimmed = trim($buffer);
+        if ($trimmed !== '') {
+            $statements[] = $trimmed;
+        }
+
+        return $statements;
+    }
+}
+
+if (!function_exists('settings_apply_sql_file')) {
+    function settings_apply_sql_file(PDO $pdo, string $path): int
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            throw new RuntimeException('SQL seed file not found: ' . $path);
+        }
+
+        $sql = file_get_contents($path);
+        if ($sql === false) {
+            throw new RuntimeException('Unable to read SQL seed file: ' . $path);
+        }
+
+        $statements = settings_split_sql_statements(settings_sanitize_sql($sql));
+        $count = 0;
+        foreach ($statements as $statement) {
+            $pdo->exec($statement);
+            $count++;
+        }
+
+        return $count;
+    }
+}
+
 try {
     require_once __DIR__ . '/../config.php';
     auth_required(['admin']);
@@ -37,6 +129,28 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
 
+        $demoDatasetAction = trim((string)($_POST['demo_dataset_action'] ?? ''));
+        if (in_array($demoDatasetAction, ['enable', 'disable'], true)) {
+            try {
+                $pdo->beginTransaction();
+                if ($demoDatasetAction === 'enable') {
+                    $executed = settings_apply_sql_file($pdo, __DIR__ . '/../dummy_data.sql');
+                    $msg = t($t, 'demo_dataset_enabled', 'Demo dataset has been enabled.') . ' ' . sprintf(t($t, 'demo_dataset_statements_executed', '%d SQL statements executed.'), $executed);
+                } else {
+                    $executed = settings_apply_sql_file($pdo, __DIR__ . '/../dummy_data_cleanup.sql');
+                    $msg = t($t, 'demo_dataset_disabled', 'Demo dataset has been disabled and cleaned up.') . ' ' . sprintf(t($t, 'demo_dataset_statements_executed', '%d SQL statements executed.'), $executed);
+                }
+                $pdo->commit();
+            } catch (Throwable $datasetException) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $errors[] = t($t, 'demo_dataset_toggle_failed', 'Unable to toggle demo dataset right now.') . ' ' . $datasetException->getMessage();
+            }
+            $cfg = get_site_config($pdo);
+            $enabledLocales = site_enabled_locales($cfg);
+            $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+        } else {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
         $local_login_enabled = isset($_POST['local_login_enabled']) ? 1 : 0;
         $google_oauth_enabled = isset($_POST['google_oauth_enabled']) ? 1 : 0;
@@ -178,6 +292,7 @@ try {
         }
         if ($errors !== []) {
             $enabledLocales = $selectedLocales;
+        }
         }
     }
 } catch (Throwable $e) {
@@ -333,6 +448,15 @@ $pageHelpKey = 'admin.settings';
           <label class="md-field md-field-textarea"><span><?=t($t,'email_html_body','HTML Body')?></span><textarea name="email_templates[<?=$key?>][html]" rows="8"><?=htmlspecialchars($emailTemplates[$key]['html'] ?? '')?></textarea></label>
         </div>
       <?php endforeach; ?>
+      <h3 class="md-subhead">
+        <?=t($t,'demo_dataset_heading','Demo Dataset')?>
+        <?=render_help_icon(t($t,'demo_dataset_hint','Load sample users, assessments, analytics history, and training recommendations for demonstrations. Disable to remove the seeded demo records.'))?>
+      </h3>
+      <p class="md-help-note"><?=t($t,'demo_dataset_note','These actions only affect records created by the demo seed files (demo_* users and EPSA-* training mappings).')?></p>
+      <div class="md-form-actions" style="justify-content:flex-start; gap:10px;">
+        <button class="md-button md-secondary" type="submit" name="demo_dataset_action" value="enable"><?=t($t,'demo_dataset_enable','Enable Demo Dataset')?></button>
+        <button class="md-button" type="submit" name="demo_dataset_action" value="disable"><?=t($t,'demo_dataset_disable','Disable Demo Dataset')?></button>
+      </div>
       <div class="md-form-actions">
         <button class="md-button md-primary md-elev-2"><?=t($t,'save','Save Changes')?></button>
       </div>
