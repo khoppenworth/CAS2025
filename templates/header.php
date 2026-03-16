@@ -134,13 +134,6 @@ if ($profileInitials === '') {
       <span class="md-status-dot" aria-hidden="true"></span>
       <span class="md-status-label visually-hidden"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
     </button>
-    <button
-      type="button"
-      class="md-appbar-link md-appbar-theme-toggle"
-      data-theme-toggle
-      aria-label="<?=htmlspecialchars(t($t, 'theme_switch_to_dark', 'Switch to dark theme'), ENT_QUOTES, 'UTF-8')?>"
-      title="<?=htmlspecialchars(t($t, 'theme_mode_auto', 'Auto'), ENT_QUOTES, 'UTF-8')?>"
-    >☀️</button>
     <a
       href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
       class="md-appbar-link md-appbar-language"
