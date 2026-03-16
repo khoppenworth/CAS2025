@@ -272,46 +272,6 @@ if ($profileInitials === '') {
     window.AppConnectivity = globalConnectivity;
 
     var onReady = function () {
-      var indicator = document.querySelector('[data-status-indicator]');
-      if (indicator) {
-        var label = indicator.querySelector('.md-status-label');
-        var onlineText = indicator.getAttribute('data-online-text') || 'Online';
-        var offlineText = indicator.getAttribute('data-offline-text') || 'Offline';
-
-        var applyState = function (state) {
-          var isOnline = state && typeof state.online === 'boolean' ? state.online : globalConnectivity.isOnline();
-          var forced = state && typeof state.forcedOffline === 'boolean' ? state.forcedOffline : globalConnectivity.isForcedOffline();
-          indicator.classList.toggle('is-offline', !isOnline);
-          indicator.setAttribute('data-status', isOnline ? 'online' : 'offline');
-          indicator.setAttribute('aria-checked', isOnline ? 'true' : 'false');
-          if (forced) {
-            indicator.setAttribute('data-mode', 'manual');
-          } else {
-            indicator.removeAttribute('data-mode');
-          }
-          if (label) {
-            label.textContent = isOnline ? onlineText : offlineText;
-          }
-        };
-
-        if (globalConnectivity && typeof globalConnectivity.subscribe === 'function') {
-          globalConnectivity.subscribe(applyState);
-        } else {
-          var updateStatus = function () {
-            applyState({ online: navigator.onLine, forcedOffline: false });
-          };
-          window.addEventListener('online', updateStatus);
-          window.addEventListener('offline', updateStatus);
-          updateStatus();
-        }
-
-        indicator.addEventListener('click', function () {
-          if (globalConnectivity && typeof globalConnectivity.toggleForcedOffline === 'function') {
-            globalConnectivity.toggleForcedOffline();
-          }
-        });
-      }
-
       var reloadButton = document.getElementById('appbar-reload-btn');
       if (reloadButton) {
         var performReload = function () {
