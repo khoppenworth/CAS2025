@@ -119,23 +119,6 @@ if ($profileInitials === '') {
   <div class="md-appbar-actions">
     <button
       type="button"
-      class="md-appbar-link md-appbar-theme-toggle md-appbar-connectivity md-status-indicator"
-      data-status-indicator
-      data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
-      data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
-      role="switch"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-checked="true"
-      data-status="online"
-      aria-label="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-      title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-    >
-      <span class="md-status-dot" aria-hidden="true"></span>
-      <span class="md-status-label visually-hidden"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
-    </button>
-    <button
-      type="button"
       class="md-appbar-link md-appbar-theme-toggle"
       data-theme-toggle
       aria-label="<?=htmlspecialchars(t($t, 'theme_switch_to_dark', 'Switch to dark theme'), ENT_QUOTES, 'UTF-8')?>"
@@ -279,46 +262,6 @@ if ($profileInitials === '') {
     window.AppConnectivity = globalConnectivity;
 
     var onReady = function () {
-      var indicator = document.querySelector('[data-status-indicator]');
-      if (indicator) {
-        var label = indicator.querySelector('.md-status-label');
-        var onlineText = indicator.getAttribute('data-online-text') || 'Online';
-        var offlineText = indicator.getAttribute('data-offline-text') || 'Offline';
-
-        var applyState = function (state) {
-          var isOnline = state && typeof state.online === 'boolean' ? state.online : globalConnectivity.isOnline();
-          var forced = state && typeof state.forcedOffline === 'boolean' ? state.forcedOffline : globalConnectivity.isForcedOffline();
-          indicator.classList.toggle('is-offline', !isOnline);
-          indicator.setAttribute('data-status', isOnline ? 'online' : 'offline');
-          indicator.setAttribute('aria-checked', isOnline ? 'true' : 'false');
-          if (forced) {
-            indicator.setAttribute('data-mode', 'manual');
-          } else {
-            indicator.removeAttribute('data-mode');
-          }
-          if (label) {
-            label.textContent = isOnline ? onlineText : offlineText;
-          }
-        };
-
-        if (globalConnectivity && typeof globalConnectivity.subscribe === 'function') {
-          globalConnectivity.subscribe(applyState);
-        } else {
-          var updateStatus = function () {
-            applyState({ online: navigator.onLine, forcedOffline: false });
-          };
-          window.addEventListener('online', updateStatus);
-          window.addEventListener('offline', updateStatus);
-          updateStatus();
-        }
-
-        indicator.addEventListener('click', function () {
-          if (globalConnectivity && typeof globalConnectivity.toggleForcedOffline === 'function') {
-            globalConnectivity.toggleForcedOffline();
-          }
-        });
-      }
-
       var reloadButton = document.getElementById('appbar-reload-btn');
       if (reloadButton) {
         var performReload = function () {
