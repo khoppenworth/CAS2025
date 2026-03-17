@@ -1660,7 +1660,7 @@ $pageHelpKey = 'team.analytics';
           <thead>
             <tr>
               <th><?=t($t, 'user', 'User')?></th>
-              <th><?=t($t, 'performance_period', 'Performance Period')?></th>
+              <th><?=t($t, 'performance_period', 'Asessment Period')?></th>
               <th><?=t($t, 'status', 'Status')?></th>
               <th><?=t($t, 'score', 'Score (%)')?></th>
               <th><?=t($t, 'proficiency_level', 'Proficiency level')?></th>
@@ -1704,7 +1704,7 @@ $pageHelpKey = 'team.analytics';
             <thead>
               <tr>
                 <th><?=t($t, 'user', 'User')?></th>
-                <th><?=t($t, 'performance_period', 'Performance Period')?></th>
+                <th><?=t($t, 'performance_period', 'Asessment Period')?></th>
                 <th><?=t($t, 'status', 'Status')?></th>
                 <th><?=t($t, 'score', 'Score (%)')?></th>
                 <?php foreach ($sectionColumns as $col): ?>
