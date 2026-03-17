@@ -155,7 +155,15 @@ $matchesCondition = static function (array $item, array $valuesByLinkId) use ($n
     }
 
     $expected = trim((string)($item['condition_value'] ?? ''));
+    if ($expected === '') {
+        return true;
+    }
     $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
+
+    if (!array_key_exists($source, $valuesByLinkId)) {
+        return true;
+    }
+
     $candidateValues = [];
     foreach (($valuesByLinkId[$source] ?? []) as $value) {
         $candidateValues[] = trim((string)$value);
@@ -1535,6 +1543,12 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     const evaluateConditionMatch = (operator, expected, candidateValues) => {
       const expectedLower = String(expected || '').trim().toLowerCase();
       const normalizedCandidates = candidateValues.map((value) => String(value || '').trim().toLowerCase());
+      if (expectedLower === '') {
+        return true;
+      }
+      if (normalizedCandidates.length === 0) {
+        return true;
+      }
       const equals = normalizedCandidates.includes(expectedLower);
       const contains = expectedLower !== '' && normalizedCandidates.some((value) => value.includes(expectedLower));
       if (operator === 'contains') {
