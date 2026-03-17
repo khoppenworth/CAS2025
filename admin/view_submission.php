@@ -6,6 +6,9 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$user = current_user();
+$role = $user['role'] ?? ($_SESSION['user']['role'] ?? null);
+$department = trim((string)($user['department'] ?? ''));
 
 $responseId = (int)($_GET['id'] ?? 0);
 $notFound = false;
@@ -14,16 +17,27 @@ $questionnaireItems = [];
 $answerMap = [];
 
 if ($responseId > 0) {
-    $stmt = $pdo->prepare(
-        'SELECT qr.*, u.username, u.full_name, u.email, q.title AS questionnaire_title, pp.label AS period_label '
+    $baseSql = 'SELECT qr.*, u.username, u.full_name, u.email, q.title AS questionnaire_title, pp.label AS period_label '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'JOIN questionnaire q ON q.id = qr.questionnaire_id '
-        . 'LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id '
-        . 'WHERE qr.id = ?'
-    );
-    $stmt->execute([$responseId]);
-    $response = $stmt->fetch();
+        . 'LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id ';
+
+    if ($role === 'supervisor') {
+        if ($department === '') {
+            $stmt = null;
+            $response = false;
+        } else {
+            $stmt = $pdo->prepare($baseSql . 'WHERE qr.id = ? AND u.department = ?');
+            $stmt->execute([$responseId, $department]);
+        }
+    } else {
+        $stmt = $pdo->prepare($baseSql . 'WHERE qr.id = ?');
+        $stmt->execute([$responseId]);
+    }
+    if ($stmt instanceof PDOStatement) {
+        $response = $stmt->fetch();
+    }
 
     if ($response) {
         $itemStmt = $pdo->prepare(
