@@ -445,7 +445,7 @@
   "other": "Autre",
   "password": "Mot de passe",
   "password_reset_required": "Veuillez définir un nouveau mot de passe avant de continuer.",
-  "password_too_short": "Le mot de passe doit contenir au moins 6 caractères.",
+  "password_too_short": "Le mot de passe doit contenir au moins 8 caractères et inclure au moins un chiffre ou symbole.",
   "pause": "Mettre en pause",
   "pending_account_notice": "Votre compte est en attente d’approbation du superviseur. Vous pouvez mettre à jour votre profil en attendant.",
   "pending_accounts": "Approbations en attente",
@@ -743,5 +743,8 @@
   "work_function_performance": "Performance par fonction",
   "year": "Année",
   "yes": "Oui",
-  "your_trend": "Votre tendance"
+  "your_trend": "Votre tendance",
+  "password_policy_invalid": "Le mot de passe doit contenir au moins 8 caractères et inclure au moins un chiffre ou symbole.",
+  "password_policy_title": "Exigences du mot de passe non respectées",
+  "password_policy_body": "Utilisez au moins 8 caractères et incluez au moins un chiffre ou symbole."
 }

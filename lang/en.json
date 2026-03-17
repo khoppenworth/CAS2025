@@ -445,7 +445,7 @@
   "other": "Other",
   "password": "Password",
   "password_reset_required": "Please set a new password before continuing.",
-  "password_too_short": "Password must be at least 6 characters long.",
+  "password_too_short": "Password must be at least 8 characters and include at least one number or symbol.",
   "pause": "Pause",
   "pending_account_notice": "Your account is pending supervisor approval. You can update your profile while you wait.",
   "pending_accounts": "Pending approvals",
@@ -766,5 +766,8 @@
   "department_created": "Department added.",
   "department_updated": "Department updated.",
   "department_archived": "Department disabled.",
-  "invalid_department": "Select a valid department."
+  "invalid_department": "Select a valid department.",
+  "password_policy_invalid": "Password must be at least 8 characters and include at least one number or symbol.",
+  "password_policy_title": "Password requirements not met",
+  "password_policy_body": "Use at least 8 characters and include at least one number or symbol."
 }
