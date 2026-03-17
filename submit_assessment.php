@@ -1417,6 +1417,35 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       return missingFields;
     };
 
+    const focusFirstUsableControl = (field) => {
+      if (!(field instanceof HTMLElement)) {
+        return;
+      }
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      const firstFocusable = controls.find((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return false;
+        }
+        return !control.disabled
+          && control.tabIndex !== -1
+          && (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement);
+      });
+      if (firstFocusable && typeof firstFocusable.focus === 'function') {
+        firstFocusable.focus({ preventScroll: true });
+      }
+    };
+
+    const navigateToQuestionField = (field) => {
+      if (!(field instanceof HTMLElement)) {
+        return;
+      }
+      field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      focusFirstUsableControl(field);
+      if (!desktopMedia.matches) {
+        setNavOpen(false);
+      }
+    };
+
     navLinks.forEach((link) => {
       link.addEventListener('click', (event) => {
         const targetSelector = link.getAttribute('href') || link.getAttribute('data-target');
@@ -2023,14 +2052,19 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const isFinalSubmit = submitAction === 'submit_final';
         const finalSubmitConfirmationMessage = 'Please review your responses carefully before submitting. Once submitted, you will not be able to make any changes.';
 
+        clearMissingQuestionHighlights();
+        if (isFinalSubmit) {
+          const missingFields = applyMissingQuestionHighlights();
+          if (missingFields.length > 0) {
+            event.preventDefault();
+            navigateToQuestionField(missingFields[0]);
+            return;
+          }
+        }
+
         if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
           event.preventDefault();
           return;
-        }
-
-        clearMissingQuestionHighlights();
-        if (isFinalSubmit) {
-          applyMissingQuestionHighlights();
         }
 
         if (!isAppOnline()) {
