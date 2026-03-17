@@ -240,7 +240,7 @@ if ($rows) {
     $pdf->addTable([
         t($t, 'year', 'Year'),
         t($t, 'questionnaire', 'Questionnaire'),
-        t($t, 'performance_period', 'Performance Period'),
+        t($t, 'performance_period', 'Asessment Period'),
         t($t, 'score', 'Score (%)'),
         t($t, 'proficiency_level', 'Proficiency level'),
         t($t, 'status', 'Status'),

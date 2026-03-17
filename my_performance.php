@@ -270,7 +270,7 @@ $pageHelpKey = 'workspace.my_performance';
       <p><?=t($t,'no_trend_data','Submit assessments to generate your performance trend.')?></p>
     <?php endif; ?>
     <table class="md-table">
-      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Performance Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'proficiency_level','Proficiency level')?></th><th><?=t($t,'status','Status')?></th><th><?=t($t,'actions','Actions')?></th></tr></thead>
+      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Asessment Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'proficiency_level','Proficiency level')?></th><th><?=t($t,'status','Status')?></th><th><?=t($t,'actions','Actions')?></th></tr></thead>
       <tbody>
       <?php foreach ($responses as $r): ?>
         <?php
@@ -550,7 +550,7 @@ $pageHelpKey = 'workspace.my_performance';
 
       const gridColor = cssVar('--app-border', '--brand-border') || 'rgba(17, 56, 94, 0.08)';
       const yAxisLabel = <?=json_encode(t($t,'score','Score (%)'), $chartDataFlags)?>;
-      const xAxisLabel = <?=json_encode(t($t,'performance_period','Performance Period'), $chartDataFlags)?>;
+      const xAxisLabel = <?=json_encode(t($t,'performance_period','Asessment Period'), $chartDataFlags)?>;
 
       let chartConfig;
       if (isModern) {

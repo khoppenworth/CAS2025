@@ -1047,7 +1047,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       </select>
     </label>
     <label class="md-field">
-      <span><?=t($t,'performance_period','Performance Period')?></span>
+      <span><?=t($t,'performance_period','Asessment Period')?></span>
       <select name="performance_period_id" data-performance-period-select>
         <?php foreach ($periods as $period): ?>
           <?php
