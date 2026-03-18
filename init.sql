@@ -101,7 +101,9 @@ CREATE TABLE questionnaire (
   title VARCHAR(255) NOT NULL,
   description TEXT NULL,
   status ENUM('draft','published','inactive') NOT NULL DEFAULT 'draft',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  family_key VARCHAR(100) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_questionnaire_family_key (family_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE performance_period (

@@ -124,6 +124,7 @@
   "col_full_name": "Full name, if provided",
   "col_period": "Assessment year label linked to the response",
   "col_questionnaire_id": "Identifier of the questionnaire template",
+  "col_questionnaire_family_key": "Stable family key used to group yearly questionnaire versions",
   "col_questionnaire_title": "Title of the questionnaire",
   "col_response_id": "Unique identifier of the questionnaire response",
   "col_review_comment": "Supervisor or admin review comment",

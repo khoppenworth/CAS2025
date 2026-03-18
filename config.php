@@ -540,6 +540,7 @@ function initialize_database_schema(PDO $pdo): void
     }
 
     ensure_site_config_schema($pdo);
+    ensure_questionnaire_schema($pdo);
     ensure_users_schema($pdo);
     ensure_questionnaire_item_schema($pdo);
     ensure_questionnaire_work_function_schema($pdo);
@@ -551,6 +552,52 @@ function initialize_database_schema(PDO $pdo): void
     ensure_analytics_report_schedule_schema($pdo);
 
     $schemaInitialized = true;
+}
+
+function ensure_questionnaire_schema(PDO $pdo): void
+{
+    $existing = [];
+    try {
+        $columns = $pdo->query('SHOW COLUMNS FROM questionnaire');
+        if ($columns) {
+            foreach ($columns->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $field = isset($column['Field']) ? (string)$column['Field'] : '';
+                if ($field !== '') {
+                    $existing[$field] = true;
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema: ' . $e->getMessage());
+        return;
+    }
+
+    try {
+        if (!isset($existing['status'])) {
+            $pdo->exec("ALTER TABLE questionnaire ADD COLUMN status ENUM('draft','published','inactive') NOT NULL DEFAULT 'draft' AFTER description");
+        }
+        if (!isset($existing['family_key'])) {
+            $pdo->exec("ALTER TABLE questionnaire ADD COLUMN family_key VARCHAR(100) NULL AFTER status");
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema add column failed: ' . $e->getMessage());
+    }
+
+    try {
+        $indexStmt = $pdo->query("SHOW INDEX FROM questionnaire WHERE Key_name = 'idx_questionnaire_family_key'");
+        $hasIndex = $indexStmt && $indexStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hasIndex) {
+            $pdo->exec('CREATE INDEX idx_questionnaire_family_key ON questionnaire (family_key)');
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema index failed: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("UPDATE questionnaire SET family_key = CONCAT('questionnaire-', id) WHERE family_key IS NULL OR TRIM(family_key) = ''");
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema family backfill failed: ' . $e->getMessage());
+    }
 }
 
 function decode_enabled_locales($value): array

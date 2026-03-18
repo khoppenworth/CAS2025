@@ -486,6 +486,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'title' => $row['title'],
             'description' => $row['description'],
             'status' => strtolower((string)($row['status'] ?? 'draft')),
+            'family_key' => trim((string)($row['family_key'] ?? '')) !== '' ? (string)$row['family_key'] : 'questionnaire-' . $qid,
             'created_at' => $row['created_at'],
             'sections' => $sections,
             'items' => $itemsByQuestionnaire[$qid] ?? [],
@@ -763,6 +764,7 @@ if ($action === 'save' || $action === 'publish') {
     $supportsOptionCorrect = false;
     $supportsOptionOrder = false;
     $supportsQuestionnaireStatus = false;
+    $supportsQuestionnaireFamilyKey = false;
     try {
         $questionnaireColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire');
         $questionnaireColumns = [];
@@ -775,6 +777,7 @@ if ($action === 'save' || $action === 'publish') {
             }
         }
         $supportsQuestionnaireStatus = isset($questionnaireColumns['status']);
+        $supportsQuestionnaireFamilyKey = isset($questionnaireColumns['family_key']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire columns fetch failed: ' . $columnError->getMessage());
     }
@@ -853,7 +856,26 @@ if ($action === 'save' || $action === 'publish') {
 
     $pdo->beginTransaction();
     try {
-        if ($supportsQuestionnaireStatus) {
+        $generateFamilyKey = static function (?string $candidate = null): string {
+            $normalized = trim((string)$candidate);
+            if ($normalized !== '') {
+                $normalized = preg_replace('/[^a-zA-Z0-9_-]+/', '-', strtolower($normalized));
+                $normalized = trim((string)$normalized, '-');
+            }
+            if ($normalized === '') {
+                try {
+                    $normalized = 'questionnaire-' . bin2hex(random_bytes(8));
+                } catch (Throwable $_) {
+                    $normalized = 'questionnaire-' . uniqid('', true);
+                }
+            }
+            return substr($normalized, 0, 100);
+        };
+
+        if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+            $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status, family_key) VALUES (?, ?, ?, ?)');
+            $updateQuestionnaireStmt = $pdo->prepare('UPDATE questionnaire SET title=?, description=?, status=?, family_key=? WHERE id=?');
+        } elseif ($supportsQuestionnaireStatus) {
             $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
             $updateQuestionnaireStmt = $pdo->prepare('UPDATE questionnaire SET title=?, description=?, status=? WHERE id=?');
         } else {
@@ -1120,6 +1142,7 @@ if ($action === 'save' || $action === 'publish') {
             $title = trim((string)($qData['title'] ?? ''));
             $description = $qData['description'] ?? null;
             $status = strtolower(trim((string)($qData['status'] ?? '')));
+            $familyKey = trim((string)($qData['family_key'] ?? ''));
             if (!in_array($status, ['draft', 'published', 'inactive'], true)) {
                 $status = 'draft';
             }
@@ -1133,16 +1156,26 @@ if ($action === 'save' || $action === 'publish') {
                     $status = 'published';
                 }
             }
+            if ($qid && isset($questionnaireMap[$qid]) && $familyKey === '') {
+                $familyKey = (string)($questionnaireMap[$qid]['family_key'] ?? '');
+            }
+            $familyKey = $generateFamilyKey($familyKey !== '' ? $familyKey : ($title !== '' ? $title : null));
 
             if ($qid && isset($questionnaireMap[$qid])) {
-                if ($supportsQuestionnaireStatus) {
+                if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+                    $updateQuestionnaireStmt->execute([$title, $description, $status, $familyKey, $qid]);
+                    $questionnaireMap[$qid]['status'] = $status;
+                    $questionnaireMap[$qid]['family_key'] = $familyKey;
+                } elseif ($supportsQuestionnaireStatus) {
                     $updateQuestionnaireStmt->execute([$title, $description, $status, $qid]);
                     $questionnaireMap[$qid]['status'] = $status;
                 } else {
                     $updateQuestionnaireStmt->execute([$title, $description, $qid]);
                 }
             } else {
-                if ($supportsQuestionnaireStatus) {
+                if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+                    $insertQuestionnaireStmt->execute([$title, $description, $status, $familyKey]);
+                } elseif ($supportsQuestionnaireStatus) {
                     $insertQuestionnaireStmt->execute([$title, $description, $status]);
                 } else {
                     $insertQuestionnaireStmt->execute([$title, $description]);
@@ -1156,6 +1189,7 @@ if ($action === 'save' || $action === 'publish') {
                     'title' => $title,
                     'description' => $description,
                     'status' => $status,
+                    'family_key' => $familyKey,
                 ];
             }
             $questionnaireSeen[] = $qid;
