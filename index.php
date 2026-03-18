@@ -8,6 +8,8 @@ $availableLocales = available_locales();
 $defaultLocale = $availableLocales[0] ?? 'en';
 
 $logoRenderPath = site_logo_url($cfg);
+$landingBackgroundRenderPath = site_landing_background_url($cfg);
+$landingTextRaw = trim((string)($cfg['landing_text'] ?? ''));
 
 $logo = htmlspecialchars($logoRenderPath, ENT_QUOTES, 'UTF-8');
 $logoAlt = htmlspecialchars($cfg['site_name'] ?? 'Logo', ENT_QUOTES, 'UTF-8');
@@ -21,7 +23,27 @@ $loginUrl = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
 $heroEyebrow = htmlspecialchars(t($t, 'hero_eyebrow', 'National performance excellence platform'), ENT_QUOTES, 'UTF-8');
 $heroTitle = htmlspecialchars(t($t, 'hero_title', 'Bring every performance conversation into one vibrant workspace'), ENT_QUOTES, 'UTF-8');
-$heroSubtitle = htmlspecialchars(t($t, 'hero_subtitle', 'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.'), ENT_QUOTES, 'UTF-8');
+$heroSubtitle = htmlspecialchars(
+    $landingTextRaw !== ''
+        ? $landingTextRaw
+        : t($t, 'hero_subtitle', 'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.'),
+    ENT_QUOTES,
+    'UTF-8'
+);
+$heroDescription = htmlspecialchars(
+    trim(preg_replace('/\s+/', ' ', strip_tags($landingTextRaw !== '' ? $landingTextRaw : t($t, 'hero_subtitle', 'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.')))),
+    ENT_QUOTES,
+    'UTF-8'
+);
+$landingHeroClass = 'landing-section landing-section--hero';
+$landingHeroStyle = '';
+if ($landingBackgroundRenderPath !== '') {
+    $landingHeroClass .= ' landing-section--hero-image';
+    $landingHeroStyle = sprintf(
+        "--landing-hero-image: url('%s');",
+        htmlspecialchars($landingBackgroundRenderPath, ENT_QUOTES, 'UTF-8')
+    );
+}
 $heroBadgeOne = htmlspecialchars(t($t, 'hero_badge_one', 'Goal alignment'), ENT_QUOTES, 'UTF-8');
 $heroBadgeTwo = htmlspecialchars(t($t, 'hero_badge_two', '360° feedback'), ENT_QUOTES, 'UTF-8');
 $heroBadgeThree = htmlspecialchars(t($t, 'hero_badge_three', 'Learning insights'), ENT_QUOTES, 'UTF-8');
@@ -87,6 +109,7 @@ $newsCards = [
   <meta charset="utf-8">
   <title><?= $siteName ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="<?= $heroDescription ?>">
   <meta name="app-base-url" content="<?= $baseUrl ?>">
   <link rel="manifest" href="<?= asset_url('manifest.php') ?>">
   <link rel="stylesheet" href="<?= asset_url('assets/css/material.css') ?>">
@@ -109,8 +132,8 @@ $newsCards = [
     </header>
 
     <main class="landing-main" aria-labelledby="features-heading">
-      <section class="landing-section landing-section--hero">
-        <div class="landing-hero-panel">
+      <section class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>">
+        <div class="landing-hero-panel"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
           <div class="landing-hero-copy">
             <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
             <h1 class="landing-hero-copy__title"><?= $heroTitle ?></h1>
