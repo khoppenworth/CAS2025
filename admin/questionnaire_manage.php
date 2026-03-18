@@ -1333,22 +1333,18 @@ if ($action === 'save' || $action === 'publish') {
 
             $itemsToDelete = array_diff(array_keys($existingItems), $itemSeen);
             if ($itemsToDelete) {
-                $itemsToDeactivate = [];
                 $itemsToRemove = [];
                 foreach ($itemsToDelete as $itemId) {
                     $row = $existingItems[$itemId] ?? [];
                     $linkId = isset($row['linkId']) ? (string)$row['linkId'] : '';
                     $hasResponses = $linkId !== '' && !empty($itemResponsePresence[$qid][$linkId] ?? null);
                     if ($hasResponses) {
-                        $itemsToDeactivate[] = $itemId;
-                    } else {
-                        $itemsToRemove[] = $itemId;
+                        // Preserve answered items if they are omitted from payload.
+                        // This prevents accidental mass-deactivation when the client submits
+                        // an incomplete questionnaire graph.
+                        continue;
                     }
-                }
-                if ($itemsToDeactivate && $supportsItemActive) {
-                    $placeholders = implode(',', array_fill(0, count($itemsToDeactivate), '?'));
-                    $stmt = $pdo->prepare("UPDATE questionnaire_item SET is_active=0 WHERE id IN ($placeholders)");
-                    $stmt->execute(array_values($itemsToDeactivate));
+                    $itemsToRemove[] = $itemId;
                 }
                 if ($itemsToRemove) {
                     $placeholders = implode(',', array_fill(0, count($itemsToRemove), '?'));
@@ -1381,7 +1377,6 @@ if ($action === 'save' || $action === 'publish') {
 
         $sectionsToDelete = array_diff(array_keys($existingSections), $sectionSeen);
         if ($sectionsToDelete) {
-            $sectionsToDeactivate = [];
             $sectionsToRemove = [];
             foreach ($sectionsToDelete as $sectionId) {
                 $hasResponses = false;
@@ -1395,21 +1390,10 @@ if ($action === 'save' || $action === 'publish') {
                     }
                 }
                 if ($hasResponses) {
-                    $sectionsToDeactivate[] = $sectionId;
-                } else {
-                    $sectionsToRemove[] = $sectionId;
+                    // Preserve answered sections when omitted from payload.
+                    continue;
                 }
-            }
-            if ($sectionsToDeactivate) {
-                $placeholders = implode(',', array_fill(0, count($sectionsToDeactivate), '?'));
-                if ($supportsSectionActive) {
-                    $stmt = $pdo->prepare("UPDATE questionnaire_section SET is_active=0 WHERE id IN ($placeholders)");
-                    $stmt->execute(array_values($sectionsToDeactivate));
-                }
-                if ($supportsItemActive) {
-                    $stmt = $pdo->prepare("UPDATE questionnaire_item SET is_active=0 WHERE section_id IN ($placeholders)");
-                    $stmt->execute(array_values($sectionsToDeactivate));
-                }
+                $sectionsToRemove[] = $sectionId;
             }
             if ($sectionsToRemove) {
                 $placeholders = implode(',', array_fill(0, count($sectionsToRemove), '?'));
