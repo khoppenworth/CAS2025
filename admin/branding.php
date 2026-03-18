@@ -343,19 +343,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label class="md-field"><span><?=t($t,'address_label','Address')?></span><input name="address" value="<?=htmlspecialchars($cfg['address'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'contact_label','Contact')?></span><input name="contact" value="<?=htmlspecialchars($cfg['contact'] ?? '')?>"></label>
       <h3 class="md-subhead"><?=t($t,'appearance_settings','Appearance')?></h3>
-      <label class="md-field">
-        <span><?=t($t,'color_theme','Color Theme')?></span>
-        <select name="color_theme">
-          <?php foreach ($themes as $themeValue => $themeLabel): ?>
-            <option value="<?=htmlspecialchars($themeValue, ENT_QUOTES, 'UTF-8')?>" <?=site_color_theme($cfg) === $themeValue ? 'selected' : ''?>><?=htmlspecialchars($themeLabel, ENT_QUOTES, 'UTF-8')?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
+
       <label class="md-field md-field-inline">
-        <span>
-          <?=t($t,'brand_color','Brand Color')?>
-          <?=render_help_icon(t($t,'brand_color_hint','Pick any brand color to personalize buttons, highlights, and gradients.'))?>
-        </span>
+        <span><?=t($t,'brand_color','Brand Color')?></span>
         <div class="md-color-picker" data-brand-color-picker data-default-color="<?=htmlspecialchars(site_default_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>">
           <input type="color" name="brand_color" value="<?=htmlspecialchars(site_brand_color($cfg), ENT_QUOTES, 'UTF-8')?>" aria-label="<?=t($t,'brand_color_picker','Choose a brand color')?>">
           <span class="md-color-value"><?=htmlspecialchars(strtoupper(site_brand_color($cfg)), ENT_QUOTES, 'UTF-8')?></span>
