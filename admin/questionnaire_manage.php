@@ -1128,7 +1128,9 @@ if ($action === 'save' || $action === 'publish') {
             } elseif ($qid && isset($questionnaireMap[$qid])) {
                 $existingStatus = strtolower((string)($questionnaireMap[$qid]['status'] ?? 'draft'));
                 if ($existingStatus === 'published' && $status === 'draft') {
-                    $status = 'inactive';
+                    // Keep previously published questionnaires published unless admins
+                    // explicitly switch them to inactive.
+                    $status = 'published';
                 }
             }
 

@@ -329,7 +329,11 @@ try {
 }
 $periods = $pdo->query(
     "SELECT id, label, period_start, period_end FROM performance_period " .
-    "WHERE period_start IS NULL OR period_start <= CURDATE() ORDER BY period_start DESC"
+    "WHERE (period_start IS NULL OR period_start <= CURDATE()) " .
+    "AND (period_start IS NULL OR period_end IS NULL OR (" .
+        "DATE_FORMAT(period_start, '%m-%d')='01-01' AND DATE_FORMAT(period_end, '%m-%d')='12-31'" .
+    ")) " .
+    "ORDER BY period_start DESC"
 )->fetchAll();
 $availablePeriodIds = [];
 foreach ($periods as $periodRow) {

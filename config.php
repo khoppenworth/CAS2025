@@ -547,7 +547,7 @@ function initialize_database_schema(PDO $pdo): void
     ensure_department_team_catalog($pdo);
     ensure_questionnaire_department_schema($pdo);
     ensure_questionnaire_assignment_schema($pdo);
-    ensure_biannual_performance_periods($pdo);
+    ensure_annual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
 
     $schemaInitialized = true;
@@ -1021,12 +1021,12 @@ function ensure_questionnaire_assignment_schema(PDO $pdo): void
     }
 }
 
-function ensure_biannual_performance_periods(PDO $pdo): void
+function ensure_annual_performance_periods(PDO $pdo): void
 {
     try {
         $tableCheck = $pdo->query("SHOW TABLES LIKE 'performance_period'");
     } catch (PDOException $e) {
-        error_log('ensure_biannual_performance_periods (table check): ' . $e->getMessage());
+        error_log('ensure_annual_performance_periods (table check): ' . $e->getMessage());
         return;
     }
 
@@ -1047,20 +1047,19 @@ function ensure_biannual_performance_periods(PDO $pdo): void
 
         $stmt = $pdo->prepare("INSERT INTO performance_period (label, period_start, period_end) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE period_start = VALUES(period_start), period_end = VALUES(period_end)");
         foreach ($years as $year) {
-            $h1Label = sprintf('%d H1', $year);
             $stmt->execute([
-                $h1Label,
+                (string)$year,
                 sprintf('%d-01-01', $year),
-                sprintf('%d-06-30', $year),
-            ]);
-
-            $h2Label = sprintf('%d H2', $year);
-            $stmt->execute([
-                $h2Label,
-                sprintf('%d-07-01', $year),
                 sprintf('%d-12-31', $year),
             ]);
         }
+
+        // Remove unused legacy half-year periods so new submissions are annual-only.
+        $pdo->exec(
+            "DELETE pp FROM performance_period pp "
+            . "LEFT JOIN questionnaire_response qr ON qr.performance_period_id = pp.id "
+            . "WHERE pp.label REGEXP '^[0-9]{4} H[12]$' AND qr.id IS NULL"
+        );
 
         if ($startedTransaction) {
             $pdo->commit();
@@ -1069,7 +1068,7 @@ function ensure_biannual_performance_periods(PDO $pdo): void
         if ($startedTransaction && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        error_log('ensure_biannual_performance_periods: ' . $e->getMessage());
+        error_log('ensure_annual_performance_periods: ' . $e->getMessage());
     }
 }
 
