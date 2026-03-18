@@ -36,8 +36,23 @@ if ($userId <= 0) {
     exit;
 }
 
+function resolve_questionnaire_family_key(array $row): string
+{
+    $familyKey = trim((string)($row['questionnaire_family_key'] ?? ''));
+    if ($familyKey !== '') {
+        return $familyKey;
+    }
+
+    $questionnaireId = (int)($row['questionnaire_id'] ?? 0);
+    if ($questionnaireId > 0) {
+        return 'questionnaire-' . $questionnaireId;
+    }
+
+    return 'questionnaire-unknown';
+}
+
 $periodStartSelect = $hasPeriodStartColumn ? 'pp.period_start' : 'NULL AS period_start';
-$stmt = $pdo->prepare("SELECT qr.*, q.title, COALESCE(pp.label, '') AS period_label, {$periodStartSelect}
+$stmt = $pdo->prepare("SELECT qr.*, q.title, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, COALESCE(pp.label, '') AS period_label, {$periodStartSelect}
     FROM questionnaire_response qr
     JOIN questionnaire q ON q.id = qr.questionnaire_id
     LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id
@@ -49,7 +64,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $latestEntry = null;
 $latestScores = [];
 foreach ($rows as $row) {
-    $latestScores[$row['questionnaire_id']] = $row;
+    $latestScores[resolve_questionnaire_family_key($row)] = $row;
     if ($latestEntry === null || strtotime((string) ($row['created_at'] ?? '')) > strtotime((string) ($latestEntry['created_at'] ?? ''))) {
         $latestEntry = $row;
     }

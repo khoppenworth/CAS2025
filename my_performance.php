@@ -57,9 +57,24 @@ function resolve_timeline_label(array $row): string
     return $createdAt;
 }
 
+function resolve_questionnaire_family_key(array $row): string
+{
+    $familyKey = trim((string)($row['questionnaire_family_key'] ?? ''));
+    if ($familyKey !== '') {
+        return $familyKey;
+    }
+
+    $questionnaireId = (int)($row['questionnaire_id'] ?? 0);
+    if ($questionnaireId > 0) {
+        return 'questionnaire-' . $questionnaireId;
+    }
+
+    return 'questionnaire-unknown';
+}
+
 $stmt = $pdo->prepare(
     "SELECT qr.id, qr.questionnaire_id, qr.performance_period_id, qr.status, qr.score, qr.created_at, " .
-    "q.title, COALESCE(pp.label, '') AS period_label, {$periodStartSelect} " .
+    "q.title, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, COALESCE(pp.label, '') AS period_label, {$periodStartSelect} " .
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
     "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
@@ -68,7 +83,7 @@ $stmt = $pdo->prepare(
 $stmt->execute([$user['id']]);
 
 $draftStmt = $pdo->prepare(
-    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, COALESCE(pp.label, '') AS period_label " .
+    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, COALESCE(pp.label, '') AS period_label " .
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
     "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
@@ -88,7 +103,7 @@ $timelinePoints = [];
 while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
     $responses[] = $row;
 
-    $latestScores[$row['questionnaire_id']] = $row;
+    $latestScores[resolve_questionnaire_family_key($row)] = $row;
     $latestEntry = $row;
 
     if (isset($row['score']) && $row['score'] !== null && (int)$row['score'] < 100) {

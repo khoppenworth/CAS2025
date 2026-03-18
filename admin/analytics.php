@@ -34,6 +34,21 @@ function analytics_supports_section_include_in_scoring(PDO $pdo): bool
     return false;
 }
 
+function analytics_questionnaire_family_key(array $row): string
+{
+    $familyKey = trim((string)($row['family_key'] ?? ''));
+    if ($familyKey !== '') {
+        return $familyKey;
+    }
+
+    $questionnaireId = (int)($row['questionnaire_id'] ?? ($row['id'] ?? 0));
+    if ($questionnaireId > 0) {
+        return 'questionnaire-' . $questionnaireId;
+    }
+
+    return 'questionnaire-unknown';
+}
+
 /**
  * Decode a stored questionnaire response answer payload.
  */
@@ -433,6 +448,7 @@ $summary = [];
 $totalParticipants = 0;
 $questionnaires = [];
 $responseMetaRows = [];
+$questionnaireFamilyExpr = "COALESCE(NULLIF(q.family_key, ''), CONCAT('questionnaire-', q.id))";
 try {
     $summaryStmt = $pdo->query(
         "SELECT COUNT(*) AS total_responses, "
@@ -450,7 +466,7 @@ try {
     $totalParticipants = (int)($participantStmt ? $participantStmt->fetchColumn() : 0);
 
     $questionnaireStmt = $pdo->query(
-        "SELECT q.id, q.title, COUNT(*) AS total_responses, "
+        "SELECT MIN(q.id) AS id, " . $questionnaireFamilyExpr . " AS family_key, MIN(q.title) AS title, MAX(q.id) AS latest_questionnaire_id, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "SUM(qr.status='submitted') AS submitted_count, "
         . "SUM(qr.status='draft') AS draft_count, "
@@ -458,15 +474,16 @@ try {
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
         . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
-        . "GROUP BY q.id, q.title "
-        . "ORDER BY q.title"
+        . "GROUP BY " . $questionnaireFamilyExpr . " "
+        . "ORDER BY MIN(q.title)"
     );
     $questionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
     $responseMetaStmt = $pdo->query(
-        'SELECT qr.id, qr.questionnaire_id, qr.user_id, qr.score, qr.status, u.work_function '
+        'SELECT qr.id, qr.questionnaire_id, COALESCE(q.family_key, CONCAT(\'questionnaire-\', q.id)) AS family_key, qr.user_id, qr.score, qr.status, u.work_function '
         . 'FROM questionnaire_response qr '
-        . 'JOIN users u ON u.id = qr.user_id'
+        . 'JOIN users u ON u.id = qr.user_id '
+        . 'JOIN questionnaire q ON q.id = qr.questionnaire_id'
     );
     $responseMetaRows = $responseMetaStmt ? $responseMetaStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (PDOException $e) {
@@ -482,9 +499,9 @@ $overallKpiTracker = [];
 $questionnaireKpiTracker = [];
 foreach ($responseMetaRows as $row) {
     $rid = (int)($row['id'] ?? 0);
-    $qid = (int)($row['questionnaire_id'] ?? 0);
+    $familyKey = analytics_questionnaire_family_key($row);
     $userId = (int)($row['user_id'] ?? 0);
-    if ($rid <= 0 || $qid <= 0 || $userId <= 0) {
+    if ($rid <= 0 || $familyKey === '' || $userId <= 0) {
         continue;
     }
     $status = strtolower((string)($row['status'] ?? ''));
@@ -503,8 +520,8 @@ foreach ($responseMetaRows as $row) {
     if (!isset($overallKpiTracker[$userId]) || $score > $overallKpiTracker[$userId]) {
         $overallKpiTracker[$userId] = $score;
     }
-    if (!isset($questionnaireKpiTracker[$qid][$userId]) || $score > $questionnaireKpiTracker[$qid][$userId]) {
-        $questionnaireKpiTracker[$qid][$userId] = $score;
+    if (!isset($questionnaireKpiTracker[$familyKey][$userId]) || $score > $questionnaireKpiTracker[$familyKey][$userId]) {
+        $questionnaireKpiTracker[$familyKey][$userId] = $score;
     }
 }
 
@@ -523,7 +540,7 @@ if ($overallKpiStats['total'] > 0) {
 }
 
 $questionnaireKpiStats = [];
-foreach ($questionnaireKpiTracker as $qid => $userScores) {
+foreach ($questionnaireKpiTracker as $familyKey => $userScores) {
     $totalUsers = count($userScores);
     $hitCount = 0;
     foreach ($userScores as $score) {
@@ -531,7 +548,7 @@ foreach ($questionnaireKpiTracker as $qid => $userScores) {
             $hitCount += 1;
         }
     }
-    $questionnaireKpiStats[$qid] = [
+    $questionnaireKpiStats[$familyKey] = [
         'total' => $totalUsers,
         'hit' => $hitCount,
         'percent' => $totalUsers > 0 ? round(($hitCount / $totalUsers) * 100, 1) : null,
@@ -540,9 +557,18 @@ foreach ($questionnaireKpiTracker as $qid => $userScores) {
 
 $questionnaireIds = array_map(static fn($row) => (int)$row['id'], $questionnaires);
 $selectedQuestionnaireId = (int)($_GET['questionnaire_id'] ?? 0);
+$selectedQuestionnaireFamilyKey = '';
+$selectedQuestionnaireStructureId = 0;
 if ($questionnaires) {
     if (!$selectedQuestionnaireId || !in_array($selectedQuestionnaireId, $questionnaireIds, true)) {
         $selectedQuestionnaireId = (int)$questionnaires[0]['id'];
+    }
+    foreach ($questionnaires as $questionnaireRow) {
+        if ((int)($questionnaireRow['id'] ?? 0) === $selectedQuestionnaireId) {
+            $selectedQuestionnaireFamilyKey = analytics_questionnaire_family_key($questionnaireRow);
+            $selectedQuestionnaireStructureId = (int)($questionnaireRow['latest_questionnaire_id'] ?? $selectedQuestionnaireId);
+            break;
+        }
     }
 } else {
     $selectedQuestionnaireId = 0;
@@ -554,14 +580,15 @@ if (isset($summary['avg_score']) && $summary['avg_score'] !== null) {
 
 foreach ($questionnaires as &$questionnaireRow) {
     $qid = (int)($questionnaireRow['id'] ?? 0);
+    $familyKey = analytics_questionnaire_family_key($questionnaireRow);
     if ($questionnaireRow['avg_score'] !== null) {
         $questionnaireRow['avg_score'] = (float)$questionnaireRow['avg_score'];
     } elseif (isset($questionnaireFallbackAverages[$qid])) {
         $questionnaireRow['avg_score'] = $questionnaireFallbackAverages[$qid];
     }
-    $questionnaireRow['kpi_total_users'] = $questionnaireKpiStats[$qid]['total'] ?? 0;
-    $questionnaireRow['kpi_hit_users'] = $questionnaireKpiStats[$qid]['hit'] ?? 0;
-    $questionnaireRow['kpi_percent'] = $questionnaireKpiStats[$qid]['percent'] ?? null;
+    $questionnaireRow['kpi_total_users'] = $questionnaireKpiStats[$familyKey]['total'] ?? 0;
+    $questionnaireRow['kpi_hit_users'] = $questionnaireKpiStats[$familyKey]['hit'] ?? 0;
+    $questionnaireRow['kpi_percent'] = $questionnaireKpiStats[$familyKey]['percent'] ?? null;
 }
 unset($questionnaireRow);
 
@@ -600,6 +627,7 @@ SELECT
   qr.review_comment,
   pp.label AS performance_period,
   q.id AS questionnaire_id,
+  COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key,
   q.title AS questionnaire_title,
   u.id AS user_id,
   u.username,
@@ -677,19 +705,20 @@ foreach ($questionnaires as $qRow) {
         ]),
     ];
 }
-if ($selectedQuestionnaireId) {
+if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
     try {
     $supportsSectionIncludeInScoring = analytics_supports_section_include_in_scoring($pdo);
     $responseStmt = $pdo->prepare(
         'SELECT qr.id, qr.status, qr.score, qr.created_at, qr.review_comment, '
         . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, pp.label AS period_label '
         . 'FROM questionnaire_response qr '
+        . 'JOIN questionnaire q ON q.id = qr.questionnaire_id '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id '
-        . 'WHERE qr.questionnaire_id = ? '
+        . 'WHERE ' . $questionnaireFamilyExpr . ' = ? '
         . 'ORDER BY qr.created_at DESC'
     );
-    $responseStmt->execute([$selectedQuestionnaireId]);
+    $responseStmt->execute([$selectedQuestionnaireFamilyKey]);
     $selectedResponses = $responseStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $userStmt = $pdo->prepare(
@@ -698,12 +727,13 @@ if ($selectedQuestionnaireId) {
         . "SUM(qr.status='approved') AS approved_count, "
         . 'AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
+        . 'JOIN questionnaire q ON q.id = qr.questionnaire_id '
         . 'JOIN users u ON u.id = qr.user_id '
-        . 'WHERE qr.questionnaire_id = ? '
+        . 'WHERE ' . $questionnaireFamilyExpr . ' = ? '
         . 'GROUP BY u.id, u.username, u.full_name, u.department, u.cadre, u.work_function '
         . 'ORDER BY avg_score DESC'
     );
-    $userStmt->execute([$selectedQuestionnaireId]);
+    $userStmt->execute([$selectedQuestionnaireFamilyKey]);
     $selectedUserBreakdown = $userStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($selectedResponses) {
@@ -713,7 +743,7 @@ if ($selectedQuestionnaireId) {
         $sectionStmt = $pdo->prepare(
             'SELECT id, title, ' . $sectionIncludeSelect . ' FROM questionnaire_section WHERE questionnaire_id=? ORDER BY order_index, id'
         );
-        $sectionStmt->execute([$selectedQuestionnaireId]);
+        $sectionStmt->execute([$selectedQuestionnaireStructureId]);
         $sectionLabels = [];
         $sectionOrder = [];
         foreach ($sectionStmt->fetchAll(PDO::FETCH_ASSOC) as $sectionRow) {
@@ -733,7 +763,7 @@ if ($selectedQuestionnaireId) {
             . 'FROM questionnaire_item qi LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
             . 'WHERE qi.questionnaire_id=? ORDER BY qi.order_index, qi.id'
         );
-        $itemStmt->execute([$selectedQuestionnaireId]);
+        $itemStmt->execute([$selectedQuestionnaireStructureId]);
         $rawItems = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $itemIds = [];

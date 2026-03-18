@@ -105,9 +105,45 @@ PREPARE stmt FROM @q_status_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @q_family_key_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire'
+    AND COLUMN_NAME = 'family_key'
+);
+SET @q_family_key_sql = IF(
+  @q_family_key_exists = 0,
+  "ALTER TABLE questionnaire ADD COLUMN family_key VARCHAR(100) NULL AFTER status",
+  'DO 1'
+);
+PREPARE stmt FROM @q_family_key_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 UPDATE questionnaire
 SET status = 'draft'
 WHERE status IS NULL OR status NOT IN ('draft','published','inactive');
+
+UPDATE questionnaire
+SET family_key = CONCAT('questionnaire-', id)
+WHERE family_key IS NULL OR TRIM(family_key) = '';
+
+SET @q_family_key_index_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire'
+    AND INDEX_NAME = 'idx_questionnaire_family_key'
+);
+SET @q_family_key_index_sql = IF(
+  @q_family_key_index_exists = 0,
+  'CREATE INDEX idx_questionnaire_family_key ON questionnaire (family_key)',
+  'DO 1'
+);
+PREPARE stmt FROM @q_family_key_index_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 SET @existing_published := (
   SELECT COUNT(*)

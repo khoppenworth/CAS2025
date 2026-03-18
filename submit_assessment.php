@@ -161,7 +161,7 @@ $matchesCondition = static function (array $item, array $valuesByLinkId) use ($n
     $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
 
     if (!array_key_exists($source, $valuesByLinkId)) {
-        return true;
+        return false;
     }
 
     $candidateValues = [];
@@ -329,7 +329,11 @@ try {
 }
 $periods = $pdo->query(
     "SELECT id, label, period_start, period_end FROM performance_period " .
-    "WHERE period_start IS NULL OR period_start <= CURDATE() ORDER BY period_start DESC"
+    "WHERE (period_start IS NULL OR period_start <= CURDATE()) " .
+    "AND (period_start IS NULL OR period_end IS NULL OR (" .
+        "DATE_FORMAT(period_start, '%m-%d')='01-01' AND DATE_FORMAT(period_end, '%m-%d')='12-31'" .
+    ")) " .
+    "ORDER BY period_start DESC"
 )->fetchAll();
 $availablePeriodIds = [];
 foreach ($periods as $periodRow) {
@@ -1474,6 +1478,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (!(element instanceof HTMLElement)) {
           continue;
         }
+        if (element.disabled) {
+          continue;
+        }
         const normalizedName = normalizeConditionLinkId(element.getAttribute('name') || '');
         if (!normalizedName) {
           continue;
@@ -1576,7 +1583,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         return true;
       }
       if (normalizedCandidates.length === 0) {
-        return true;
+        return false;
       }
       const equals = normalizedCandidates.includes(expectedLower);
       const contains = expectedLower !== '' && normalizedCandidates.some((value) => value.includes(expectedLower));
@@ -1591,13 +1598,21 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const runVisibilityEngine = () => {
       const fields = questionFields();
-      const maxPasses = 25;
+      const conditionalFields = fields.filter((field) =>
+        normalizeConditionLinkId(field.getAttribute('data-condition-source') || '') !== ''
+        || normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '') !== ''
+      );
+      if (conditionalFields.length === 0) {
+        return;
+      }
+
+      const maxPasses = 8;
 
       for (let pass = 0; pass < maxPasses; pass += 1) {
         const valuesByLinkId = collectCurrentValuesByLinkId();
         let changed = false;
 
-        fields.forEach((field) => {
+        conditionalFields.forEach((field) => {
           const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
           const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
           const operator = String(field.getAttribute('data-condition-operator') || 'equals').trim().toLowerCase();
@@ -1630,20 +1645,32 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    let visibilityRunQueued = false;
+    const scheduleVisibilityEngine = () => {
+      if (visibilityRunQueued) {
+        return;
+      }
+      visibilityRunQueued = true;
+      window.requestAnimationFrame(() => {
+        visibilityRunQueued = false;
+        runVisibilityEngine();
+      });
+    };
+
     const handleQuestionValueChange = (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        runVisibilityEngine();
+        scheduleVisibilityEngine();
       }
     };
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    runVisibilityEngine();
+    scheduleVisibilityEngine();
     const isAppOnline = () => {
       if (connectivity) {
         try {

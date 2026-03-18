@@ -22,6 +22,7 @@ if ($downloadRequested) {
         'work_function',
         'account_status',
         'questionnaire_id',
+        'questionnaire_family_key',
         'questionnaire_title',
         'status',
         'score_percent',
@@ -32,7 +33,7 @@ if ($downloadRequested) {
         'reviewer_full_name',
         'review_comment',
     ]);
-    $sql = "SELECT qr.id, u.username, u.full_name, u.email, u.role, u.work_function, u.account_status, qr.questionnaire_id, q.title AS questionnaire_title, qr.status, qr.score, pp.label AS period_label, qr.created_at, qr.reviewed_at, reviewer.username AS reviewer_username, reviewer.full_name AS reviewer_full_name, qr.review_comment FROM questionnaire_response qr JOIN users u ON u.id = qr.user_id LEFT JOIN questionnaire q ON q.id = qr.questionnaire_id LEFT JOIN users reviewer ON reviewer.id = qr.reviewed_by LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id ORDER BY qr.id DESC";
+    $sql = "SELECT qr.id, u.username, u.full_name, u.email, u.role, u.work_function, u.account_status, qr.questionnaire_id, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, q.title AS questionnaire_title, qr.status, qr.score, pp.label AS period_label, qr.created_at, qr.reviewed_at, reviewer.username AS reviewer_username, reviewer.full_name AS reviewer_full_name, qr.review_comment FROM questionnaire_response qr JOIN users u ON u.id = qr.user_id LEFT JOIN questionnaire q ON q.id = qr.questionnaire_id LEFT JOIN users reviewer ON reviewer.id = qr.reviewed_by LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id ORDER BY qr.id DESC";
     foreach ($pdo->query($sql) as $row) {
         fputcsv($out, [
             $row['id'],
@@ -43,6 +44,7 @@ if ($downloadRequested) {
             $row['work_function'],
             $row['account_status'],
             $row['questionnaire_id'],
+            $row['questionnaire_family_key'],
             $row['questionnaire_title'],
             $row['status'],
             $row['score'],
@@ -125,6 +127,7 @@ if ($latestSubmission) {
             ['work_function', t($t, 'col_work_function', 'Assigned work role')],
             ['account_status', t($t, 'col_account_status', 'Account status when the export was generated')],
             ['questionnaire_id', t($t, 'col_questionnaire_id', 'Identifier of the questionnaire template')],
+            ['questionnaire_family_key', t($t, 'col_questionnaire_family_key', 'Stable family key used to group yearly questionnaire versions')],
             ['questionnaire_title', t($t, 'col_questionnaire_title', 'Title of the questionnaire')],
             ['status', t($t, 'col_status', 'Submission status (draft, submitted, approved, rejected)')],
             ['score_percent', t($t, 'col_score', 'Overall weighted score (percent)')],

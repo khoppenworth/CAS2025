@@ -192,6 +192,7 @@ const Builder = (() => {
       title: raw.title || 'Untitled Questionnaire',
       description: raw.description || '',
       status: normalizeStatusValue(raw.status),
+      family_key: raw.family_key || '',
       sections,
       items,
       work_functions: Array.isArray(raw.work_functions) ? [...raw.work_functions] : undefined,
@@ -1970,6 +1971,7 @@ const Builder = (() => {
       title: questionnaire.title,
       description: questionnaire.description,
       status: normalizeStatusValue(questionnaire.status),
+      family_key: questionnaire.family_key || undefined,
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
