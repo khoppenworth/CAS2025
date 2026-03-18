@@ -769,5 +769,10 @@
   "invalid_department": "Select a valid department.",
   "password_policy_invalid": "Password must be at least 8 characters and include at least one number or symbol.",
   "password_policy_title": "Password requirements not met",
-  "password_policy_body": "Use at least 8 characters and include at least one number or symbol."
+  "password_policy_body": "Use at least 8 characters and include at least one number or symbol.",
+  "search_catalog": "Search this list",
+  "search_department_placeholder": "Search departments",
+  "search_team_placeholder": "Search teams",
+  "search_work_role_placeholder": "Search work roles",
+  "search_no_results": "No matching items found."
 }

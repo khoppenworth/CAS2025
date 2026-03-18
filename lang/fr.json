@@ -746,5 +746,10 @@
   "your_trend": "Votre tendance",
   "password_policy_invalid": "Le mot de passe doit contenir au moins 8 caractères et inclure au moins un chiffre ou symbole.",
   "password_policy_title": "Exigences du mot de passe non respectées",
-  "password_policy_body": "Utilisez au moins 8 caractères et incluez au moins un chiffre ou symbole."
+  "password_policy_body": "Utilisez au moins 8 caractères et incluez au moins un chiffre ou symbole.",
+  "search_catalog": "Rechercher dans cette liste",
+  "search_department_placeholder": "Rechercher des départements",
+  "search_team_placeholder": "Rechercher des équipes",
+  "search_work_role_placeholder": "Rechercher des rôles de travail",
+  "search_no_results": "Aucun élément correspondant trouvé."
 }
