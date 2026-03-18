@@ -117,23 +117,6 @@ if ($profileInitials === '') {
     <span><?=$siteTitle?></span>
   </div>
   <div class="md-appbar-actions">
-    <button
-      type="button"
-      class="md-appbar-link md-appbar-theme-toggle md-appbar-connectivity md-status-indicator"
-      data-status-indicator
-      data-online-text="<?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?>"
-      data-offline-text="<?=htmlspecialchars(t($t, 'status_offline', 'Offline'), ENT_QUOTES, 'UTF-8')?>"
-      role="switch"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-checked="true"
-      data-status="online"
-      aria-label="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-      title="<?=htmlspecialchars(t($t, 'toggle_offline_mode', 'Toggle offline mode'), ENT_QUOTES, 'UTF-8')?>"
-    >
-      <span class="md-status-dot" aria-hidden="true"></span>
-      <span class="md-status-label visually-hidden"><?=htmlspecialchars(t($t, 'status_online', 'Online'), ENT_QUOTES, 'UTF-8')?></span>
-    </button>
     <a
       href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
       class="md-appbar-link md-appbar-language"
