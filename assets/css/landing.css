@@ -601,6 +601,32 @@ body.landing-body {
   color: #1d2939;
 }
 
+.landing-footer__contact p,
+.landing-footer__secondary-link,
+.landing-footer__org {
+  margin: 0;
+}
+
+.landing-footer__contact p {
+  line-height: 1.7;
+}
+
+.landing-footer__contact a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.landing-footer__contact a:hover,
+.landing-footer__contact a:focus-visible {
+  text-decoration: underline;
+}
+
+.landing-footer__org {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1d2939;
+}
+
 .landing-footer__meta {
   display: flex;
   flex-direction: column;
