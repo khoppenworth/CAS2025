@@ -20,6 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $landing_text = trim($_POST['landing_text'] ?? '');
     $address = trim($_POST['address'] ?? '');
     $contact = trim($_POST['contact'] ?? '');
+    $landing_metric_submissions_raw = trim((string)($_POST['landing_metric_submissions'] ?? ''));
+    $landing_metric_completion = trim($_POST['landing_metric_completion'] ?? '');
+    $landing_metric_adoption = trim($_POST['landing_metric_adoption'] ?? '');
     $footer_org_name = trim($_POST['footer_org_name'] ?? '');
     $footer_org_short = trim($_POST['footer_org_short'] ?? '');
     $footer_website_label = trim($_POST['footer_website_label'] ?? '');
@@ -43,6 +46,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($footer_website_url && !preg_match('#^https?://#i', $footer_website_url)) {
         $footer_website_url = 'https://' . ltrim($footer_website_url, '/');
+    }
+    $landing_metric_submissions = null;
+    if ($landing_metric_submissions_raw !== '') {
+        $landing_metric_submissions_value = filter_var($landing_metric_submissions_raw, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 0],
+        ]);
+        if ($landing_metric_submissions_value === false) {
+            $errors[] = t($t, 'landing_metric_submissions_error', 'Landing submissions must be a whole number.');
+        } else {
+            $landing_metric_submissions = (string)$landing_metric_submissions_value;
+        }
     }
 
     $currentLogo = $cfg['logo_path'] ?? null;
@@ -235,6 +249,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'landing_text' => $landing_text,
         'address' => $address,
         'contact' => $contact,
+        'landing_metric_submissions' => $landing_metric_submissions,
+        'landing_metric_completion' => $landing_metric_completion,
+        'landing_metric_adoption' => $landing_metric_adoption,
         'logo_path' => $newLogoPath,
         'landing_background_path' => $newLandingBackgroundPath,
         'footer_org_name' => $footer_org_name,
@@ -320,6 +337,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
       <label class="md-field"><span><?=t($t,'site_name','Site Name')?></span><input name="site_name" value="<?=htmlspecialchars($cfg['site_name'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'landing_text','Landing Text')?></span><textarea name="landing_text" rows="3"><?=htmlspecialchars($cfg['landing_text'] ?? '')?></textarea></label>
+      <h3 class="md-subhead"><?=t($t,'landing_metrics','Landing Metrics')?></h3>
+      <label class="md-field">
+        <span><?=t($t,'landing_metric_submissions','Annual submissions')?></span>
+        <input
+          name="landing_metric_submissions"
+          type="number"
+          min="0"
+          step="1"
+          inputmode="numeric"
+          value="<?=htmlspecialchars((string)($cfg['landing_metric_submissions'] ?? ''), ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label class="md-field">
+        <span><?=t($t,'landing_metric_completion','Completion rate')?></span>
+        <input
+          name="landing_metric_completion"
+          maxlength="50"
+          value="<?=htmlspecialchars((string)($cfg['landing_metric_completion'] ?? ''), ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label class="md-field">
+        <span><?=t($t,'landing_metric_adoption','Platform adoption')?></span>
+        <input
+          name="landing_metric_adoption"
+          maxlength="50"
+          value="<?=htmlspecialchars((string)($cfg['landing_metric_adoption'] ?? ''), ENT_QUOTES, 'UTF-8')?>">
+      </label>
       <div class="md-field">
         <span><?=t($t,'landing_background','Landing Background')?></span>
         <?php $landingBackgroundPath = site_landing_background_path($cfg); ?>
