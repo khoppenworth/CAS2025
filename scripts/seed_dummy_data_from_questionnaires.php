@@ -83,11 +83,9 @@ function ensure_dummy_users(PDO $pdo): array
 function ensure_current_performance_period(PDO $pdo): int
 {
     $year = (int)date('Y');
-    $month = (int)date('n');
-    $half = $month <= 6 ? 'H1' : 'H2';
-    $label = sprintf('%d %s', $year, $half);
-    $start = $half === 'H1' ? sprintf('%d-01-01', $year) : sprintf('%d-07-01', $year);
-    $end = $half === 'H1' ? sprintf('%d-06-30', $year) : sprintf('%d-12-31', $year);
+    $label = (string)$year;
+    $start = sprintf('%d-01-01', $year);
+    $end = sprintf('%d-12-31', $year);
 
     $insert = $pdo->prepare(
         'INSERT INTO performance_period (label, period_start, period_end) VALUES (?, ?, ?) ' .
