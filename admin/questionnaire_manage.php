@@ -1967,14 +1967,43 @@ if ($qbJsVersion) {
     </div>
   </div>
   <div class="qb-manager-layout">
-    <aside class="qb-manager-sidebar" aria-label="<?=htmlspecialchars(t($t,'questionnaire_side_menu','Questionnaire side menu'), ENT_QUOTES, 'UTF-8')?>">
-      <div class="md-card md-elev-2 qb-sidebar-card">
-        <h3 class="md-card-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
+    <section class="qb-manager-top-nav" aria-labelledby="qb-navigation-title">
+      <div class="md-card md-elev-2 qb-sidebar-card qb-top-nav-card">
+        <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
         <p class="qb-section-nav-help"><?=t($t,'qb_navigation_hint','Use the section list to jump around large questionnaires without losing your place.')?></p>
         <nav id="qb-section-nav" class="qb-section-nav" aria-label="<?=htmlspecialchars(t($t,'section_navigation','Section navigation'), ENT_QUOTES, 'UTF-8')?>" data-empty-label="<?=htmlspecialchars(t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections'), ENT_QUOTES, 'UTF-8')?>" data-root-label="<?=htmlspecialchars(t($t,'items_without_section','Items without a section'), ENT_QUOTES, 'UTF-8')?>" data-untitled-label="<?=htmlspecialchars(t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?>">
           <p class="qb-section-nav-empty"><?=t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections')?></p>
         </nav>
       </div>
+    </section>
+    <div class="qb-manager-main">
+      <button type="button" class="md-button md-secondary md-elev-2 qb-scroll-top" id="qb-scroll-top" aria-label="<?=t($t,'qb_scroll_to_top','Back to top')?>" aria-hidden="true" tabindex="-1">
+        <span class="qb-scroll-top-icon" aria-hidden="true">⇧</span>
+        <span class="qb-scroll-top-label"><?=t($t,'qb_scroll_to_top','Back to top')?></span>
+      </button>
+      <div class="md-card md-elev-2 qb-builder-card">
+        <div class="qb-workspace-head">
+          <div class="qb-workspace-head-copy">
+            <p class="md-overline"><?=t($t, 'qb_workspace_label', 'Workspace')?></p>
+            <h3 class="md-card-title"><?=t($t, 'qb_workspace_title', 'Questionnaire editor')?></h3>
+            <p class="md-hint"><?=t($t, 'qb_workspace_hint', 'Build sections and questions here, then preview and publish when checks are ready.')?></p>
+          </div>
+          <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
+            <div class="qb-toolbar-actions qb-toolbar-actions--secondary">
+              <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
+              <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
+            </div>
+            <div class="qb-toolbar-actions">
+              <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
+            </div>
+          </div>
+        </div>
+        <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
+        <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
+        <div id="qb-list" class="qb-list" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="qb-manager-footer-panels">
       <div class="md-card md-elev-2 qb-sidebar-card qb-scoring-card">
         <div class="qb-scoring-note">
           <strong><?=t($t, 'qb_scoring_hint_title', 'Scoring & analytics')?></strong>
@@ -2004,33 +2033,6 @@ if ($qbJsVersion) {
             <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
           </button>
         </div>
-      </div>
-    </aside>
-    <div class="qb-manager-main">
-      <button type="button" class="md-button md-secondary md-elev-2 qb-scroll-top" id="qb-scroll-top" aria-label="<?=t($t,'qb_scroll_to_top','Back to top')?>" aria-hidden="true" tabindex="-1">
-        <span class="qb-scroll-top-icon" aria-hidden="true">⇧</span>
-        <span class="qb-scroll-top-label"><?=t($t,'qb_scroll_to_top','Back to top')?></span>
-      </button>
-      <div class="md-card md-elev-2 qb-builder-card">
-        <div class="qb-workspace-head">
-          <div class="qb-workspace-head-copy">
-            <p class="md-overline"><?=t($t, 'qb_workspace_label', 'Workspace')?></p>
-            <h3 class="md-card-title"><?=t($t, 'qb_workspace_title', 'Questionnaire editor')?></h3>
-            <p class="md-hint"><?=t($t, 'qb_workspace_hint', 'Build sections and questions here, then preview and publish when checks are ready.')?></p>
-          </div>
-          <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
-            <div class="qb-toolbar-actions qb-toolbar-actions--secondary">
-              <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
-              <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
-            </div>
-            <div class="qb-toolbar-actions">
-              <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
-            </div>
-          </div>
-        </div>
-        <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
-        <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
-        <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
     </div>
   </div>
