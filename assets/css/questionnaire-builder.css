@@ -151,13 +151,24 @@
 }
 
 .qb-top-nav-card {
-  padding-inline: 1rem;
-  max-height: calc(100vh - 2rem);
+  padding: 0.7rem 0.9rem;
+  gap: 0.55rem;
 }
 
-.qb-top-nav-card .qb-section-nav {
-  flex: 1 1 auto;
-  min-height: 0;
+.qb-top-nav-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.qb-top-nav-heading .md-overline,
+.qb-top-nav-heading .md-card-title {
+  margin: 0;
+}
+
+.qb-top-nav-heading .md-card-title {
+  font-size: 1rem;
 }
 
 .qb-manager-main {
@@ -209,15 +220,9 @@
 
 .qb-manager-footer-panels {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
-}
-
-@media (min-width: 1320px) {
-  .qb-manager-footer-panels {
-    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  }
 }
 
 .qb-sidebar-card {
@@ -280,23 +285,16 @@
 }
 
 .qb-section-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
   min-height: 0;
-  overflow-y: auto;
-  padding-right: 0.2rem;
-}
-
-.qb-section-nav-help {
-  margin: 0;
-  color: var(--app-muted);
-  font-size: 0.88rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.15rem;
 }
 
 .qb-section-nav-empty {
   font-size: 0.88rem;
   color: var(--app-muted, rgba(0, 0, 0, 0.6));
+  margin: 0;
 }
 
 .qb-section-nav-list {
@@ -304,79 +302,59 @@
   margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: column;
+  flex-wrap: nowrap;
   gap: 0.5rem;
-}
-
-.qb-section-nav-summary {
-  font-weight: 700;
-  font-size: 1.05rem;
-  margin-bottom: 0.25rem;
 }
 
 .qb-section-nav-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  display: block;
+  flex: 0 0 auto;
   font-size: 0.95rem;
 }
 
-.qb-section-nav-item .qb-section-nav-button {
-  flex: 1 1 auto;
-}
-
 .qb-section-nav-button {
-  width: 100%;
   text-align: left;
-  padding: 0.4rem 0.6rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  align-items: flex-start;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--app-primary-soft);
+  padding: 0.5rem 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
+  background: var(--app-surface, #fff);
   color: inherit;
   cursor: pointer;
-  transition: background 0.2s ease, border 0.2s ease;
+  transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   font: inherit;
+  white-space: nowrap;
 }
 
 .qb-section-nav-button:hover,
-.qb-section-nav-button:focus-visible {
+.qb-section-nav-button:focus-visible,
+.qb-section-nav-item.is-active .qb-section-nav-button,
+.qb-section-nav-button[aria-current="true"] {
   background: var(--app-primary);
-  color: var(--md-on-primary);
+  color: var(--md-on-primary, #fff);
   border-color: var(--app-primary);
   outline: none;
-}
-
-.qb-section-nav-button.is-active {
-  background: var(--app-primary);
-  color: var(--md-on-primary);
-  border-color: var(--app-primary);
-  font-weight: 600;
-}
-
-.qb-section-nav-item.is-active .qb-section-nav-count {
-  color: var(--app-primary);
-  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
 .qb-section-nav-count {
-  font-size: 0.8rem;
-  color: var(--app-muted, rgba(0, 0, 0, 0.6));
-}
-
-.qb-section-nav-label {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.55rem;
+  min-height: 1.55rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
-.qb-section-nav-sub {
-  display: block;
-  color: var(--app-muted);
-  font-size: 0.85rem;
+.qb-section-nav-label {
+  display: inline-block;
+  font-weight: 700;
 }
 
 .qb-section-highlight {
@@ -390,15 +368,12 @@
     top: auto;
   }
 
-  .qb-top-nav-card {
-    max-height: none;
-  }
-
   .qb-manager-footer-panels {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .qb-workspace-head {
+  .qb-workspace-head,
+  .qb-workspace-actions {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1200,16 +1175,6 @@
   font-size: 0.9rem;
 }
 
-.qb-scoring-card {
-  padding: 0.75rem 1rem 1rem;
-}
-
-.qb-scoring-card .qb-scoring-note {
-  border: none;
-  padding: 0;
-  background: transparent;
-}
-
 @media (max-width: 720px) {
   .qb-item {
     flex-direction: column;
@@ -1353,51 +1318,48 @@ body.qb-preview-open {
   color: var(--app-muted, rgba(0, 0, 0, 0.7));
 }
 
-.qb-progress-rail {
-  margin: 0.55rem 0 0;
-  padding: 0;
-  list-style: none;
+.qb-workspace-actions {
   display: flex;
-  gap: 0.45rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+  min-width: min(100%, 26rem);
 }
 
-.qb-progress-step {
-  font-size: 0.78rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  background: var(--app-primary-soft);
-  color: var(--app-primary-dark, var(--app-primary));
-}
-
-.qb-progress-step.is-active {
-  background: var(--app-primary);
-  color: var(--md-on-primary, #fff);
-}
-
-.qb-section-nav-search {
+.qb-publish-readiness {
   width: 100%;
-  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
-  border-radius: 6px;
-  padding: 0.4rem 0.55rem;
 }
 
 .qb-publish-readiness h4 {
-  margin: 0.2rem 0 0.35rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.qb-publish-readiness--inline {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-surface, #fff) 92%, var(--app-primary-soft, #f5f7ff));
 }
 
 .qb-readiness-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.3rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .qb-readiness-list li {
-  font-size: 0.86rem;
+  font-size: 0.83rem;
   color: var(--app-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: var(--app-surface, #fff);
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.08));
 }
 
 .qb-readiness-list li::before {

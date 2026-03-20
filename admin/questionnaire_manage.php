@@ -1877,12 +1877,6 @@ if ($qbJsVersion) {
     <div class="md-page-header__content">
       <h1 class="md-page-title" id="qb-page-title" tabindex="-1"><?=t($t,'manage_questionnaires','Manage Questionnaires')?></h1>
       <p class="md-page-subtitle"><?=t($t,'qb_builder_intro','Build and organize questionnaires for upcoming assessments.')?></p>
-      <ol class="qb-progress-rail" aria-label="<?=htmlspecialchars(t($t, 'qb_progress_rail', 'Questionnaire build flow'), ENT_QUOTES, 'UTF-8')?>">
-        <li class="qb-progress-step is-active"><?=t($t, 'qb_progress_step_start', '1. Start')?></li>
-        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_structure', '2. Structure')?></li>
-        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_questions', '3. Questions & scoring')?></li>
-        <li class="qb-progress-step"><?=t($t, 'qb_progress_step_publish', '4. Publish')?></li>
-      </ol>
     </div>
   </header>
   <?php if ($msg): ?>
@@ -1969,8 +1963,10 @@ if ($qbJsVersion) {
   <div class="qb-manager-layout">
     <section class="qb-manager-top-nav" aria-labelledby="qb-navigation-title">
       <div class="md-card md-elev-2 qb-sidebar-card qb-top-nav-card">
-        <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
-        <p class="qb-section-nav-help"><?=t($t,'qb_navigation_hint','Use the section list to jump around large questionnaires without losing your place.')?></p>
+        <div class="qb-top-nav-heading">
+          <p class="md-overline"><?=t($t, 'qb_navigation_label', 'Navigate')?></p>
+          <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
+        </div>
         <nav id="qb-section-nav" class="qb-section-nav" aria-label="<?=htmlspecialchars(t($t,'section_navigation','Section navigation'), ENT_QUOTES, 'UTF-8')?>" data-empty-label="<?=htmlspecialchars(t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections'), ENT_QUOTES, 'UTF-8')?>" data-root-label="<?=htmlspecialchars(t($t,'items_without_section','Items without a section'), ENT_QUOTES, 'UTF-8')?>" data-untitled-label="<?=htmlspecialchars(t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?>">
           <p class="qb-section-nav-empty"><?=t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections')?></p>
         </nav>
@@ -1988,13 +1984,23 @@ if ($qbJsVersion) {
             <h3 class="md-card-title"><?=t($t, 'qb_workspace_title', 'Questionnaire editor')?></h3>
             <p class="md-hint"><?=t($t, 'qb_workspace_hint', 'Build sections and questions here, then preview and publish when checks are ready.')?></p>
           </div>
-          <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
-            <div class="qb-toolbar-actions qb-toolbar-actions--secondary">
-              <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
-              <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
+          <div class="qb-workspace-actions">
+            <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
+              <div class="qb-toolbar-actions qb-toolbar-actions--secondary">
+                <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
+                <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
+              </div>
+              <div class="qb-toolbar-actions">
+                <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
+              </div>
             </div>
-            <div class="qb-toolbar-actions">
-              <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
+            <div class="qb-publish-readiness qb-publish-readiness--inline" id="qb-publish-readiness" aria-live="polite">
+              <h4><?=t($t, 'qb_publish_ready_title', 'Publish readiness')?></h4>
+              <ul class="qb-readiness-list">
+                <li data-ready="title"><?=t($t, 'qb_readiness_title', 'Title added')?></li>
+                <li data-ready="content"><?=t($t, 'qb_readiness_content', 'At least one question')?></li>
+                <li data-ready="scoring"><?=t($t, 'qb_readiness_scoring', 'Scoring configured')?></li>
+              </ul>
             </div>
           </div>
         </div>
@@ -2004,24 +2010,6 @@ if ($qbJsVersion) {
       </div>
     </div>
     <div class="qb-manager-footer-panels">
-      <div class="md-card md-elev-2 qb-sidebar-card qb-scoring-card">
-        <div class="qb-scoring-note">
-          <strong><?=t($t, 'qb_scoring_hint_title', 'Scoring & analytics')?></strong>
-          <p><?=t(
-              $t,
-              'qb_scoring_hint_text',
-              'Assign weights so priority questions total about 100%. Items left at 0 are informational only and do not affect scores or analytics.'
-          )?></p>
-        </div>
-        <div class="qb-publish-readiness" id="qb-publish-readiness" aria-live="polite">
-          <h4><?=t($t, 'qb_publish_ready_title', 'Publish readiness')?></h4>
-          <ul class="qb-readiness-list">
-            <li data-ready="title"><?=t($t, 'qb_readiness_title', 'Title added')?></li>
-            <li data-ready="content"><?=t($t, 'qb_readiness_content', 'At least one question')?></li>
-            <li data-ready="scoring"><?=t($t, 'qb_readiness_scoring', 'Scoring configured')?></li>
-          </ul>
-        </div>
-      </div>
       <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
         <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
         <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
