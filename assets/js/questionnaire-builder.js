@@ -33,7 +33,6 @@ const Builder = (() => {
     message: '#qb-message',
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
-    sectionNavSearch: '#qb-section-nav-search',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     publishReadiness: '#qb-publish-readiness',
@@ -133,7 +132,6 @@ const Builder = (() => {
     saving: false,
     csrf: '',
     lastSavedAt: null,
-    navFilter: '',
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -1223,54 +1221,36 @@ const Builder = (() => {
       return;
     }
     const rootLabel = nav.dataset.rootLabel || 'Items without a section';
-    const untitled = nav.dataset.untitledLabel || 'Untitled questionnaire';
     const allEntries = [
       {
         key: 'root',
-        label: truncateWithTooltip(active.title?.trim() || untitled),
-        helper: truncateWithTooltip(rootLabel),
+        label: truncateWithTooltip(rootLabel),
         count: active.items.length,
       },
       ...active.sections.map((section, idx) => ({
         key: section.clientId,
         label: truncateWithTooltip(section.title?.trim() || `${rootLabel} ${idx + 1}`),
-        helper: truncateWithTooltip(section.description?.trim() || 'Section'),
         count: section.items.length,
       })),
     ];
-    const entries = allEntries.filter((entry) => {
-      if (!state.navFilter) return true;
-      return (`${entry.label.title} ${entry.helper.title}`).toLowerCase().includes(state.navFilter);
-    });
-    if (!entries.some((entry) => entry.key === state.navActiveKey)) {
+    if (!allEntries.some((entry) => entry.key === state.navActiveKey)) {
       state.navActiveKey = 'root';
     }
     nav.innerHTML = `
-      <input type="search" id="qb-section-nav-search" class="qb-section-nav-search" placeholder="Search sections" value="${escapeAttr(state.navFilter || '')}">
-      <ul class="qb-section-nav-list">
-        ${entries
+      <ul class="qb-section-nav-list" role="list">
+        ${allEntries
           .map(
             (entry) => `
               <li class="qb-section-nav-item" data-nav="${entry.key}">
-                <button type="button" class="qb-section-nav-button" data-nav="${entry.key}">
-                  <span class="qb-section-nav-label" title="${escapeAttr(entry.label.title)}">${escapeHtml(entry.label.display)}</span>
-                  <span class="qb-section-nav-sub" title="${escapeAttr(entry.helper.title)}">${escapeHtml(entry.helper.display)}</span>
+                <button type="button" class="qb-section-nav-button" data-nav="${entry.key}" title="${escapeAttr(entry.label.title)}">
+                  <span class="qb-section-nav-label">${escapeHtml(entry.label.display)}</span>
+                  <span class="qb-section-nav-count" aria-hidden="true">${entry.count || 0}</span>
                 </button>
-                <span class="qb-section-nav-count">${entry.count || 0} ${entry.count === 1 ? 'item' : 'items'}</span>
               </li>`
           )
           .join('')}
       </ul>
     `;
-    if (!entries.length) {
-      const list = nav.querySelector('.qb-section-nav-list');
-      if (list) list.innerHTML = '<li class="qb-section-nav-empty">No matching sections</li>';
-    }
-    const searchInput = nav.querySelector(selectors.sectionNavSearch);
-    searchInput?.addEventListener('input', (event) => {
-      state.navFilter = String(event.target.value || '').trim().toLowerCase();
-      renderSectionNav();
-    });
     nav.querySelectorAll('button[data-nav]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const targetKey = btn.getAttribute('data-nav');
