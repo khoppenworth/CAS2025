@@ -8,6 +8,7 @@ $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $user = current_user();
 $role = $user['role'] ?? ($_SESSION['user']['role'] ?? null);
+$department = trim((string)($user['department'] ?? ''));
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
 
 if ($reviewEnabled && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -15,14 +16,47 @@ if ($reviewEnabled && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int)($_POST['id'] ?? 0);
     $status = $_POST['status'] ?? 'submitted';
     if ($id > 0 && in_array($status, ['approved', 'rejected'], true)) {
-        $stmt = $pdo->prepare('UPDATE questionnaire_response SET status=?, reviewed_by=?, reviewed_at=NOW(), review_comment=? WHERE id=?');
-        $stmt->execute([$status, $_SESSION['user']['id'], $_POST['review_comment'] ?? null, $id]);
+        if ($role === 'supervisor') {
+            if ($department === '') {
+                $id = 0;
+            } else {
+                $accessStmt = $pdo->prepare(
+                    'SELECT 1 FROM questionnaire_response qr '
+                    . 'JOIN users u ON u.id = qr.user_id '
+                    . 'WHERE qr.id = ? AND u.department = ? LIMIT 1'
+                );
+                $accessStmt->execute([$id, $department]);
+                if (!$accessStmt->fetchColumn()) {
+                    $id = 0;
+                }
+            }
+        }
+
+        if ($id > 0) {
+            $stmt = $pdo->prepare('UPDATE questionnaire_response SET status=?, reviewed_by=?, reviewed_at=NOW(), review_comment=? WHERE id=?');
+            $stmt->execute([$status, $_SESSION['user']['id'], $_POST['review_comment'] ?? null, $id]);
+        }
     }
 }
 $rows = [];
 if ($reviewEnabled) {
-    $query = $pdo->query("SELECT qr.*, u.username, q.title FROM questionnaire_response qr JOIN users u ON u.id=qr.user_id JOIN questionnaire q ON q.id=qr.questionnaire_id WHERE qr.status='submitted' ORDER BY qr.created_at ASC");
-    $rows = $query ? $query->fetchAll() : [];
+    if ($role === 'supervisor') {
+        if ($department !== '') {
+            $query = $pdo->prepare(
+                "SELECT qr.*, u.username, q.title "
+                . "FROM questionnaire_response qr "
+                . "JOIN users u ON u.id = qr.user_id "
+                . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
+                . "WHERE qr.status = 'submitted' AND u.department = ? "
+                . "ORDER BY qr.created_at ASC"
+            );
+            $query->execute([$department]);
+            $rows = $query->fetchAll();
+        }
+    } else {
+        $query = $pdo->query("SELECT qr.*, u.username, q.title FROM questionnaire_response qr JOIN users u ON u.id=qr.user_id JOIN questionnaire q ON q.id=qr.questionnaire_id WHERE qr.status='submitted' ORDER BY qr.created_at ASC");
+        $rows = $query ? $query->fetchAll() : [];
+    }
 }
 ?>
 <!doctype html>
