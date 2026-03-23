@@ -306,6 +306,7 @@
 .qb-section-nav-button {
   flex: 1 1 auto;
   width: 100%;
+  max-width: 100%;
   text-align: left;
   padding: 0.45rem 0.6rem;
   display: flex;
@@ -319,7 +320,7 @@
   cursor: pointer;
   transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   font: inherit;
-  white-space: nowrap;
+  overflow: hidden;
 }
 
 .qb-section-nav-button:hover,
@@ -339,11 +340,26 @@
   color: var(--app-muted, rgba(0, 0, 0, 0.6));
   padding-inline: 0.65rem;
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .qb-section-nav-label {
-  display: inline-block;
+  display: block;
+  width: 100%;
   font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.qb-section-nav-sub {
+  display: block;
+  width: 100%;
+  color: var(--app-muted);
+  font-size: 0.85rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .qb-section-highlight {
