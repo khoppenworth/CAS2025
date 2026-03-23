@@ -171,6 +171,24 @@
   font-size: 1rem;
 }
 
+.qb-manager-sidebar {
+  max-width: 320px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  padding-inline: 0.25rem;
+  max-height: calc(100vh - 2rem);
+}
+
+.qb-nav-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .qb-manager-main {
   min-width: 0;
   position: relative;
@@ -286,9 +304,8 @@
 
 .qb-section-nav {
   min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 0.15rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
 }
 
 .qb-section-nav-empty {
@@ -307,18 +324,22 @@
 }
 
 .qb-section-nav-item {
-  display: block;
-  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.95rem;
 }
 
 .qb-section-nav-button {
+  flex: 1 1 auto;
+  width: 100%;
   text-align: left;
-  padding: 0.5rem 0.85rem;
-  display: inline-flex;
+  padding: 0.45rem 0.6rem;
+  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  border-radius: 999px;
+  justify-content: space-between;
+  gap: 0.65rem;
+  border-radius: 8px;
   border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
   background: var(--app-surface, #fff);
   color: inherit;
@@ -332,23 +353,24 @@
 .qb-section-nav-button:focus-visible,
 .qb-section-nav-item.is-active .qb-section-nav-button,
 .qb-section-nav-button[aria-current="true"] {
-  background: var(--app-primary);
-  color: var(--md-on-primary, #fff);
+  background: color-mix(in srgb, var(--app-primary, #205493) 12%, var(--app-surface, #fff));
+  color: inherit;
   border-color: var(--app-primary);
   outline: none;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-primary) 18%, transparent);
 }
 
 .qb-section-nav-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.55rem;
-  min-height: 1.55rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
   padding: 0 0.35rem;
   border-radius: 999px;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  font-size: 0.78rem;
+  background: var(--app-primary-soft, rgba(32, 84, 147, 0.1));
+  color: var(--app-primary-dark, var(--app-primary));
+  font-size: 0.76rem;
   font-weight: 700;
 }
 

@@ -1961,17 +1961,14 @@ if ($qbJsVersion) {
     </div>
   </div>
   <div class="qb-manager-layout">
-    <section class="qb-manager-top-nav" aria-labelledby="qb-navigation-title">
-      <div class="md-card md-elev-2 qb-sidebar-card qb-top-nav-card">
-        <div class="qb-top-nav-heading">
-          <p class="md-overline"><?=t($t, 'qb_navigation_label', 'Navigate')?></p>
-          <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
-        </div>
+    <aside class="qb-manager-sidebar" aria-labelledby="qb-navigation-title">
+      <div class="md-card md-elev-2 qb-sidebar-card qb-nav-card">
+        <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
         <nav id="qb-section-nav" class="qb-section-nav" aria-label="<?=htmlspecialchars(t($t,'section_navigation','Section navigation'), ENT_QUOTES, 'UTF-8')?>" data-empty-label="<?=htmlspecialchars(t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections'), ENT_QUOTES, 'UTF-8')?>" data-root-label="<?=htmlspecialchars(t($t,'items_without_section','Items without a section'), ENT_QUOTES, 'UTF-8')?>" data-untitled-label="<?=htmlspecialchars(t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?>">
           <p class="qb-section-nav-empty"><?=t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections')?></p>
         </nav>
       </div>
-    </section>
+    </aside>
     <div class="qb-manager-main">
       <button type="button" class="md-button md-secondary md-elev-2 qb-scroll-top" id="qb-scroll-top" aria-label="<?=t($t,'qb_scroll_to_top','Back to top')?>" aria-hidden="true" tabindex="-1">
         <span class="qb-scroll-top-icon" aria-hidden="true">⇧</span>
@@ -2007,6 +2004,20 @@ if ($qbJsVersion) {
         <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
+      </div>
+      <div class="qb-manager-footer-panels">
+        <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
+          <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
+          <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
+          <div class="qb-start-actions qb-danger-actions">
+            <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+              <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+            </button>
+            <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+              <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="qb-manager-footer-panels">
