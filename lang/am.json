@@ -445,7 +445,7 @@
   "other": "ሌላ",
   "password": "የይለፍ ቃል",
   "password_reset_required": "እባክዎን ከመቀጠልዎ በፊት አዲስ የይለፍ ቃል ያዘጋጁ።",
-  "password_too_short": "የይለፍ ቃል ቢያንስ 6 ቁምፊዎች መሆን አለበት።",
+  "password_too_short": "የይለፍ ቃል ቢያንስ 8 ቁምፊዎች እና ቢያንስ አንድ ቁጥር ወይም ምልክት ሊኖረው ይገባል።",
   "pause": "አቁም",
   "pending_account_notice": "መለያዎ በተቆጣጣሪ ማጽደቅ እየተጠበቀ ነው። በሚጠብቁበት ጊዜ መገለጫዎን ማዘመን ይችላሉ።",
   "pending_accounts": "በመጠባበቅ ላይ ያሉ ማጽደቃት",
@@ -743,5 +743,13 @@
   "work_function_performance": "የስራ ተግባር አፈጻጸም",
   "year": "አመት",
   "yes": "አዎ",
-  "your_trend": "የእርስዎ አዝማሚያ"
+  "your_trend": "የእርስዎ አዝማሚያ",
+  "password_policy_invalid": "የይለፍ ቃል ቢያንስ 8 ቁምፊዎች እና ቢያንስ አንድ ቁጥር ወይም ምልክት ሊኖረው ይገባል።",
+  "password_policy_title": "የይለፍ ቃል መስፈርቶች አልተሟሉም",
+  "password_policy_body": "ቢያንስ 8 ቁምፊዎች ይጠቀሙ እና ቢያንስ አንድ ቁጥር ወይም ምልክት ያካትቱ።",
+  "search_catalog": "በዚህ ዝርዝር ውስጥ ፈልግ",
+  "search_department_placeholder": "መምሪያዎችን ፈልግ",
+  "search_team_placeholder": "ቡድኖችን ፈልግ",
+  "search_work_role_placeholder": "የስራ ሚናዎችን ፈልግ",
+  "search_no_results": "ተመሳሳይ ውጤት አልተገኘም።"
 }

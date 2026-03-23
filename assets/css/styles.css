@@ -495,52 +495,6 @@ button,
   border-color: var(--app-primary-soft);
 }
 
-.md-status-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border-radius: 999px;
-  background: var(--status-success-soft, rgba(34, 197, 94, 0.22));
-  color: inherit;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  appearance: none;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  transition: background 0.3s ease, color 0.3s ease;
-  min-height: var(--app-button-height);
-}
-
-.md-status-indicator:focus-visible {
-  outline: 2px solid var(--status-info, #f59e0b);
-  outline-offset: 2px;
-}
-
-.md-status-dot {
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 50%;
-  background: var(--status-success);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
-  transition: background 0.3s ease, box-shadow 0.3s ease;
-}
-
-.md-status-label {
-  font-size: 0.85rem;
-}
-
-.md-status-indicator.is-offline {
-  background: var(--status-warning-surface, rgba(255, 140, 0, 0.2));
-}
-
-.md-status-indicator.is-offline .md-status-dot {
-  background: var(--status-warning);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.35);
-}
-
 .md-topnav-link.is-offline .md-status-dot {
   background: var(--status-warning);
   box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.35);
@@ -741,9 +695,6 @@ html.has-js .md-topnav-backdrop.is-visible {
     padding: 0.85rem 1.25rem;
   }
 
-  .md-status-indicator {
-    padding: 0 1.25rem;
-  }
 }
 
 .md-drawer {
