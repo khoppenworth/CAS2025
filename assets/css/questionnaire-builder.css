@@ -284,15 +284,23 @@
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: nowrap;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.5rem;
 }
 
 .qb-section-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem;
+  width: 100%;
   font-size: 0.95rem;
+}
+
+.qb-section-nav-item .qb-section-nav-button {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .qb-section-nav-button {
@@ -326,17 +334,11 @@
 }
 
 .qb-section-nav-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  min-height: 1.5rem;
-  padding: 0 0.35rem;
-  border-radius: 999px;
-  background: var(--app-primary-soft, rgba(32, 84, 147, 0.1));
-  color: var(--app-primary-dark, var(--app-primary));
-  font-size: 0.76rem;
-  font-weight: 700;
+  display: block;
+  font-size: 0.8rem;
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+  padding-inline: 0.65rem;
+  white-space: normal;
 }
 
 .qb-section-nav-label {
