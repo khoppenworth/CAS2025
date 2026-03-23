@@ -540,6 +540,7 @@ function initialize_database_schema(PDO $pdo): void
     }
 
     ensure_site_config_schema($pdo);
+    ensure_questionnaire_schema($pdo);
     ensure_users_schema($pdo);
     ensure_questionnaire_item_schema($pdo);
     ensure_questionnaire_work_function_schema($pdo);
@@ -547,10 +548,56 @@ function initialize_database_schema(PDO $pdo): void
     ensure_department_team_catalog($pdo);
     ensure_questionnaire_department_schema($pdo);
     ensure_questionnaire_assignment_schema($pdo);
-    ensure_biannual_performance_periods($pdo);
+    ensure_annual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
 
     $schemaInitialized = true;
+}
+
+function ensure_questionnaire_schema(PDO $pdo): void
+{
+    $existing = [];
+    try {
+        $columns = $pdo->query('SHOW COLUMNS FROM questionnaire');
+        if ($columns) {
+            foreach ($columns->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $field = isset($column['Field']) ? (string)$column['Field'] : '';
+                if ($field !== '') {
+                    $existing[$field] = true;
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema: ' . $e->getMessage());
+        return;
+    }
+
+    try {
+        if (!isset($existing['status'])) {
+            $pdo->exec("ALTER TABLE questionnaire ADD COLUMN status ENUM('draft','published','inactive') NOT NULL DEFAULT 'draft' AFTER description");
+        }
+        if (!isset($existing['family_key'])) {
+            $pdo->exec("ALTER TABLE questionnaire ADD COLUMN family_key VARCHAR(100) NULL AFTER status");
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema add column failed: ' . $e->getMessage());
+    }
+
+    try {
+        $indexStmt = $pdo->query("SHOW INDEX FROM questionnaire WHERE Key_name = 'idx_questionnaire_family_key'");
+        $hasIndex = $indexStmt && $indexStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hasIndex) {
+            $pdo->exec('CREATE INDEX idx_questionnaire_family_key ON questionnaire (family_key)');
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema index failed: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("UPDATE questionnaire SET family_key = CONCAT('questionnaire-', id) WHERE family_key IS NULL OR TRIM(family_key) = ''");
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_schema family backfill failed: ' . $e->getMessage());
+    }
 }
 
 function decode_enabled_locales($value): array
@@ -593,6 +640,9 @@ function site_config_defaults(): array
         'landing_text' => null,
         'address' => null,
         'contact' => null,
+        'landing_metric_submissions' => null,
+        'landing_metric_completion' => null,
+        'landing_metric_adoption' => null,
         'logo_path' => null,
         'landing_background_path' => null,
         'footer_org_name' => 'Ethiopian Pharmaceutical Supply Service',
@@ -639,7 +689,7 @@ function get_site_config(PDO $pdo): array
         ensure_site_config_schema($pdo);
         $defaultTemplatesJson = encode_email_templates(default_email_templates());
         $quotedTemplates = $pdo->quote($defaultTemplatesJson);
-        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, $quotedTemplates)");
+        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, landing_metric_submissions, landing_metric_completion, landing_metric_adoption, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, $quotedTemplates)");
         $cfg = $pdo->query('SELECT * FROM site_config WHERE id=1')->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('get_site_config failed: ' . $e->getMessage());
@@ -1021,12 +1071,12 @@ function ensure_questionnaire_assignment_schema(PDO $pdo): void
     }
 }
 
-function ensure_biannual_performance_periods(PDO $pdo): void
+function ensure_annual_performance_periods(PDO $pdo): void
 {
     try {
         $tableCheck = $pdo->query("SHOW TABLES LIKE 'performance_period'");
     } catch (PDOException $e) {
-        error_log('ensure_biannual_performance_periods (table check): ' . $e->getMessage());
+        error_log('ensure_annual_performance_periods (table check): ' . $e->getMessage());
         return;
     }
 
@@ -1047,20 +1097,19 @@ function ensure_biannual_performance_periods(PDO $pdo): void
 
         $stmt = $pdo->prepare("INSERT INTO performance_period (label, period_start, period_end) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE period_start = VALUES(period_start), period_end = VALUES(period_end)");
         foreach ($years as $year) {
-            $h1Label = sprintf('%d H1', $year);
             $stmt->execute([
-                $h1Label,
+                (string)$year,
                 sprintf('%d-01-01', $year),
-                sprintf('%d-06-30', $year),
-            ]);
-
-            $h2Label = sprintf('%d H2', $year);
-            $stmt->execute([
-                $h2Label,
-                sprintf('%d-07-01', $year),
                 sprintf('%d-12-31', $year),
             ]);
         }
+
+        // Remove unused legacy half-year periods so new submissions are annual-only.
+        $pdo->exec(
+            "DELETE pp FROM performance_period pp "
+            . "LEFT JOIN questionnaire_response qr ON qr.performance_period_id = pp.id "
+            . "WHERE pp.label REGEXP '^[0-9]{4} H[12]$' AND qr.id IS NULL"
+        );
 
         if ($startedTransaction) {
             $pdo->commit();
@@ -1069,7 +1118,7 @@ function ensure_biannual_performance_periods(PDO $pdo): void
         if ($startedTransaction && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        error_log('ensure_biannual_performance_periods: ' . $e->getMessage());
+        error_log('ensure_annual_performance_periods: ' . $e->getMessage());
     }
 }
 

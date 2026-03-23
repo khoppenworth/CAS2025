@@ -586,7 +586,7 @@ INSERT INTO analytics_report_schedule (recipients, frequency, next_run_at, last_
 VALUES
 ('demo.people.lead@example.com,demo.supply.lead@example.com', 'weekly', DATE_ADD(NOW(), INTERVAL 3 DAY), DATE_SUB(NOW(), INTERVAL 4 DAY), @demo_admin_id, @demo_qid, 1, 1),
 ('executive.board@example.com', 'monthly', DATE_ADD(NOW(), INTERVAL 12 DAY), DATE_SUB(NOW(), INTERVAL 26 DAY), @demo_admin_id, @demo_qid, 0, 1),
-('regional.leads@example.com', 'quarterly', DATE_ADD(NOW(), INTERVAL 35 DAY), DATE_SUB(NOW(), INTERVAL 96 DAY), @demo_admin_id, @demo_qid, 1, 1);
+('regional.leads@example.com', 'monthly', DATE_ADD(NOW(), INTERVAL 35 DAY), DATE_SUB(NOW(), INTERVAL 96 DAY), @demo_admin_id, @demo_qid, 1, 1);
 
 -- Additional logs capturing submission activities --------------------------------
 INSERT INTO logs (user_id, action, meta)
