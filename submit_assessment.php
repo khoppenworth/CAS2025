@@ -155,7 +155,15 @@ $matchesCondition = static function (array $item, array $valuesByLinkId) use ($n
     }
 
     $expected = trim((string)($item['condition_value'] ?? ''));
+    if ($expected === '') {
+        return true;
+    }
     $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
+
+    if (!array_key_exists($source, $valuesByLinkId)) {
+        return false;
+    }
+
     $candidateValues = [];
     foreach (($valuesByLinkId[$source] ?? []) as $value) {
         $candidateValues[] = trim((string)$value);
@@ -319,9 +327,16 @@ try {
     $fallback = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title");
     $q = $fallback ? $fallback->fetchAll() : [];
 }
+$currentAssessmentYear = (int)date('Y');
+$earliestSelectableAssessmentYear = $currentAssessmentYear - 1;
 $periods = $pdo->query(
     "SELECT id, label, period_start, period_end FROM performance_period " .
-    "WHERE period_start IS NULL OR period_start <= CURDATE() ORDER BY period_start DESC"
+    "WHERE (period_start IS NULL OR period_start <= CURDATE()) " .
+    "AND (period_start IS NULL OR period_end IS NULL OR (" .
+        "DATE_FORMAT(period_start, '%m-%d')='01-01' AND DATE_FORMAT(period_end, '%m-%d')='12-31'" .
+    ")) " .
+    "AND (period_start IS NULL OR YEAR(period_start) BETWEEN " . (int)$earliestSelectableAssessmentYear . " AND " . (int)$currentAssessmentYear . ") " .
+    "ORDER BY period_start DESC"
 )->fetchAll();
 $availablePeriodIds = [];
 foreach ($periods as $periodRow) {
@@ -1047,7 +1062,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       </select>
     </label>
     <label class="md-field">
-      <span><?=t($t,'performance_period','Performance Period')?></span>
+      <span><?=t($t,'performance_period','Asessment Period')?></span>
       <select name="performance_period_id" data-performance-period-select>
         <?php foreach ($periods as $period): ?>
           <?php
@@ -1417,6 +1432,35 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       return missingFields;
     };
 
+    const focusFirstUsableControl = (field) => {
+      if (!(field instanceof HTMLElement)) {
+        return;
+      }
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      const firstFocusable = controls.find((control) => {
+        if (!(control instanceof HTMLElement)) {
+          return false;
+        }
+        return !control.disabled
+          && control.tabIndex !== -1
+          && (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement);
+      });
+      if (firstFocusable && typeof firstFocusable.focus === 'function') {
+        firstFocusable.focus({ preventScroll: true });
+      }
+    };
+
+    const navigateToQuestionField = (field) => {
+      if (!(field instanceof HTMLElement)) {
+        return;
+      }
+      field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      focusFirstUsableControl(field);
+      if (!desktopMedia.matches) {
+        setNavOpen(false);
+      }
+    };
+
     navLinks.forEach((link) => {
       link.addEventListener('click', (event) => {
         const targetSelector = link.getAttribute('href') || link.getAttribute('data-target');
@@ -1435,6 +1479,9 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       const valuesByLinkId = {};
       for (const element of Array.from(responseForm.elements || [])) {
         if (!(element instanceof HTMLElement)) {
+          continue;
+        }
+        if (element.disabled) {
           continue;
         }
         const normalizedName = normalizeConditionLinkId(element.getAttribute('name') || '');
@@ -1535,6 +1582,12 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
     const evaluateConditionMatch = (operator, expected, candidateValues) => {
       const expectedLower = String(expected || '').trim().toLowerCase();
       const normalizedCandidates = candidateValues.map((value) => String(value || '').trim().toLowerCase());
+      if (expectedLower === '') {
+        return true;
+      }
+      if (normalizedCandidates.length === 0) {
+        return false;
+      }
       const equals = normalizedCandidates.includes(expectedLower);
       const contains = expectedLower !== '' && normalizedCandidates.some((value) => value.includes(expectedLower));
       if (operator === 'contains') {
@@ -1548,13 +1601,21 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 
     const runVisibilityEngine = () => {
       const fields = questionFields();
-      const maxPasses = 25;
+      const conditionalFields = fields.filter((field) =>
+        normalizeConditionLinkId(field.getAttribute('data-condition-source') || '') !== ''
+        || normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '') !== ''
+      );
+      if (conditionalFields.length === 0) {
+        return;
+      }
+
+      const maxPasses = 8;
 
       for (let pass = 0; pass < maxPasses; pass += 1) {
         const valuesByLinkId = collectCurrentValuesByLinkId();
         let changed = false;
 
-        fields.forEach((field) => {
+        conditionalFields.forEach((field) => {
           const followupParentLinkId = normalizeConditionLinkId(field.getAttribute('data-other-parent-linkid') || '');
           const source = normalizeConditionLinkId(field.getAttribute('data-condition-source') || '');
           const operator = String(field.getAttribute('data-condition-operator') || 'equals').trim().toLowerCase();
@@ -1587,20 +1648,32 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       }
     };
 
+    let visibilityRunQueued = false;
+    const scheduleVisibilityEngine = () => {
+      if (visibilityRunQueued) {
+        return;
+      }
+      visibilityRunQueued = true;
+      window.requestAnimationFrame(() => {
+        visibilityRunQueued = false;
+        runVisibilityEngine();
+      });
+    };
+
     const handleQuestionValueChange = (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
         return;
       }
       if ((target.getAttribute('name') || '').startsWith('item_')) {
-        runVisibilityEngine();
+        scheduleVisibilityEngine();
       }
     };
 
     document.addEventListener('change', handleQuestionValueChange);
     document.addEventListener('input', handleQuestionValueChange);
 
-    runVisibilityEngine();
+    scheduleVisibilityEngine();
     const isAppOnline = () => {
       if (connectivity) {
         try {
@@ -2023,14 +2096,19 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         const isFinalSubmit = submitAction === 'submit_final';
         const finalSubmitConfirmationMessage = 'Please review your responses carefully before submitting. Once submitted, you will not be able to make any changes.';
 
+        clearMissingQuestionHighlights();
+        if (isFinalSubmit) {
+          const missingFields = applyMissingQuestionHighlights();
+          if (missingFields.length > 0) {
+            event.preventDefault();
+            navigateToQuestionField(missingFields[0]);
+            return;
+          }
+        }
+
         if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
           event.preventDefault();
           return;
-        }
-
-        clearMissingQuestionHighlights();
-        if (isFinalSubmit) {
-          applyMissingQuestionHighlights();
         }
 
         if (!isAppOnline()) {

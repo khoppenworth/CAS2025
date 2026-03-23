@@ -29,3 +29,11 @@ Before running, ensure your `.env` has valid `DB_HOST`, `DB_PORT`, `DB_NAME`, `D
 ## Cleanup
 
 Use `dummy_data_cleanup.sql` to remove seeded dummy-user submissions when needed.
+
+
+## Admin toggle
+
+Administrators can now enable or disable the full demo dataset directly from **Admin → Settings**:
+
+- **Enable Demo Dataset** executes `dummy_data.sql` (full demo users, questionnaires, responses, analytics history, and training recommendation mappings).
+- **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo records and EPSA demo course mappings).

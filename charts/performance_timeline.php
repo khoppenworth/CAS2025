@@ -140,7 +140,7 @@ $graph->SetScale('textlin');
 $graph->SetMargin(80, 40, 70, 90);
 $graph->SetTitle(t($t, 'performance_timeline_title', 'Performance timeline'));
 $graph->xaxis->SetTickLabels($labels);
-$graph->xaxis->SetTitle(t($t, 'performance_period', 'Performance Period'));
+$graph->xaxis->SetTitle(t($t, 'performance_period', 'Asessment Period'));
 $graph->yaxis->SetTitle(t($t, 'score_percentage', 'Score (%)'));
 
 $plot = new \MiniJpGraph\LinePlot($dataPoints);

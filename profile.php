@@ -71,6 +71,7 @@ foreach ($phoneCountries as $country) {
     $phoneFlags[$country['code']] = $country['flag'];
 }
 $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
+$passwordPolicyPattern = '/^(?=.{8,}$)(?=.*[\d\W_]).+$/';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -123,6 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
         $error = t($t,'password_reset_required','Please set a new password before continuing.');
+    } elseif ($password !== '' && !preg_match($passwordPolicyPattern, $password)) {
+        $error = t($t,'password_policy_invalid','Password must be at least 8 characters and include at least one number or symbol.');
     } else {
         $fields = [
             'full_name' => $fullName,
@@ -142,13 +145,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $params[] = $user['id'];
         $stmt->execute($params);
         if ($password !== '') {
-            if (strlen($password) < 6) {
-                $error = t($t,'password_too_short','Password must be at least 6 characters long.');
-            } else {
-                $hash = password_hash($password, PASSWORD_DEFAULT);
-                $pdo->prepare('UPDATE users SET password=?, must_reset_password=0 WHERE id=?')->execute([$hash, $user['id']]);
-                $forcePasswordReset = false;
-            }
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $pdo->prepare('UPDATE users SET password=?, must_reset_password=0 WHERE id=?')->execute([$hash, $user['id']]);
+            $forcePasswordReset = false;
         }
         if (!$error) {
             $_SESSION['lang'] = $language;
@@ -205,6 +204,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
       <p class="md-required-popup__body">
         <?=t($t,'required_fields_body','Please complete all mandatory fields marked in red before saving your profile.')?>
+      </p>
+    </div>
+  </div>
+
+  <div class="md-required-popup" data-password-popup hidden>
+    <div class="md-required-popup__backdrop" data-password-popup-close></div>
+    <div class="md-required-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="password-popup-title">
+      <div class="md-required-popup__header">
+        <div class="md-required-popup__title" id="password-popup-title">
+          <?=t($t,'password_policy_title','Password requirements not met')?>
+        </div>
+        <button type="button" class="md-required-popup__close" data-password-popup-close aria-label="<?=htmlspecialchars(t($t,'close','Close'), ENT_QUOTES, 'UTF-8')?>">×</button>
+      </div>
+      <p class="md-required-popup__body">
+        <?=t($t,'password_policy_body','Use at least 8 characters and include at least one number or symbol.')?>
       </p>
     </div>
   </div>
@@ -310,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <label class="md-field">
         <span><?=t($t,'new_password','New Password (optional)')?></span>
-        <input type="password" name="password" minlength="6">
+        <input type="password" name="password" minlength="8" data-password-field>
       </label>
       </div>
       <div class="md-form-actions md-profile-actions">
@@ -352,7 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
   (function () {
     const form = document.querySelector('[data-profile-form]');
     const popup = document.querySelector('[data-required-popup]');
-    if (!form || !popup) {
+    const passwordPopup = document.querySelector('[data-password-popup]');
+    const passwordField = form ? form.querySelector('[data-password-field]') : null;
+    const passwordPolicyRegex = /^(?=.{8,}$)(?=.*[\d\W_]).+$/;
+    if (!form || !popup || !passwordPopup || !passwordField) {
       return;
     }
 
@@ -360,6 +377,13 @@ document.addEventListener('DOMContentLoaded', () => {
     closeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         popup.hidden = true;
+      });
+    });
+
+    const passwordCloseButtons = passwordPopup.querySelectorAll('[data-password-popup-close]');
+    passwordCloseButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        passwordPopup.hidden = true;
       });
     });
 
@@ -379,6 +403,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return !hasError;
     };
 
+    const validatePassword = () => {
+      const value = passwordField.value;
+      if (value.trim() === '') {
+        markField(passwordField, false);
+        return true;
+      }
+      const valid = passwordPolicyRegex.test(value);
+      markField(passwordField, !valid);
+      return valid;
+    };
+
     requiredFields.forEach((field) => {
       field.addEventListener('blur', () => {
         validateField(field);
@@ -393,6 +428,16 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    passwordField.addEventListener('blur', validatePassword);
+    passwordField.addEventListener('input', () => {
+      if (passwordField.value.trim() === '') {
+        markField(passwordField, false);
+        passwordPopup.hidden = true;
+        return;
+      }
+      validatePassword();
+    });
+
     form.addEventListener('submit', (event) => {
       let hasError = false;
       requiredFields.forEach((field) => {
@@ -403,6 +448,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (hasError) {
         event.preventDefault();
         popup.hidden = false;
+        return;
+      }
+
+      if (!validatePassword()) {
+        event.preventDefault();
+        passwordPopup.hidden = false;
       }
     });
   })();

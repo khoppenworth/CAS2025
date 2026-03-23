@@ -101,7 +101,9 @@ CREATE TABLE questionnaire (
   title VARCHAR(255) NOT NULL,
   description TEXT NULL,
   status ENUM('draft','published','inactive') NOT NULL DEFAULT 'draft',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  family_key VARCHAR(100) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_questionnaire_family_key (family_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE performance_period (
@@ -380,20 +382,13 @@ INSERT INTO questionnaire_item (questionnaire_id, section_id, linkId, text, type
 (@qid, @s2, 'q5', 'Any stockouts this week?', 'boolean', 2, 20);
 
 INSERT INTO performance_period (label, period_start, period_end) VALUES
-('2021 H1', '2021-01-01', '2021-06-30'),
-('2021 H2', '2021-07-01', '2021-12-31'),
-('2022 H1', '2022-01-01', '2022-06-30'),
-('2022 H2', '2022-07-01', '2022-12-31'),
-('2023 H1', '2023-01-01', '2023-06-30'),
-('2023 H2', '2023-07-01', '2023-12-31'),
-('2024 H1', '2024-01-01', '2024-06-30'),
-('2024 H2', '2024-07-01', '2024-12-31'),
-('2025 H1', '2025-01-01', '2025-06-30'),
-('2025 H2', '2025-07-01', '2025-12-31'),
-('2026 H1', '2026-01-01', '2026-06-30'),
-('2026 H2', '2026-07-01', '2026-12-31'),
-('2027 H1', '2027-01-01', '2027-06-30'),
-('2027 H2', '2027-07-01', '2027-12-31');
+('2023', '2023-01-01', '2023-12-31'),
+('2024', '2024-01-01', '2024-12-31'),
+('2025', '2025-01-01', '2025-12-31'),
+('2026', '2026-01-01', '2026-12-31'),
+('2027', '2027-01-01', '2027-12-31'),
+('2028', '2028-01-01', '2028-12-31'),
+('2029', '2029-01-01', '2029-12-31');
 
 INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, min_score, max_score) VALUES
 ('FIN-101', 'Financial Management Fundamentals', 'https://moodle.example.com/course/fin101', 'finance', 0, 79),
