@@ -486,6 +486,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'title' => $row['title'],
             'description' => $row['description'],
             'status' => strtolower((string)($row['status'] ?? 'draft')),
+            'family_key' => trim((string)($row['family_key'] ?? '')) !== '' ? (string)$row['family_key'] : 'questionnaire-' . $qid,
             'created_at' => $row['created_at'],
             'sections' => $sections,
             'items' => $itemsByQuestionnaire[$qid] ?? [],
@@ -763,6 +764,7 @@ if ($action === 'save' || $action === 'publish') {
     $supportsOptionCorrect = false;
     $supportsOptionOrder = false;
     $supportsQuestionnaireStatus = false;
+    $supportsQuestionnaireFamilyKey = false;
     try {
         $questionnaireColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire');
         $questionnaireColumns = [];
@@ -775,6 +777,7 @@ if ($action === 'save' || $action === 'publish') {
             }
         }
         $supportsQuestionnaireStatus = isset($questionnaireColumns['status']);
+        $supportsQuestionnaireFamilyKey = isset($questionnaireColumns['family_key']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire columns fetch failed: ' . $columnError->getMessage());
     }
@@ -853,7 +856,26 @@ if ($action === 'save' || $action === 'publish') {
 
     $pdo->beginTransaction();
     try {
-        if ($supportsQuestionnaireStatus) {
+        $generateFamilyKey = static function (?string $candidate = null): string {
+            $normalized = trim((string)$candidate);
+            if ($normalized !== '') {
+                $normalized = preg_replace('/[^a-zA-Z0-9_-]+/', '-', strtolower($normalized));
+                $normalized = trim((string)$normalized, '-');
+            }
+            if ($normalized === '') {
+                try {
+                    $normalized = 'questionnaire-' . bin2hex(random_bytes(8));
+                } catch (Throwable $_) {
+                    $normalized = 'questionnaire-' . uniqid('', true);
+                }
+            }
+            return substr($normalized, 0, 100);
+        };
+
+        if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+            $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status, family_key) VALUES (?, ?, ?, ?)');
+            $updateQuestionnaireStmt = $pdo->prepare('UPDATE questionnaire SET title=?, description=?, status=?, family_key=? WHERE id=?');
+        } elseif ($supportsQuestionnaireStatus) {
             $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
             $updateQuestionnaireStmt = $pdo->prepare('UPDATE questionnaire SET title=?, description=?, status=? WHERE id=?');
         } else {
@@ -1120,6 +1142,7 @@ if ($action === 'save' || $action === 'publish') {
             $title = trim((string)($qData['title'] ?? ''));
             $description = $qData['description'] ?? null;
             $status = strtolower(trim((string)($qData['status'] ?? '')));
+            $familyKey = trim((string)($qData['family_key'] ?? ''));
             if (!in_array($status, ['draft', 'published', 'inactive'], true)) {
                 $status = 'draft';
             }
@@ -1128,19 +1151,31 @@ if ($action === 'save' || $action === 'publish') {
             } elseif ($qid && isset($questionnaireMap[$qid])) {
                 $existingStatus = strtolower((string)($questionnaireMap[$qid]['status'] ?? 'draft'));
                 if ($existingStatus === 'published' && $status === 'draft') {
-                    $status = 'inactive';
+                    // Keep previously published questionnaires published unless admins
+                    // explicitly switch them to inactive.
+                    $status = 'published';
                 }
             }
+            if ($qid && isset($questionnaireMap[$qid]) && $familyKey === '') {
+                $familyKey = (string)($questionnaireMap[$qid]['family_key'] ?? '');
+            }
+            $familyKey = $generateFamilyKey($familyKey !== '' ? $familyKey : ($title !== '' ? $title : null));
 
             if ($qid && isset($questionnaireMap[$qid])) {
-                if ($supportsQuestionnaireStatus) {
+                if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+                    $updateQuestionnaireStmt->execute([$title, $description, $status, $familyKey, $qid]);
+                    $questionnaireMap[$qid]['status'] = $status;
+                    $questionnaireMap[$qid]['family_key'] = $familyKey;
+                } elseif ($supportsQuestionnaireStatus) {
                     $updateQuestionnaireStmt->execute([$title, $description, $status, $qid]);
                     $questionnaireMap[$qid]['status'] = $status;
                 } else {
                     $updateQuestionnaireStmt->execute([$title, $description, $qid]);
                 }
             } else {
-                if ($supportsQuestionnaireStatus) {
+                if ($supportsQuestionnaireStatus && $supportsQuestionnaireFamilyKey) {
+                    $insertQuestionnaireStmt->execute([$title, $description, $status, $familyKey]);
+                } elseif ($supportsQuestionnaireStatus) {
                     $insertQuestionnaireStmt->execute([$title, $description, $status]);
                 } else {
                     $insertQuestionnaireStmt->execute([$title, $description]);
@@ -1154,6 +1189,7 @@ if ($action === 'save' || $action === 'publish') {
                     'title' => $title,
                     'description' => $description,
                     'status' => $status,
+                    'family_key' => $familyKey,
                 ];
             }
             $questionnaireSeen[] = $qid;
@@ -1333,22 +1369,18 @@ if ($action === 'save' || $action === 'publish') {
 
             $itemsToDelete = array_diff(array_keys($existingItems), $itemSeen);
             if ($itemsToDelete) {
-                $itemsToDeactivate = [];
                 $itemsToRemove = [];
                 foreach ($itemsToDelete as $itemId) {
                     $row = $existingItems[$itemId] ?? [];
                     $linkId = isset($row['linkId']) ? (string)$row['linkId'] : '';
                     $hasResponses = $linkId !== '' && !empty($itemResponsePresence[$qid][$linkId] ?? null);
                     if ($hasResponses) {
-                        $itemsToDeactivate[] = $itemId;
-                    } else {
-                        $itemsToRemove[] = $itemId;
+                        // Preserve answered items if they are omitted from payload.
+                        // This prevents accidental mass-deactivation when the client submits
+                        // an incomplete questionnaire graph.
+                        continue;
                     }
-                }
-                if ($itemsToDeactivate && $supportsItemActive) {
-                    $placeholders = implode(',', array_fill(0, count($itemsToDeactivate), '?'));
-                    $stmt = $pdo->prepare("UPDATE questionnaire_item SET is_active=0 WHERE id IN ($placeholders)");
-                    $stmt->execute(array_values($itemsToDeactivate));
+                    $itemsToRemove[] = $itemId;
                 }
                 if ($itemsToRemove) {
                     $placeholders = implode(',', array_fill(0, count($itemsToRemove), '?'));
@@ -1381,7 +1413,6 @@ if ($action === 'save' || $action === 'publish') {
 
         $sectionsToDelete = array_diff(array_keys($existingSections), $sectionSeen);
         if ($sectionsToDelete) {
-            $sectionsToDeactivate = [];
             $sectionsToRemove = [];
             foreach ($sectionsToDelete as $sectionId) {
                 $hasResponses = false;
@@ -1395,21 +1426,10 @@ if ($action === 'save' || $action === 'publish') {
                     }
                 }
                 if ($hasResponses) {
-                    $sectionsToDeactivate[] = $sectionId;
-                } else {
-                    $sectionsToRemove[] = $sectionId;
+                    // Preserve answered sections when omitted from payload.
+                    continue;
                 }
-            }
-            if ($sectionsToDeactivate) {
-                $placeholders = implode(',', array_fill(0, count($sectionsToDeactivate), '?'));
-                if ($supportsSectionActive) {
-                    $stmt = $pdo->prepare("UPDATE questionnaire_section SET is_active=0 WHERE id IN ($placeholders)");
-                    $stmt->execute(array_values($sectionsToDeactivate));
-                }
-                if ($supportsItemActive) {
-                    $stmt = $pdo->prepare("UPDATE questionnaire_item SET is_active=0 WHERE section_id IN ($placeholders)");
-                    $stmt->execute(array_values($sectionsToDeactivate));
-                }
+                $sectionsToRemove[] = $sectionId;
             }
             if ($sectionsToRemove) {
                 $placeholders = implode(',', array_fill(0, count($sectionsToRemove), '?'));
@@ -1997,6 +2017,20 @@ if ($qbJsVersion) {
               <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+    <div class="qb-manager-footer-panels">
+      <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
+        <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
+        <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
+        <div class="qb-start-actions qb-danger-actions">
+          <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+            <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+          </button>
+          <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+            <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+          </button>
         </div>
       </div>
     </div>
