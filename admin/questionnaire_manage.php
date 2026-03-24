@@ -499,6 +499,25 @@ function qb_fetch_questionnaires(PDO $pdo): array
     return $questionnaires;
 }
 
+function qb_supports_section_include_in_scoring(PDO $pdo): bool
+{
+    try {
+        $sectionColumnsStmt = $pdo->query('SHOW COLUMNS FROM questionnaire_section');
+        if (!$sectionColumnsStmt) {
+            return false;
+        }
+        foreach ($sectionColumnsStmt->fetchAll() as $columnRow) {
+            $name = isset($columnRow['Field']) ? (string)$columnRow['Field'] : '';
+            if (strcasecmp($name, 'include_in_scoring') === 0) {
+                return true;
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('questionnaire_manage questionnaire_section capability lookup failed: ' . $e->getMessage());
+    }
+    return false;
+}
+
 if ($action === 'fetch') {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         send_json(['status' => 'error', 'message' => 'Method not allowed'], 405);
@@ -1842,6 +1861,9 @@ if (isset($_POST['import'])) {
 }
 
 $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
+$qbCapabilities = [
+    'sectionIncludeScoring' => qb_supports_section_include_in_scoring($pdo),
+];
 $qbCssHref = asset_url('assets/css/questionnaire-builder.css');
 $qbCssVersion = @filemtime(__DIR__ . '/../assets/css/questionnaire-builder.css');
 if ($qbCssVersion) {
@@ -1867,6 +1889,7 @@ if ($qbJsVersion) {
 <link rel="stylesheet" href="<?=htmlspecialchars($qbCssHref, ENT_QUOTES, 'UTF-8')?>">
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_STRINGS = <?=json_encode($qbStrings, JSON_THROW_ON_ERROR)?>;</script>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_BOOTSTRAP = <?=json_encode($bootstrapQuestionnaires, JSON_THROW_ON_ERROR)?>;</script>
+<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">window.QB_CAPABILITIES = <?=json_encode($qbCapabilities, JSON_THROW_ON_ERROR)?>;</script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" defer></script>
 <script type="module" src="<?=htmlspecialchars($qbJsHref, ENT_QUOTES, 'UTF-8')?>" defer></script>
 </head>
