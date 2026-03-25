@@ -122,6 +122,10 @@ const Builder = (() => {
     saveStatusPublished: 'Published successfully',
     saveStatusLastSaved: 'Last saved just now',
   };
+  const RAW_CAPABILITIES = window.QB_CAPABILITIES || {};
+  const CAPABILITIES = {
+    sectionIncludeScoring: !['0', 'false', false, 0, null, undefined].includes(RAW_CAPABILITIES.sectionIncludeScoring),
+  };
 
   const state = {
     questionnaires: [],
@@ -1079,6 +1083,10 @@ const Builder = (() => {
 
   function buildSectionCard(questionnaire, section) {
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
+    const includeInScoringControl = CAPABILITIES.sectionIncludeScoring
+      ? `<label><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''}> Include in scoring</label>`
+      : `<label title="Database schema upgrade required"><input type="checkbox" data-role="section-include-scoring" checked disabled> Include in scoring</label>
+         <span class="md-hint">Upgrade required to change this setting.</span>`;
     return `
       <div class="qb-section" data-section="${section.clientId}">
         <div class="qb-section-header">
@@ -1092,7 +1100,7 @@ const Builder = (() => {
           </div>
           <div class="qb-field qb-toggle">
             <label><input type="checkbox" data-role="section-active" ${section.is_active ? 'checked' : ''} ${section.hasResponses ? 'disabled' : ''}> Active</label>
-            <label><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''}> Include in scoring</label>
+            ${includeInScoringControl}
           </div>
           <div class="qb-actions">
             <button type="button" class="md-button md-outline" data-role="remove-section" ${section.hasResponses ? 'disabled' : ''}>Remove section</button>
