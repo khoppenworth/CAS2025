@@ -1,13 +1,24 @@
 <?php
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/secure_links.php';
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$user = current_user();
+$userId = (int)($user['id'] ?? 0);
 
 $downloadRequested = isset($_GET['download']) && $_GET['download'] === '1';
+$secureLinkContext = $GLOBALS['secure_link_context'] ?? null;
+$isSecureExportDownload = is_array($secureLinkContext)
+    && (($secureLinkContext['resource_type'] ?? '') === 'admin_export_csv');
+
+if ($downloadRequested && !$isSecureExportDownload) {
+    http_response_code(404);
+    exit;
+}
 
 if ($downloadRequested) {
     header('Content-Type: text/csv');
@@ -60,6 +71,22 @@ if ($downloadRequested) {
     exit;
 }
 
+$csvDownloadUrl = url_for('admin/export.php?download=1');
+if ($userId > 0) {
+    try {
+        $csvDownloadUrl = secure_links_build_url(
+            $pdo,
+            'admin_export_csv',
+            ['user_id' => $userId, 'format' => 'csv'],
+            $userId,
+            600,
+            true
+        );
+    } catch (Throwable $secureLinkError) {
+        error_log('admin/export.php secure link generation failed: ' . $secureLinkError->getMessage());
+    }
+}
+
 $totalResponses = 0;
 $latestSubmission = null;
 try {
@@ -101,7 +128,7 @@ if ($latestSubmission) {
       <li class="md-stat-item"><span class="md-stat-label"><?=t($t, 'latest_submission', 'Latest submission')?>: </span><span class="md-stat-value"><?=htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8')?></span></li>
     </ul>
     <div class="md-form-actions md-form-actions--center md-form-actions--stack">
-      <a class="md-button md-primary md-elev-2" href="<?=htmlspecialchars(url_for('admin/export.php?download=1'), ENT_QUOTES, 'UTF-8')?>">
+      <a class="md-button md-primary md-elev-2" href="<?=htmlspecialchars($csvDownloadUrl, ENT_QUOTES, 'UTF-8')?>">
         <?=t($t, 'download_csv', 'Download CSV')?></a>
     </div>
     <p class="md-upgrade-meta"><?=t($t, 'export_notice', 'The export includes reviewer information, status changes, and performance period details for each response.')?></p>
