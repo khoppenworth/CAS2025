@@ -891,6 +891,11 @@
   color: var(--app-muted);
 }
 
+.qb-field-hint--error {
+  color: #b42318;
+  font-weight: 600;
+}
+
 .qb-item .qb-input,
 .qb-item .qb-select {
   flex: 1 1 150px;
@@ -1000,16 +1005,38 @@
   border: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
   border-radius: 8px;
   background: var(--app-surface-alt, rgba(32, 84, 147, 0.05));
-  padding: 0.55rem 0.65rem;
+  padding: 0.7rem;
+}
+
+.qb-item-condition-card.is-disabled {
+  opacity: 0.85;
+}
+
+.qb-item-condition-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .qb-item-condition-title {
-  margin: 0 0 0.45rem;
+  margin: 0;
   font-size: 0.83rem;
   font-weight: 700;
   color: var(--app-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.qb-item-condition-help {
+  margin: 0.3rem 0 0.45rem;
+  font-size: 0.8rem;
+  color: var(--app-muted);
+}
+
+.qb-chip-toggle--condition-enable {
+  background: var(--app-surface);
 }
 
 .qb-item-condition-grid {
