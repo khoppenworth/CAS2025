@@ -22,11 +22,6 @@ if ($tokenUserId > 0 && $tokenUserId !== $currentUserId) {
 }
 
 $resourceType = trim((string)($resolved['resource_type'] ?? ''));
-if ($resourceType !== 'performance_pdf') {
-    http_response_code(404);
-    exit;
-}
-
 $payload = $resolved['payload'] ?? [];
 $payloadUserId = isset($payload['user_id']) ? (int)$payload['user_id'] : 0;
 if ($payloadUserId > 0 && $payloadUserId !== $currentUserId) {
@@ -41,8 +36,36 @@ if ((int)($resolved['single_use'] ?? 0) === 1) {
 $GLOBALS['secure_link_context'] = [
     'resource_type' => $resourceType,
     'token_id' => (int)$resolved['id'],
+    'payload' => $payload,
 ];
 
-require __DIR__ . '/my_performance_download.php';
+if ($resourceType === 'performance_pdf') {
+    require __DIR__ . '/my_performance_download.php';
+    exit;
+}
+
+if ($resourceType === 'admin_export_csv') {
+    if (($currentUser['role'] ?? '') !== 'admin') {
+        http_response_code(403);
+        exit;
+    }
+
+    $_GET['download'] = '1';
+    require __DIR__ . '/admin/export.php';
+    exit;
+}
+
+if ($resourceType === 'analytics_report_pdf') {
+    $role = (string)($currentUser['role'] ?? '');
+    if (!in_array($role, ['admin', 'supervisor'], true)) {
+        http_response_code(403);
+        exit;
+    }
+
+    require __DIR__ . '/admin/analytics_download.php';
+    exit;
+}
+
+http_response_code(404);
 exit;
 ?>
