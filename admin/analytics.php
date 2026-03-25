@@ -627,10 +627,9 @@ $downloadUrlFor = static function (array $params = []) use ($pdo, $userId): stri
             $pdo,
             'analytics_report_pdf',
             [
-                'user_id' => $userId,
                 'query' => $params,
             ],
-            $userId,
+            null,
             600
         );
     } catch (Throwable $secureLinkError) {
