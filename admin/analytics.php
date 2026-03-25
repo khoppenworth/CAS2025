@@ -9,6 +9,7 @@ if (!function_exists('available_work_functions')) {
 }
 require_once __DIR__ . '/../lib/analytics_report.php';
 require_once __DIR__ . '/../lib/scoring.php';
+require_once __DIR__ . '/../lib/secure_links.php';
 
 function analytics_supports_section_include_in_scoring(PDO $pdo): bool
 {
@@ -298,6 +299,8 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$user = current_user();
+$userId = (int)($user['id'] ?? 0);
 
 $reportMessage = '';
 $reportError = '';
@@ -609,12 +612,30 @@ $sectionColumns = [];
 $sectionScoresByResponse = [];
 $sectionAggregates = [];
 
-$downloadUrlFor = static function (array $params = []): string {
+$downloadUrlFor = static function (array $params = []) use ($pdo, $userId): string {
     $path = 'admin/analytics_download.php';
     if ($params) {
         $path .= '?' . http_build_query($params);
     }
-    return url_for($path);
+    $fallback = url_for($path);
+    if ($userId <= 0) {
+        return $fallback;
+    }
+
+    try {
+        return secure_links_build_url(
+            $pdo,
+            'analytics_report_pdf',
+            [
+                'query' => $params,
+            ],
+            null,
+            600
+        );
+    } catch (Throwable $secureLinkError) {
+        error_log('admin/analytics.php secure link generation failed: ' . $secureLinkError->getMessage());
+        return $fallback;
+    }
 };
 
 $lookerStudioQuery = <<<'SQL'

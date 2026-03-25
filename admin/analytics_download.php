@@ -6,21 +6,32 @@ auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
 
+$secureLinkContext = $GLOBALS['secure_link_context'] ?? null;
+$isSecureAnalyticsDownload = is_array($secureLinkContext)
+    && (($secureLinkContext['resource_type'] ?? '') === 'analytics_report_pdf');
+if (!$isSecureAnalyticsDownload) {
+    http_response_code(404);
+    exit;
+}
+
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 
 $questionnaireId = null;
-if (isset($_GET['questionnaire_id'])) {
-    $candidate = (int)$_GET['questionnaire_id'];
+$payload = $secureLinkContext['payload'] ?? [];
+$queryPayload = isset($payload['query']) && is_array($payload['query']) ? $payload['query'] : [];
+
+if (isset($queryPayload['questionnaire_id'])) {
+    $candidate = (int)$queryPayload['questionnaire_id'];
     if ($candidate > 0) {
         $questionnaireId = $candidate;
     }
 }
 
 $includeDetails = false;
-if (isset($_GET['include_details'])) {
-    $rawInclude = $_GET['include_details'];
+if (isset($queryPayload['include_details'])) {
+    $rawInclude = $queryPayload['include_details'];
     $includeDetails = $rawInclude === '1'
         || $rawInclude === 'true'
         || $rawInclude === 'on';

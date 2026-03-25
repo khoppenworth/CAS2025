@@ -10,6 +10,14 @@ auth_required(['staff', 'supervisor', 'admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
 
+$secureLinkContext = $GLOBALS['secure_link_context'] ?? null;
+$isSecureLinkRequest = is_array($secureLinkContext)
+    && (($secureLinkContext['resource_type'] ?? '') === 'performance_pdf');
+if (!$isSecureLinkRequest) {
+    http_response_code(404);
+    exit;
+}
+
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);

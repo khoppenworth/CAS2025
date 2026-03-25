@@ -3,6 +3,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
 require_once __DIR__ . '/lib/performance_sections.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
+require_once __DIR__ . '/lib/secure_links.php';
 auth_required(['staff','supervisor','admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -10,8 +11,24 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $user = current_user();
+$userId = (int)($user['id'] ?? 0);
 $userWorkFunctionLabel = work_function_label($pdo, (string)($user['work_function'] ?? ''));
 ensure_course_recommendation_schema($pdo);
+
+$performanceDownloadUrl = url_for('my_performance_download.php');
+if ($userId > 0) {
+    try {
+        $performanceDownloadUrl = secure_links_build_url(
+            $pdo,
+            'performance_pdf',
+            ['user_id' => $userId],
+            $userId,
+            900
+        );
+    } catch (Throwable $secureLinkError) {
+        error_log('my_performance secure link generation failed: ' . $secureLinkError->getMessage());
+    }
+}
 
 $hasPeriodStartColumn = false;
 try {
@@ -221,7 +238,7 @@ $pageHelpKey = 'workspace.my_performance';
       <h2 class="md-card-title"><?=t($t,'performance_overview','Performance Overview')?></h2>
       <a
         class="md-button md-outline md-card-action"
-        href="<?=htmlspecialchars(url_for('my_performance_download.php'), ENT_QUOTES, 'UTF-8')?>"
+        href="<?=htmlspecialchars($performanceDownloadUrl, ENT_QUOTES, 'UTF-8')?>"
       >
         <?=t($t,'download_performance_pdf','Download PDF')?>
       </a>

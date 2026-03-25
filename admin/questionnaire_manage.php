@@ -2014,14 +2014,6 @@ if ($qbJsVersion) {
                 <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
               </div>
             </div>
-            <div class="qb-publish-readiness qb-publish-readiness--inline" id="qb-publish-readiness" aria-live="polite">
-              <h4><?=t($t, 'qb_publish_ready_title', 'Publish readiness')?></h4>
-              <ul class="qb-readiness-list">
-                <li data-ready="title"><?=t($t, 'qb_readiness_title', 'Title added')?></li>
-                <li data-ready="content"><?=t($t, 'qb_readiness_content', 'At least one question')?></li>
-                <li data-ready="scoring"><?=t($t, 'qb_readiness_scoring', 'Scoring configured')?></li>
-              </ul>
-            </div>
           </div>
         </div>
         <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
