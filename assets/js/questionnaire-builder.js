@@ -1083,7 +1083,8 @@ const Builder = (() => {
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const includeInScoringControl = CAPABILITIES.sectionIncludeScoring
       ? `<label><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''}> Include in scoring</label>`
-      : '<span class="md-hint">Include-in-scoring is unavailable until the database schema is upgraded.</span>';
+      : `<label title="Database schema upgrade required"><input type="checkbox" data-role="section-include-scoring" checked disabled> Include in scoring</label>
+         <span class="md-hint">Upgrade required to change this setting.</span>`;
     return `
       <div class="qb-section" data-section="${section.clientId}">
         <div class="qb-section-header">
