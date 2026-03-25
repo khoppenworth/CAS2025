@@ -179,6 +179,26 @@ UPDATE questionnaire_section
 SET is_active = 1
 WHERE is_active IS NULL;
 
+SET @qs_scoring_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_section'
+    AND COLUMN_NAME = 'include_in_scoring'
+);
+SET @qs_scoring_sql = IF(
+  @qs_scoring_exists = 0,
+  'ALTER TABLE questionnaire_section ADD COLUMN include_in_scoring TINYINT(1) NOT NULL DEFAULT 1 AFTER is_active',
+  'DO 1'
+);
+PREPARE stmt FROM @qs_scoring_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE questionnaire_section
+SET include_in_scoring = 1
+WHERE include_in_scoring IS NULL;
+
 SET @qi_active_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
