@@ -779,17 +779,5 @@ $pageHelpKey = 'admin.dashboard';
     </div>
   </section>
 </section>
-<script>
-  document.addEventListener('click', function (event) {
-    const closeButton = event.target.closest('[data-upgrade-popup-close]');
-    if (!closeButton) {
-      return;
-    }
-    const popup = closeButton.closest('.md-upgrade-popup');
-    if (popup) {
-      popup.remove();
-    }
-  });
-</script>
 <?php include __DIR__.'/../templates/footer.php'; ?>
 </body></html>
