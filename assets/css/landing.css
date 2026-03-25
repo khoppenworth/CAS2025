@@ -314,7 +314,7 @@ body.landing-body {
 
 .landing-section--hero-image .landing-hero-panel {
   background:
-    linear-gradient(135deg, rgba(8, 26, 58, 0.78), rgba(12, 79, 176, 0.58)),
+    linear-gradient(135deg, rgba(3, 18, 42, 0.9), rgba(10, 60, 132, 0.72)),
     radial-gradient(100% 140% at 0% 0%, color-mix(in srgb, var(--landing-accent) 18%, transparent), transparent 70%),
     radial-gradient(120% 120% at 100% 100%, color-mix(in srgb, var(--landing-primary) 16%, transparent), transparent 75%),
     var(--landing-hero-image),
@@ -329,12 +329,13 @@ body.landing-body {
 .landing-section--hero-image .landing-hero-copy__subtitle,
 .landing-section--hero-image .landing-hero-badges span {
   color: #f8fbff;
+  text-shadow: 0 2px 10px rgba(3, 18, 42, 0.5);
 }
 
 .landing-section--hero-image .landing-hero-copy__eyebrow,
 .landing-section--hero-image .landing-hero-badges span {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.34);
 }
 
 .landing-section--hero-image .landing-hero-copy__subtitle {
