@@ -1121,6 +1121,44 @@
     });
   }
 
+  const closeUpgradePopup = (popup) => {
+    if (!(popup instanceof HTMLElement)) {
+      return;
+    }
+    popup.remove();
+  };
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const closeButton = target.closest('[data-upgrade-popup-close]');
+    if (closeButton) {
+      const popup = closeButton.closest('.md-upgrade-popup');
+      closeUpgradePopup(popup);
+      return;
+    }
+
+    const backdrop = target.closest('.md-upgrade-popup__backdrop');
+    if (backdrop) {
+      const popup = backdrop.closest('.md-upgrade-popup');
+      closeUpgradePopup(popup);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    const popup = document.querySelector('.md-upgrade-popup');
+    if (popup) {
+      event.preventDefault();
+      closeUpgradePopup(popup);
+    }
+  });
+
   const offlineStorageKeys = {
     credentials: 'hrassess:offlineCredentials',
     pending: 'hrassess:offlineCredentials:pending',
