@@ -1810,7 +1810,7 @@ if (isset($_POST['import'])) {
                                 }
                                 $children = $it['item'] ?? [];
                                 $childList = $toList($children);
-                                $type = strtolower($it['type'] ?? '');
+                                $type = strtolower((string)($it['type'] ?? ''));
                                 $hasChildren = !empty($childList);
 
                                 if ($hasChildren || $type === 'group') {
@@ -1962,7 +1962,7 @@ if (isset($_POST['import'])) {
                         $pdo->commit();
                     }
                     $summary = sprintf(
-                        'FHIR import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
+                        'Form Builder import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
                         $importedQuestionnaires,
                         $importedSections,
                         $importedItems,
@@ -1983,7 +1983,7 @@ if (isset($_POST['import'])) {
                         $pdo->rollBack();
                     }
                     error_log('FHIR questionnaire import failed: ' . $e->getMessage());
-                    $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
+                    $msg = t($t, 'fhir_import_failed', 'Form Builder import failed. Please check your file and try again.');
                     $importDetails[] = 'Database error: ' . $e->getMessage();
                 }
             } else {

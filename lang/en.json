@@ -230,7 +230,7 @@
   "female": "Female",
   "fhir_import": "Questionnaire import",
   "fhir_import_complete": "Questionnaire import complete",
-  "fhir_import_failed": "FHIR import failed. Please check your file and try again.",
+  "fhir_import_failed": "Form Builder import failed. Please check your file and try again.",
   "file": "File",
   "filter_no_results": "No questionnaires match your search.",
   "filter_questionnaires": "Filter questionnaires",
