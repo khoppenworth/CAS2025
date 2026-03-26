@@ -1627,7 +1627,7 @@ body.theme-dark .md-help-bubble::before {
 
 .md-field--required > span::after {
   content: ' *';
-  color: var(--app-danger);
+  color: #d92d20;
   font-weight: 700;
 }
 
@@ -2341,6 +2341,13 @@ body.theme-dark .email-template-placeholders code {
 
 .md-assessment-form .md-field.md-field--missing {
   border-color: #d92d20;
+}
+
+.md-assessment-form .md-field.md-field--missing input,
+.md-assessment-form .md-field.md-field--missing select,
+.md-assessment-form .md-field.md-field--missing textarea {
+  border-color: #d92d20;
+  box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.15);
 }
 
 .md-assessment-form .md-field > span {

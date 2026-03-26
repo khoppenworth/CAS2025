@@ -1389,41 +1389,45 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       });
     };
 
+    const isFieldMissingRequiredValue = (field) => {
+      const controls = Array.from(field.querySelectorAll('input, textarea, select'));
+      if (controls.length === 0) {
+        return false;
+      }
+
+      return controls.some((control) => {
+        if (!(control instanceof HTMLElement) || control.disabled || !control.required) {
+          return false;
+        }
+        if (control instanceof HTMLInputElement) {
+          if ((control.type === 'radio' || control.type === 'checkbox')) {
+            const groupName = control.name;
+            if (!groupName) {
+              return control.type === 'checkbox' ? !control.checked : control.value.trim() === '';
+            }
+            const group = Array.from(assessmentForm.querySelectorAll('input[type="radio"], input[type="checkbox"]'))
+              .filter((candidate) => candidate instanceof HTMLInputElement && candidate.name === groupName);
+            return !group.some((candidate) => candidate.checked);
+          }
+          return control.value.trim() === '';
+        }
+        if (control instanceof HTMLTextAreaElement) {
+          return control.value.trim() === '';
+        }
+        if (control instanceof HTMLSelectElement) {
+          if (control.multiple) {
+            return control.selectedOptions.length === 0;
+          }
+          return control.value.trim() === '';
+        }
+        return false;
+      });
+    };
+
     const applyMissingQuestionHighlights = () => {
       const missingFields = [];
       questionFields().forEach((field) => {
-        const controls = Array.from(field.querySelectorAll('input, textarea, select'));
-        if (controls.length === 0) {
-          return;
-        }
-        const isMissing = controls.some((control) => {
-          if (!(control instanceof HTMLElement) || control.disabled || !control.required) {
-            return false;
-          }
-          if (control instanceof HTMLInputElement) {
-            if ((control.type === 'radio' || control.type === 'checkbox')) {
-              const groupName = control.name;
-              if (!groupName) {
-                return control.type === 'checkbox' ? !control.checked : control.value.trim() === '';
-              }
-              const group = Array.from(assessmentForm.querySelectorAll('input[type="radio"], input[type="checkbox"]'))
-                .filter((candidate) => candidate instanceof HTMLInputElement && candidate.name === groupName);
-              return !group.some((candidate) => candidate.checked);
-            }
-            return control.value.trim() === '';
-          }
-          if (control instanceof HTMLTextAreaElement) {
-            return control.value.trim() === '';
-          }
-          if (control instanceof HTMLSelectElement) {
-            if (control.multiple) {
-              return control.selectedOptions.length === 0;
-            }
-            return control.value.trim() === '';
-          }
-          return false;
-        });
-
+        const isMissing = isFieldMissingRequiredValue(field);
         field.classList.toggle('md-field--missing', isMissing);
         if (isMissing) {
           missingFields.push(field);
@@ -2059,7 +2063,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         }
         const field = target.closest('[data-question-anchor]');
         if (field) {
-          field.classList.remove('md-field--missing');
+          field.classList.toggle('md-field--missing', isFieldMissingRequiredValue(field));
         }
       });
       assessmentForm.addEventListener('change', (event) => {
@@ -2070,9 +2074,19 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         }
         const field = target.closest('[data-question-anchor]');
         if (field) {
-          field.classList.remove('md-field--missing');
+          field.classList.toggle('md-field--missing', isFieldMissingRequiredValue(field));
         }
       });
+      assessmentForm.addEventListener('invalid', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const field = target.closest('[data-question-anchor]');
+        if (field) {
+          field.classList.add('md-field--missing');
+        }
+      }, true);
 
       const params = new URLSearchParams(window.location.search);
       if (params.get('saved') === 'draft') {
