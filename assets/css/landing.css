@@ -35,22 +35,25 @@ body.landing-body {
   position: sticky;
   top: 0;
   z-index: 12;
-  background: linear-gradient(
-    135deg,
-    var(--app-primary, #0d63d9) 0%,
-    color-mix(in srgb, var(--app-primary, #0d63d9) 70%, #2ba7ff 30%) 100%
-  );
-  border-bottom: 1px solid color-mix(in srgb, var(--app-primary, #0d63d9) 72%, #ffffff 28%);
+  background-color: var(--app-primary, #0d63d9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .landing-topbar__inner {
-  width: min(1200px, 100% - 2rem);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.5rem 0 0;
   min-height: 76px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.landing-topbar .landing-brand {
+  margin-bottom: 0;
+  margin-left: 0;
+  border-radius: 0;
 }
 
 .landing-nav {
@@ -313,15 +316,30 @@ body.landing-body {
 }
 
 .landing-section--hero-image .landing-hero-panel {
-  background:
-    linear-gradient(135deg, rgba(3, 18, 42, 0.9), rgba(10, 60, 132, 0.72)),
-    radial-gradient(100% 140% at 0% 0%, color-mix(in srgb, var(--landing-accent) 18%, transparent), transparent 70%),
-    radial-gradient(120% 120% at 100% 100%, color-mix(in srgb, var(--landing-primary) 16%, transparent), transparent 75%),
-    var(--landing-hero-image),
-    linear-gradient(135deg, color-mix(in srgb, var(--md-surface) 92%, transparent), color-mix(in srgb, var(--app-primary-soft, #d7e5ff) 38%, transparent));
-  background-size: auto, auto, auto, cover, auto;
-  background-position: center, 0 0, 100% 100%, center, center;
+  position: relative;
+  background-color: #123d75;
+  background-image: var(--landing-hero-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
+}
+
+.landing-section--hero-image .landing-hero-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(3, 18, 42, 0.42), rgba(10, 60, 132, 0.34)),
+    radial-gradient(100% 140% at 0% 0%, rgba(43, 167, 255, 0.12), rgba(43, 167, 255, 0) 70%),
+    radial-gradient(120% 120% at 100% 100%, rgba(13, 99, 217, 0.1), rgba(13, 99, 217, 0) 75%);
+  pointer-events: none;
+}
+
+.landing-section--hero-image .landing-hero-copy,
+.landing-section--hero-image .landing-hero-badges {
+  position: relative;
+  z-index: 1;
 }
 
 .landing-section--hero-image .landing-hero-copy__eyebrow,
