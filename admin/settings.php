@@ -353,6 +353,22 @@ $pageHelpKey = 'admin.settings';
         <?php endif; ?>
       </div>
     <?php endif; ?>
+    <?php $currentLandingBackgroundUrl = site_landing_background_url($cfg); ?>
+    <div class="md-field" style="margin-bottom: 1.2rem;">
+      <span><?=t($t,'landing_background','Landing Background')?></span>
+      <?php if ($currentLandingBackgroundUrl !== ''): ?>
+        <div class="branding-logo-preview">
+          <img src="<?=htmlspecialchars($currentLandingBackgroundUrl, ENT_QUOTES, 'UTF-8')?>" alt="<?=htmlspecialchars(t($t, 'landing_background_preview', 'Landing background preview'), ENT_QUOTES, 'UTF-8')?>">
+          <div>
+            <p class="md-hint"><?=t($t,'landing_background_preview','Current landing background preview')?></p>
+            <p class="md-hint"><?=t($t,'landing_background_manage_hint','To change this image, go to Branding & Landing.')?></p>
+          </div>
+        </div>
+      <?php else: ?>
+        <p class="md-hint"><?=t($t,'landing_background_empty_hint','The landing hero uses a solid color background when no image is set.')?></p>
+        <p class="md-hint"><?=t($t,'landing_background_manage_hint','To upload a background image, go to Branding & Landing.')?></p>
+      <?php endif; ?>
+    </div>
     <form method="post" action="<?=htmlspecialchars(url_for('admin/settings.php'), ENT_QUOTES, 'UTF-8')?>">
       <input type="hidden" name="csrf" value="<?=htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8')?>">
       <h3 class="md-subhead">

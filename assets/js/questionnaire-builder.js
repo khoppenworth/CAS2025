@@ -35,7 +35,6 @@ const Builder = (() => {
     sectionNav: '#qb-section-nav',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
-    publishReadiness: '#qb-publish-readiness',
     metaCsrf: 'meta[name="csrf-token"]',
     scrollTopButton: '#qb-scroll-top',
     pageTitle: '#qb-page-title',
@@ -914,7 +913,6 @@ const Builder = (() => {
     renderSectionNav();
     renderDeleteButton();
     renderDestroyButton();
-    renderPublishReadiness();
     toggleSaveButtons();
     if (!state.dirty && state.lastSavedAt) {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
@@ -1328,29 +1326,6 @@ const Builder = (() => {
     window.requestAnimationFrame(waitForTop);
   }
 
-
-  function renderPublishReadiness() {
-    const panel = document.querySelector(selectors.publishReadiness);
-    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
-    if (!panel || !active) return;
-    const checks = {
-      title: Boolean((active.title || '').trim()),
-      content: countActiveItems(active) > 0,
-      scoring: computeScoring(active).effectiveTotal > 0,
-    };
-    panel.querySelectorAll('[data-ready]').forEach((node) => {
-      const key = node.getAttribute('data-ready');
-      const ok = Boolean(checks[key]);
-      node.classList.toggle('is-ready', ok);
-      node.setAttribute('aria-checked', ok ? 'true' : 'false');
-    });
-  }
-
-  function countActiveItems(questionnaire) {
-    const root = (questionnaire.items || []).filter((item) => item.is_active !== false).length;
-    const section = (questionnaire.sections || []).reduce((sum, sec) => sum + (sec.items || []).filter((item) => item.is_active !== false).length, 0);
-    return root + section;
-  }
 
   function updateSaveStatus(text) {
     const status = document.querySelector(selectors.saveStatus);

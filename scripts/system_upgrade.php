@@ -307,6 +307,7 @@ function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
 {
     $totalStatements = 0;
     $candidates = [
+        base_path('upgrade_to_v3.sql'),
         base_path('migration.sql'),
     ];
 

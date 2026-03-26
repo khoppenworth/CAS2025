@@ -2014,14 +2014,6 @@ if ($qbJsVersion) {
                 <button class="md-button md-secondary md-elev-2" id="qb-publish" disabled><?=t($t,'publish','Publish')?></button>
               </div>
             </div>
-            <div class="qb-publish-readiness qb-publish-readiness--inline" id="qb-publish-readiness" aria-live="polite">
-              <h4><?=t($t, 'qb_publish_ready_title', 'Publish readiness')?></h4>
-              <ul class="qb-readiness-list">
-                <li data-ready="title"><?=t($t, 'qb_readiness_title', 'Title added')?></li>
-                <li data-ready="content"><?=t($t, 'qb_readiness_content', 'At least one question')?></li>
-                <li data-ready="scoring"><?=t($t, 'qb_readiness_scoring', 'Scoring configured')?></li>
-              </ul>
-            </div>
           </div>
         </div>
         <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
@@ -2040,20 +2032,6 @@ if ($qbJsVersion) {
               <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="qb-manager-footer-panels">
-      <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
-        <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
-        <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
-        <div class="qb-start-actions qb-danger-actions">
-          <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
-            <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
-          </button>
-          <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
-            <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
-          </button>
         </div>
       </div>
     </div>
