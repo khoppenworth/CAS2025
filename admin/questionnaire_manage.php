@@ -113,6 +113,10 @@ $qbStrings = [
     'previewTextareaPlaceholder' => t($t, 'qb_preview_textarea_placeholder', 'Long answer'),
     'previewBooleanYes' => t($t, 'yes', 'Yes'),
     'previewBooleanNo' => t($t, 'no', 'No'),
+    'focusModeEnter' => t($t, 'qb_focus_mode_enter', 'Focus mode'),
+    'focusModeExit' => t($t, 'qb_focus_mode_exit', 'Exit focus mode'),
+    'quickJumpLabel' => t($t, 'qb_quick_jump_label', 'Jump to'),
+    'quickJumpPlaceholder' => t($t, 'qb_quick_jump_placeholder', 'Jump to section'),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
@@ -2179,6 +2183,11 @@ if ($qbJsVersion) {
           <div class="qb-workspace-actions">
             <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
               <div class="qb-toolbar-actions qb-toolbar-actions--secondary">
+                <label class="qb-quick-jump-wrap" for="qb-quick-jump">
+                  <span class="qb-quick-jump-label"><?=t($t,'qb_quick_jump_label','Jump to')?></span>
+                  <select id="qb-quick-jump" class="qb-select qb-select-input qb-quick-jump-select" aria-label="<?=htmlspecialchars(t($t,'qb_quick_jump_label','Jump to'), ENT_QUOTES, 'UTF-8')?>"></select>
+                </label>
+                <button class="md-button md-outline md-elev-1" id="qb-focus-mode" type="button"><?=t($t,'qb_focus_mode_enter','Focus mode')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
               </div>

@@ -27,6 +27,8 @@ const Builder = (() => {
     publishButton: '#qb-publish',
     exportButton: '#qb-export-questionnaire',
     previewButton: '#qb-preview-questionnaire',
+    focusModeButton: '#qb-focus-mode',
+    quickJumpSelect: '#qb-quick-jump',
     deleteButton: '#qb-delete-questionnaire',
     destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
@@ -66,6 +68,7 @@ const Builder = (() => {
 
   const STORAGE_KEYS = {
     active: 'hrassess:qb:last-active',
+    focusMode: 'hrassess:qb:focus-mode',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -115,6 +118,10 @@ const Builder = (() => {
     previewTextareaPlaceholder: 'Long answer',
     previewBooleanYes: 'Yes',
     previewBooleanNo: 'No',
+    focusModeEnter: 'Focus mode',
+    focusModeExit: 'Exit focus mode',
+    quickJumpLabel: 'Jump to',
+    quickJumpPlaceholder: 'Jump to section',
     saveStatusUnsaved: 'Unsaved changes',
     saveStatusSaved: 'All changes saved',
     saveStatusSaving: 'Saving…',
@@ -135,10 +142,12 @@ const Builder = (() => {
     saving: false,
     csrf: '',
     lastSavedAt: null,
+    focusMode: false,
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
   let pendingImportFocus = false;
+  let sectionObserver = null;
 
   const baseMeta = document.querySelector('meta[name="app-base-url"]');
   let appBase = window.APP_BASE_URL || (baseMeta ? baseMeta.content : '/');
@@ -292,6 +301,7 @@ const Builder = (() => {
     const csrfMeta = document.querySelector(selectors.metaCsrf);
     if (!csrfMeta) return;
     state.csrf = csrfMeta.getAttribute('content') || '';
+    state.focusMode = rememberGet(STORAGE_KEYS.focusMode) === '1';
 
     attachStaticListeners();
     primeFromBootstrap();
@@ -313,6 +323,8 @@ const Builder = (() => {
     const publishBtn = document.querySelector(selectors.publishButton);
     const exportBtns = document.querySelectorAll(selectors.exportButton);
     const previewBtn = document.querySelector(selectors.previewButton);
+    const focusModeBtn = document.querySelector(selectors.focusModeButton);
+    const quickJumpSelect = document.querySelector(selectors.quickJumpSelect);
     const deleteBtn = document.querySelector(selectors.deleteButton);
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
@@ -330,6 +342,7 @@ const Builder = (() => {
     publishBtn?.addEventListener('click', () => saveAll(true));
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     previewBtn?.addEventListener('click', openPreview);
+    focusModeBtn?.addEventListener('click', toggleFocusMode);
     deleteBtn?.addEventListener('click', () => {
       const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
       removeQuestionnaire(active);
@@ -345,6 +358,13 @@ const Builder = (() => {
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
+    quickJumpSelect?.addEventListener('change', (event) => {
+      const sectionKey = event.target.value;
+      if (!sectionKey) return;
+      state.navActiveKey = sectionKey;
+      setSectionNavActive(document.querySelector(selectors.sectionNav), sectionKey);
+      scrollToSection(sectionKey);
+    });
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
         event.preventDefault();
@@ -911,6 +931,8 @@ const Builder = (() => {
     renderTabs();
     renderQuestionnaires();
     renderSectionNav();
+    renderQuickJump();
+    applyFocusMode();
     renderDeleteButton();
     renderDestroyButton();
     toggleSaveButtons();
@@ -961,6 +983,7 @@ const Builder = (() => {
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey) || state.questionnaires[0];
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
+    setupSectionObserver();
     bindSortables();
     bindQuestionnaireMetaHandlers(active);
   }
@@ -1263,13 +1286,16 @@ const Builder = (() => {
         const targetKey = btn.getAttribute('data-nav');
         state.navActiveKey = targetKey;
         setSectionNavActive(nav, targetKey);
+        syncQuickJump(targetKey);
         scrollToSection(targetKey);
       });
     });
     setSectionNavActive(nav, state.navActiveKey || 'root');
+    syncQuickJump(state.navActiveKey || 'root');
   }
 
   function setSectionNavActive(nav, key) {
+    if (!nav) return;
     nav.querySelectorAll('.qb-section-nav-item').forEach((item) => {
       const isActive = item.getAttribute('data-nav') === key;
       item.classList.toggle('is-active', isActive);
@@ -1288,6 +1314,52 @@ const Builder = (() => {
       target = document.querySelector(`.qb-section[data-section="${sectionKey}"]`);
     }
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderQuickJump() {
+    const select = document.querySelector(selectors.quickJumpSelect);
+    if (!select) return;
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      select.innerHTML = `<option value="">${escapeHtml(STRINGS.quickJumpPlaceholder || 'Jump to section')}</option>`;
+      select.disabled = true;
+      return;
+    }
+    const rootLabel = STRINGS.previewRootTitle || 'Items without a section';
+    const options = [
+      { key: 'root', label: rootLabel },
+      ...active.sections.map((section, idx) => ({
+        key: section.clientId,
+        label: section.title?.trim() || `${rootLabel} ${idx + 1}`,
+      })),
+    ];
+    select.innerHTML = options
+      .map((entry) => `<option value="${escapeAttr(entry.key)}">${escapeHtml(entry.label)}</option>`)
+      .join('');
+    select.disabled = false;
+    syncQuickJump(state.navActiveKey || 'root');
+  }
+
+  function syncQuickJump(sectionKey) {
+    const select = document.querySelector(selectors.quickJumpSelect);
+    if (!select || !sectionKey) return;
+    const hasOption = Array.from(select.options).some((opt) => opt.value === sectionKey);
+    if (hasOption) select.value = sectionKey;
+  }
+
+  function toggleFocusMode() {
+    state.focusMode = !state.focusMode;
+    rememberSet(STORAGE_KEYS.focusMode, state.focusMode ? '1' : '0');
+    applyFocusMode();
+  }
+
+  function applyFocusMode() {
+    const layout = document.querySelector('.qb-manager-layout');
+    const button = document.querySelector(selectors.focusModeButton);
+    if (!layout || !button) return;
+    layout.classList.toggle('is-focus-mode', state.focusMode);
+    button.textContent = state.focusMode ? (STRINGS.focusModeExit || 'Exit focus mode') : (STRINGS.focusModeEnter || 'Focus mode');
+    button.setAttribute('aria-pressed', state.focusMode ? 'true' : 'false');
   }
 
   function toggleScrollTopVisibility() {
@@ -1324,6 +1396,42 @@ const Builder = (() => {
       }
     };
     window.requestAnimationFrame(waitForTop);
+  }
+
+  function setupSectionObserver() {
+    if (sectionObserver) {
+      sectionObserver.disconnect();
+      sectionObserver = null;
+    }
+    if (!('IntersectionObserver' in window)) return;
+
+    const targets = [];
+    const rootTarget = document.querySelector('.qb-root-items');
+    if (rootTarget) targets.push(rootTarget);
+    document.querySelectorAll('.qb-section[data-section]').forEach((el) => targets.push(el));
+    if (!targets.length) return;
+
+    sectionObserver = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (!visible.length) return;
+        const topEntry = visible[0];
+        const key = topEntry.target.getAttribute('data-section') || 'root';
+        if (!key || state.navActiveKey === key) return;
+        state.navActiveKey = key;
+        setSectionNavActive(document.querySelector(selectors.sectionNav), key);
+        syncQuickJump(key);
+      },
+      {
+        root: null,
+        rootMargin: '-12% 0px -70% 0px',
+        threshold: [0.05, 0.25, 0.5],
+      }
+    );
+
+    targets.forEach((el) => sectionObserver.observe(el));
   }
 
 
