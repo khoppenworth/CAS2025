@@ -1660,7 +1660,11 @@ if (isset($_POST['import'])) {
                         $startedTransaction = true;
                     }
 
-                    $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
+                    if ($supportsQuestionnaireStatus) {
+                        $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
+                    } else {
+                        $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description) VALUES (?, ?)');
+                    }
                     $insertWorkFunctionStmt = null;
                     try {
                         $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
@@ -1725,10 +1729,10 @@ if (isset($_POST['import'])) {
                                 break;
                         }
                         if ($supportsQuestionnaireStatus) {
-                    $insertQuestionnaireStmt->execute([$title, $description, $status]);
-                } else {
-                    $insertQuestionnaireStmt->execute([$title, $description]);
-                }
+                            $insertQuestionnaireStmt->execute([$title, $description, $status]);
+                        } else {
+                            $insertQuestionnaireStmt->execute([$title, $description]);
+                        }
                         $qid = (int)$pdo->lastInsertId();
                         $recentImportId = $qid;
                         $importedQuestionnaires++;
