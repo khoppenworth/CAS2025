@@ -880,6 +880,14 @@
   gap: 0.1rem;
 }
 
+.qb-field.qb-field--missing input,
+.qb-field.qb-field--missing textarea,
+.qb-field.qb-field--missing select,
+.qb-option.qb-option--missing input[data-role="option-value"] {
+  border-color: #d92d20 !important;
+  box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.15);
+}
+
 .qb-field-label {
   font-weight: 600;
   font-size: 0.9rem;

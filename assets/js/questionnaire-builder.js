@@ -1045,7 +1045,7 @@ const Builder = (() => {
         <div class="qb-header">
           <div class="qb-field">
             <label>Title</label>
-            <input type="text" data-role="q-title" value="${escapeAttr(questionnaire.title)}">
+            <input type="text" data-role="q-title" data-required-field="1" value="${escapeAttr(questionnaire.title)}">
           </div>
           <div class="qb-field">
             <label>Description</label>
@@ -1090,7 +1090,7 @@ const Builder = (() => {
         <div class="qb-section-header">
           <div class="qb-field">
             <label>Section title</label>
-            <input type="text" data-role="section-title" value="${escapeAttr(section.title)}">
+            <input type="text" data-role="section-title" data-required-field="1" value="${escapeAttr(section.title)}">
           </div>
           <div class="qb-field">
             <label>Description</label>
@@ -1127,11 +1127,11 @@ const Builder = (() => {
           <div class="qb-item-main-grid">
             <div class="qb-field qb-field--item-link">
               <label>Question Code</label>
-              <input type="text" data-role="item-link" value="${escapeAttr(item.linkId)}" placeholder="e.g. q_team_support">
+              <input type="text" data-role="item-link" data-required-field="1" value="${escapeAttr(item.linkId)}" placeholder="e.g. q_team_support">
             </div>
             <div class="qb-field qb-field--item-text">
               <label>Question</label>
-              <input type="text" data-role="item-text" value="${escapeAttr(item.text)}" placeholder="Question prompt shown to employees">
+              <input type="text" data-role="item-text" data-required-field="1" value="${escapeAttr(item.text)}" placeholder="Question prompt shown to employees">
             </div>
           </div>
 
@@ -1204,7 +1204,7 @@ const Builder = (() => {
                 <span>Correct</span>
               </label>`
             : ''}
-          <input type="text" data-role="option-value" value="${escapeAttr(opt.value)}">
+          <input type="text" data-role="option-value" data-required-field="1" value="${escapeAttr(opt.value)}">
           <button type="button" class="md-button md-ghost" data-role="remove-option">×</button>
         </div>`
       )
@@ -1354,6 +1354,9 @@ const Builder = (() => {
     const qid = card.getAttribute('data-q');
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
+    if (event.target.matches('[data-required-field="1"]')) {
+      updateMissingContainerState(event.target);
+    }
     hydrateActiveQuestionnaireFromDom();
 
     switch (role) {
@@ -1824,6 +1827,43 @@ const Builder = (() => {
     }
   }
 
+  function findMissingContainer(control) {
+    if (!(control instanceof HTMLElement)) return null;
+    return control.closest('.qb-field') || control.closest('.qb-option');
+  }
+
+  function updateMissingContainerState(control) {
+    const container = findMissingContainer(control);
+    if (!container) return false;
+    const value = String(control.value || '').trim();
+    const isMissing = value === '';
+    container.classList.toggle('qb-field--missing', isMissing && container.classList.contains('qb-field'));
+    container.classList.toggle('qb-option--missing', isMissing && container.classList.contains('qb-option'));
+    return isMissing;
+  }
+
+  function clearMissingFieldHighlights() {
+    document.querySelectorAll('.qb-field--missing, .qb-option--missing').forEach((node) => {
+      node.classList.remove('qb-field--missing', 'qb-option--missing');
+    });
+  }
+
+  function validateBuilderRequiredFields() {
+    clearMissingFieldHighlights();
+    const requiredControls = Array.from(document.querySelectorAll(`${selectors.list} [data-required-field="1"]`));
+    const missingControls = requiredControls.filter((control) => updateMissingContainerState(control));
+    if (missingControls.length === 0) {
+      return true;
+    }
+    const firstMissing = missingControls[0];
+    if (typeof firstMissing.focus === 'function') {
+      firstMissing.focus({ preventScroll: true });
+      firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    renderMessage('Please complete all required fields before saving.', 'error');
+    return false;
+  }
+
   function bindSortables() {
     if (!window.Sortable) return;
     const sectionContainer = document.querySelector('[data-role="sections"]');
@@ -1875,6 +1915,7 @@ const Builder = (() => {
 
   function saveAll(publish = false) {
     if (state.saving) return;
+    if (!validateBuilderRequiredFields()) return;
     hydrateActiveQuestionnaireFromDom();
     state.saving = true;
     toggleSaveButtons();
