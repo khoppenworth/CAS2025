@@ -19,8 +19,32 @@ This guide explains how administrators can import questionnaires using the EPSS 
    - `<required value="true">` when a response is mandatory.
    - `<repeats value="true">` to allow multiple selections for `choice` items.
    - `<answerOption>` values for `likert` or `choice` items, using either `<valueString>` or `<valueCoding>` with `display` or `code`.
+   - Optional builder extensions (recommended when you need scoring/logic parity with Form Builder):
+     - `<extension url="https://epss.example.org/fhir/StructureDefinition/item-weight-percent"><valueDecimal value="25"/></extension>`
+     - `<extension url="https://epss.example.org/fhir/StructureDefinition/item-active"><valueBoolean value="true"/></extension>`
+     - Single-choice only: `<extension url="https://epss.example.org/fhir/StructureDefinition/item-requires-correct"><valueBoolean value="true"/></extension>`
+     - Conditional display: `item-condition-source-linkid`, `item-condition-operator` (`equals`/`not_equals`), and `item-condition-value`.
 4. Use `<type value="display">` for headings or instructional text you do not want stored; these entries are skipped during import.
-5. Validate that the XML or JSON is well-formed before uploading. Work functions are applied to all available teams in the department by default and can be refined after import in the builder.
+5. Validate that the XML or JSON is well-formed before uploading. Work functions are applied to all available teams in the department by default unless you provide explicit `work-function` extensions, and can be refined after import in the builder.
+
+## Supported Import Extensions
+
+The importer supports these custom FHIR extension URLs so template files can carry all Form Builder options:
+
+- Questionnaire-level:
+  - `https://epss.example.org/fhir/StructureDefinition/work-function` (`valueString`, repeatable)
+- Section/group item:
+  - `https://epss.example.org/fhir/StructureDefinition/section-active` (`valueBoolean`)
+  - `https://epss.example.org/fhir/StructureDefinition/section-include-in-scoring` (`valueBoolean`)
+- Question item:
+  - `https://epss.example.org/fhir/StructureDefinition/item-weight-percent` (`valueDecimal` or `valueInteger`)
+  - `https://epss.example.org/fhir/StructureDefinition/item-active` (`valueBoolean`)
+  - `https://epss.example.org/fhir/StructureDefinition/item-requires-correct` (`valueBoolean`, only for single-choice items)
+  - `https://epss.example.org/fhir/StructureDefinition/item-condition-source-linkid` (`valueString`)
+  - `https://epss.example.org/fhir/StructureDefinition/item-condition-operator` (`valueString`: `equals` or `not_equals`)
+  - `https://epss.example.org/fhir/StructureDefinition/item-condition-value` (`valueString`)
+- Answer option:
+  - `https://epss.example.org/fhir/StructureDefinition/option-is-correct` (`valueBoolean`)
 
 ## Using the Excel Planning Template
 
