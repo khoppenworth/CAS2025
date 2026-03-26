@@ -71,7 +71,6 @@ foreach ($phoneCountries as $country) {
     $phoneFlags[$country['code']] = $country['flag'];
 }
 $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
-$passwordPolicyPattern = '/^(?=.{8,}$)(?=.*[\d\W_]).+$/';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -124,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
         $error = t($t,'password_reset_required','Please set a new password before continuing.');
-    } elseif ($password !== '' && !preg_match($passwordPolicyPattern, $password)) {
+    } elseif ($password !== '' && !password_meets_policy($password)) {
         $error = t($t,'password_policy_invalid','Password must be at least 8 characters and include at least one number or symbol.');
     } else {
         $fields = [
