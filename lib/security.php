@@ -77,3 +77,21 @@ function csp_nonce(): string
 
     return $nonce;
 }
+
+/**
+ * Shared password policy pattern.
+ * - At least 8 characters
+ * - Includes at least one number or symbol
+ */
+function password_policy_pattern(): string
+{
+    return '/^(?=.{8,}$)(?=.*[\d\W_]).+$/';
+}
+
+/**
+ * Validate whether a password complies with the shared policy.
+ */
+function password_meets_policy(string $password): bool
+{
+    return preg_match(password_policy_pattern(), $password) === 1;
+}

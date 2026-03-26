@@ -121,6 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($username === '' || $password === '') {
                 $msg = t($t, 'admin_user_required', 'Username and password are required.');
                 $msgVariant = 'error';
+            } elseif (!password_meets_policy($password)) {
+                $msg = t($t,'password_policy_invalid','Password must be at least 8 characters and include at least one number or symbol.');
+                $msgVariant = 'error';
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
                 $msgVariant = 'error';
@@ -208,6 +211,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($msg === '') {
             if ($id <= 0) {
                 $msg = t($t, 'admin_reset_required', 'User selection is required.');
+                $msgVariant = 'error';
+            } elseif (is_string($newPassword) && trim($newPassword) !== '' && !password_meets_policy($newPassword)) {
+                $msg = t($t,'password_policy_invalid','Password must be at least 8 characters and include at least one number or symbol.');
                 $msgVariant = 'error';
             } elseif (!isset($roleMap[$role])) {
                 $msg = t($t, 'invalid_role', 'Invalid role selection.');
