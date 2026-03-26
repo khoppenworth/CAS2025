@@ -129,6 +129,16 @@ const QB_IMPORT_MAX_ITEM_TEXT = 500;
 const QB_IMPORT_MAX_LINK_ID = 64;
 const QB_IMPORT_MAX_OPTION_VALUE = 500;
 const QB_IMPORT_MAX_DESCRIPTION = 65535;
+const QB_FHIR_EXT_WORK_FUNCTION = 'https://epss.example.org/fhir/StructureDefinition/work-function';
+const QB_FHIR_EXT_SECTION_ACTIVE = 'https://epss.example.org/fhir/StructureDefinition/section-active';
+const QB_FHIR_EXT_SECTION_INCLUDE_SCORING = 'https://epss.example.org/fhir/StructureDefinition/section-include-in-scoring';
+const QB_FHIR_EXT_ITEM_WEIGHT_PERCENT = 'https://epss.example.org/fhir/StructureDefinition/item-weight-percent';
+const QB_FHIR_EXT_ITEM_REQUIRES_CORRECT = 'https://epss.example.org/fhir/StructureDefinition/item-requires-correct';
+const QB_FHIR_EXT_ITEM_ACTIVE = 'https://epss.example.org/fhir/StructureDefinition/item-active';
+const QB_FHIR_EXT_ITEM_CONDITION_SOURCE = 'https://epss.example.org/fhir/StructureDefinition/item-condition-source-linkid';
+const QB_FHIR_EXT_ITEM_CONDITION_OPERATOR = 'https://epss.example.org/fhir/StructureDefinition/item-condition-operator';
+const QB_FHIR_EXT_ITEM_CONDITION_VALUE = 'https://epss.example.org/fhir/StructureDefinition/item-condition-value';
+const QB_FHIR_EXT_OPTION_IS_CORRECT = 'https://epss.example.org/fhir/StructureDefinition/option-is-correct';
 
 function qb_import_extract_value($value): string
 {
@@ -188,6 +198,65 @@ function qb_import_normalize_nullable_string($value, int $maxLength): ?string
         return null;
     }
     return qb_import_truncate($normalized, $maxLength);
+}
+
+function qb_import_list($value): array
+{
+    if (!is_array($value)) {
+        return [];
+    }
+    if ($value === []) {
+        return [];
+    }
+    $expected = 0;
+    foreach (array_keys($value) as $key) {
+        if ((string)$key !== (string)$expected) {
+            return [$value];
+        }
+        $expected++;
+    }
+    return $value;
+}
+
+function qb_import_extension_values(array $node, string $url, string $valueType = ''): array
+{
+    $values = [];
+    $extensions = qb_import_list($node['extension'] ?? []);
+    foreach ($extensions as $extension) {
+        if (!is_array($extension)) {
+            continue;
+        }
+        $extensionUrl = qb_import_extract_value($extension['@attributes']['url'] ?? ($extension['url'] ?? ''));
+        if ($extensionUrl !== $url) {
+            continue;
+        }
+        if ($valueType !== '') {
+            $raw = qb_import_extract_value($extension[$valueType] ?? '');
+            if ($raw !== '') {
+                $values[] = $raw;
+            }
+            continue;
+        }
+        foreach ($extension as $k => $v) {
+            if (strpos((string)$k, 'value') !== 0) {
+                continue;
+            }
+            $raw = qb_import_extract_value($v);
+            if ($raw !== '') {
+                $values[] = $raw;
+            }
+        }
+    }
+    return $values;
+}
+
+function qb_import_extension_value(array $node, string $url, string $valueType = ''): string
+{
+    $values = qb_import_extension_values($node, $url, $valueType);
+    if ($values === []) {
+        return '';
+    }
+    return (string)$values[0];
 }
 
 
@@ -1591,12 +1660,50 @@ if (isset($_POST['import'])) {
                         $startedTransaction = true;
                     }
 
-                    $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
+                    if ($supportsQuestionnaireStatus) {
+                        $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description, status) VALUES (?, ?, ?)');
+                    } else {
+                        $insertQuestionnaireStmt = $pdo->prepare('INSERT INTO questionnaire (title, description) VALUES (?, ?)');
+                    }
                     $insertWorkFunctionStmt = null;
                     try {
                         $insertWorkFunctionStmt = $pdo->prepare('INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (?, ?)');
                     } catch (PDOException $workFunctionImportStmtError) {
                         error_log('questionnaire_manage import work function statement unavailable: ' . $workFunctionImportStmtError->getMessage());
+                    }
+                    $updateSectionFlagsStmt = null;
+                    if ($supportsSectionActive || $supportsSectionScoring) {
+                        $sectionUpdateColumns = [];
+                        if ($supportsSectionActive) {
+                            $sectionUpdateColumns[] = 'is_active = ?';
+                        }
+                        if ($supportsSectionScoring) {
+                            $sectionUpdateColumns[] = 'include_in_scoring = ?';
+                        }
+                        if ($sectionUpdateColumns) {
+                            $updateSectionFlagsStmt = $pdo->prepare(
+                                'UPDATE questionnaire_section SET ' . implode(', ', $sectionUpdateColumns) . ' WHERE id = ?'
+                            );
+                        }
+                    }
+
+                    $updateImportedItemExtrasStmt = null;
+                    $itemUpdateColumns = [];
+                    if ($supportsItemRequiresCorrect) {
+                        $itemUpdateColumns[] = 'requires_correct = ?';
+                    }
+                    if ($supportsItemActive) {
+                        $itemUpdateColumns[] = 'is_active = ?';
+                    }
+                    if ($supportsItemConditions) {
+                        $itemUpdateColumns[] = 'condition_source_linkid = ?';
+                        $itemUpdateColumns[] = 'condition_operator = ?';
+                        $itemUpdateColumns[] = 'condition_value = ?';
+                    }
+                    if ($itemUpdateColumns) {
+                        $updateImportedItemExtrasStmt = $pdo->prepare(
+                            'UPDATE questionnaire_item SET ' . implode(', ', $itemUpdateColumns) . ' WHERE id = ?'
+                        );
                     }
 
                     foreach ($qs as $resource) {
@@ -1622,16 +1729,29 @@ if (isset($_POST['import'])) {
                                 break;
                         }
                         if ($supportsQuestionnaireStatus) {
-                    $insertQuestionnaireStmt->execute([$title, $description, $status]);
-                } else {
-                    $insertQuestionnaireStmt->execute([$title, $description]);
-                }
+                            $insertQuestionnaireStmt->execute([$title, $description, $status]);
+                        } else {
+                            $insertQuestionnaireStmt->execute([$title, $description]);
+                        }
                         $qid = (int)$pdo->lastInsertId();
                         $recentImportId = $qid;
                         $importedQuestionnaires++;
 
                         if ($insertWorkFunctionStmt) {
-                            foreach ($availableWorkFunctions as $wf) {
+                            $wfValues = qb_import_extension_values($resource, QB_FHIR_EXT_WORK_FUNCTION, 'valueString');
+                            $selectedWorkFunctions = [];
+                            foreach ($wfValues as $wf) {
+                                $wfKey = trim((string)$wf);
+                                if ($wfKey !== '' && isset($workFunctionChoices[$wfKey])) {
+                                    $selectedWorkFunctions[$wfKey] = $wfKey;
+                                }
+                            }
+                            if (!$selectedWorkFunctions) {
+                                foreach ($availableWorkFunctions as $wf) {
+                                    $selectedWorkFunctions[$wf] = $wf;
+                                }
+                            }
+                            foreach ($selectedWorkFunctions as $wf) {
                                 $insertWorkFunctionStmt->execute([$qid, $wf]);
                             }
                         }
@@ -1644,17 +1764,7 @@ if (isset($_POST['import'])) {
                         $itemOrder = 1;
 
                         $toList = static function ($value) {
-                            if (!is_array($value)) {
-                                return [];
-                            }
-                            $expected = 0;
-                            foreach (array_keys($value) as $key) {
-                                if ((string)$key !== (string)$expected) {
-                                    return [$value];
-                                }
-                                $expected++;
-                            }
-                            return $value;
+                            return qb_import_list($value);
                         };
 
                         $mapType = static function ($type) {
@@ -1692,7 +1802,7 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, &$importedSections, &$importedItems, &$importedOptions) {
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, &$importedSections, &$importedItems, &$importedOptions) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -1711,6 +1821,19 @@ if (isset($_POST['import'])) {
                                     $sectionDescription = qb_import_normalize_nullable_string($it['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
                                     $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
                                     $newSectionId = (int)$pdo->lastInsertId();
+                                    if ($updateSectionFlagsStmt) {
+                                        $sectionActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_ACTIVE, 'valueBoolean');
+                                        $sectionScoringExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_INCLUDE_SCORING, 'valueBoolean');
+                                        $updateParams = [];
+                                        if ($supportsSectionActive) {
+                                            $updateParams[] = $sectionActiveExt === '' ? 1 : ($isTruthy($sectionActiveExt) ? 1 : 0);
+                                        }
+                                        if ($supportsSectionScoring) {
+                                            $updateParams[] = $sectionScoringExt === '' ? 1 : ($isTruthy($sectionScoringExt) ? 1 : 0);
+                                        }
+                                        $updateParams[] = $newSectionId;
+                                        $updateSectionFlagsStmt->execute($updateParams);
+                                    }
                                     $sectionOrder++;
                                     $importedSections++;
                                     if ($hasChildren) {
@@ -1734,6 +1857,11 @@ if (isset($_POST['import'])) {
                                 }
                                 $allowMultiple = isset($it['repeats']) ? $isTruthy($it['repeats']) : false;
                                 $dbType = $mapType($type);
+                                $weightExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_WEIGHT_PERCENT, 'valueDecimal');
+                                if ($weightExt === '') {
+                                    $weightExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_WEIGHT_PERCENT, 'valueInteger');
+                                }
+                                $weight = is_numeric($weightExt) ? (int)round((float)$weightExt) : 0;
                                 $itemOrderIndex = $itemOrder;
                                 $insertItemStmt->execute([
                                     $qid,
@@ -1742,11 +1870,50 @@ if (isset($_POST['import'])) {
                                     $text,
                                     $dbType,
                                     $itemOrderIndex,
-                                    0,
+                                    $weight,
                                     $dbType === 'choice' && $allowMultiple ? 1 : 0,
                                     $isTruthy($it['required'] ?? false) ? 1 : 0,
                                 ]);
                                 $itemId = (int)$pdo->lastInsertId();
+                                if ($updateImportedItemExtrasStmt) {
+                                    $requiresCorrectExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_REQUIRES_CORRECT, 'valueBoolean');
+                                    $itemActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_ACTIVE, 'valueBoolean');
+                                    $conditionSource = qb_import_normalize_string(
+                                        qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_SOURCE, 'valueString'),
+                                        QB_IMPORT_MAX_LINK_ID
+                                    );
+                                    $conditionOperator = qb_import_normalize_string(
+                                        qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_OPERATOR, 'valueString'),
+                                        32
+                                    );
+                                    if (!in_array($conditionOperator, ['equals', 'not_equals'], true)) {
+                                        $conditionOperator = 'equals';
+                                    }
+                                    $conditionValue = qb_import_normalize_string(
+                                        qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_VALUE, 'valueString'),
+                                        500
+                                    );
+                                    if ($conditionSource === '') {
+                                        $conditionOperator = '';
+                                        $conditionValue = '';
+                                    }
+                                    $updateParams = [];
+                                    if ($supportsItemRequiresCorrect) {
+                                        $requiresCorrect = $dbType === 'choice' && !$allowMultiple && $requiresCorrectExt !== '' && $isTruthy($requiresCorrectExt);
+                                        $updateParams[] = $requiresCorrect ? 1 : 0;
+                                    }
+                                    if ($supportsItemActive) {
+                                        $isActive = $itemActiveExt === '' ? 1 : ($isTruthy($itemActiveExt) ? 1 : 0);
+                                        $updateParams[] = $isActive;
+                                    }
+                                    if ($supportsItemConditions) {
+                                        $updateParams[] = $conditionSource;
+                                        $updateParams[] = $conditionOperator;
+                                        $updateParams[] = $conditionValue;
+                                    }
+                                    $updateParams[] = $itemId;
+                                    $updateImportedItemExtrasStmt->execute($updateParams);
+                                }
                                 $importedItems++;
                                 if ($dbType === 'choice' || $dbType === 'likert') {
                                     $options = $toList($it['answerOption'] ?? []);
@@ -1767,7 +1934,12 @@ if (isset($_POST['import'])) {
                                         if ($normalizedValue === '') {
                                             continue;
                                         }
-                                        $insertOptionStmt->execute([$itemId, $normalizedValue, 0, $optionOrder]);
+                                        $isCorrect = false;
+                                        if ($supportsOptionCorrect) {
+                                            $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
+                                            $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
+                                        }
+                                        $insertOptionStmt->execute([$itemId, $normalizedValue, $isCorrect ? 1 : 0, $optionOrder]);
                                         $optionOrder++;
                                         $importedOptions++;
                                     }
