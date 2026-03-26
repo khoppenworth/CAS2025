@@ -35,7 +35,7 @@ body.landing-body {
   position: sticky;
   top: 0;
   z-index: 12;
-  background-color: var(--app-primary, #0d63d9);
+  background-color: var(--brand-primary, var(--app-primary, #0d63d9));
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
@@ -390,6 +390,8 @@ body.landing-body {
 
 .landing-hero-copy__actions {
   margin-top: 1.7rem;
+  display: flex;
+  justify-content: center;
 }
 
 .landing-hero-badges {
