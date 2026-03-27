@@ -1880,6 +1880,11 @@ const Builder = (() => {
 
     document.querySelectorAll('[data-role="items"], [data-role="root-items"]').forEach((container) => {
       Sortable.create(container, {
+        group: {
+          name: 'qb-items',
+          pull: true,
+          put: true,
+        },
         animation: 150,
         handle: '.qb-item-main',
         onEnd: () => {
