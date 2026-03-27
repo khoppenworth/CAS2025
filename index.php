@@ -196,9 +196,6 @@ $statTiles = [
             <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
             <h1 class="landing-hero-copy__title"><?= $heroTitle ?></h1>
             <p class="landing-hero-copy__subtitle"><?= $heroSubtitle ?></p>
-            <div class="landing-hero-copy__actions">
-              <a class="landing-button landing-button--accent" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
-            </div>
           </div>
           <div class="landing-hero-badges" aria-label="<?= htmlspecialchars(t($t, 'hero_badges_label', 'Platform highlights'), ENT_QUOTES, 'UTF-8') ?>">
             <span><?= $heroBadgeOne ?></span>
