@@ -593,9 +593,59 @@ const Builder = (() => {
     `;
   }
 
-  function fetchData({ silent = false } = {}) {
+  function captureViewportState() {
+    const snapshot = {
+      scrollX: window.scrollX || 0,
+      scrollY: window.scrollY || 0,
+      focusDescriptor: null,
+    };
+    const activeElement = document.activeElement;
+    if (!activeElement || typeof activeElement.closest !== 'function') return snapshot;
+    const focusWithinBuilder = activeElement.closest(selectors.list);
+    if (!focusWithinBuilder) return snapshot;
+    const role = activeElement.getAttribute('data-role');
+    if (!role) return snapshot;
+    const item = activeElement.closest('[data-item]');
+    const section = activeElement.closest('[data-section]');
+    const questionnaire = activeElement.closest('[data-q]');
+    snapshot.focusDescriptor = {
+      role,
+      questionnaire: questionnaire?.getAttribute('data-q') || state.activeKey || null,
+      item: item?.getAttribute('data-item') || null,
+      section: section?.getAttribute('data-section') || null,
+    };
+    return snapshot;
+  }
+
+  function restoreViewportState(snapshot) {
+    if (!snapshot) return;
+    const x = Number.isFinite(snapshot.scrollX) ? snapshot.scrollX : 0;
+    const y = Number.isFinite(snapshot.scrollY) ? snapshot.scrollY : 0;
+    window.scrollTo(x, y);
+    const descriptor = snapshot.focusDescriptor;
+    if (!descriptor || !descriptor.role) return;
+    let scope = document;
+    if (descriptor.questionnaire) {
+      const card = document.querySelector(`.qb-card[data-q="${descriptor.questionnaire}"]`);
+      if (card) scope = card;
+    }
+    if (descriptor.item) {
+      const item = scope.querySelector(`[data-item="${descriptor.item}"]`);
+      if (item) scope = item;
+    } else if (descriptor.section) {
+      const section = scope.querySelector(`[data-section="${descriptor.section}"]`);
+      if (section) scope = section;
+    }
+    const focusTarget = scope.querySelector(`[data-role="${descriptor.role}"]`);
+    if (focusTarget?.focus) {
+      focusTarget.focus({ preventScroll: true });
+    }
+  }
+
+  function fetchData({ silent = false, preserveViewport = false } = {}) {
     if (state.loading) return;
     state.loading = true;
+    const viewportSnapshot = preserveViewport ? captureViewportState() : null;
     if (!silent) renderMessage('Loading questionnaires…');
 
     const params = new URLSearchParams({ action: 'fetch', csrf: state.csrf });
@@ -633,6 +683,9 @@ const Builder = (() => {
         state.dirty = false;
         state.lastSavedAt = Date.now();
         render();
+        if (viewportSnapshot) {
+          restoreViewportState(viewportSnapshot);
+        }
       })
       .catch((err) => renderMessage(err.message || 'Failed to load questionnaires'))
       .finally(() => {
@@ -869,7 +922,7 @@ const Builder = (() => {
         state.csrf = data.csrf || state.csrf;
         dropQuestionnaireFromState(questionnaire, { markDirty: false });
         renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
-        fetchData({ silent: true });
+        fetchData({ silent: true, preserveViewport: true });
       })
       .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
       .finally(() => {
@@ -1956,7 +2009,7 @@ const Builder = (() => {
           initialActiveId = activeId;
           rememberSet(STORAGE_KEYS.active, String(activeId));
         }
-        fetchData({ silent: true });
+        fetchData({ silent: true, preserveViewport: true });
       })
       .catch((err) => {
         updateSaveStatus(STRINGS.saveStatusUnsaved || 'Unsaved changes');
