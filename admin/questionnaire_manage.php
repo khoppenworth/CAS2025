@@ -1635,13 +1635,21 @@ if (isset($_POST['import'])) {
             $qs = [];
             $bundleResourceTypes = [];
             if (($data['resourceType'] ?? '') === 'Bundle') {
-                foreach ($data['entry'] ?? [] as $entry) {
-                    $entryResourceType = $entry['resource']['resourceType'] ?? null;
+                $entries = qb_import_list($data['entry'] ?? []);
+                foreach ($entries as $entry) {
+                    if (!is_array($entry)) {
+                        continue;
+                    }
+                    $entryResource = $entry['resource'] ?? null;
+                    if (!is_array($entryResource)) {
+                        continue;
+                    }
+                    $entryResourceType = $entryResource['resourceType'] ?? null;
                     if ($entryResourceType) {
                         $bundleResourceTypes[] = $entryResourceType;
                     }
                     if ($entryResourceType === 'Questionnaire') {
-                        $qs[] = $entry['resource'];
+                        $qs[] = $entryResource;
                     }
                 }
             } elseif (($data['resourceType'] ?? '') === 'Questionnaire') {
