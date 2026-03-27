@@ -223,7 +223,6 @@ $statTiles = [
 
     <footer class="landing-footer" id="contact">
       <div class="landing-footer__meta">
-        <h3><?= htmlspecialchars(t($t, 'footer_settings', 'Footer Details'), ENT_QUOTES, 'UTF-8') ?></h3>
         <p class="landing-footer__org"><?= $organizationNameEscaped ?></p>
         <?php if ($organizationShort !== ''): ?>
           <p class="landing-footer__secondary-link"><?= $organizationShortEscaped ?></p>
