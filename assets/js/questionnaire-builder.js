@@ -120,6 +120,10 @@ const Builder = (() => {
     saveStatusSaving: 'Saving…',
     saveStatusPublished: 'Published successfully',
     saveStatusLastSaved: 'Last saved just now',
+    publishedLockBannerTitle: 'Published questionnaire restrictions',
+    publishedLockBannerMessage: 'Some actions are locked to protect existing responses, scoring, and reporting consistency.',
+    publishedLockReason: 'This action is locked because the questionnaire is published.',
+    responseLockReason: 'This action is locked because responses already exist.',
   };
   const RAW_CAPABILITIES = window.QB_CAPABILITIES || {};
   const CAPABILITIES = {
@@ -178,6 +182,16 @@ const Builder = (() => {
     const byLabel = Object.entries(CONDITION_OPERATOR_LABELS).find(([, label]) => label.toLowerCase() === String(value || '').trim().toLowerCase());
     if (byLabel) return byLabel[0];
     return 'equals';
+  }
+
+  function isPublishedQuestionnaire(questionnaire) {
+    return normalizeStatusValue(questionnaire?.status) === 'published';
+  }
+
+  function lockReasonFor({ publishedLocked = false, hasResponses = false } = {}) {
+    if (hasResponses) return STRINGS.responseLockReason || 'This action is locked because responses already exist.';
+    if (publishedLocked) return STRINGS.publishedLockReason || 'This action is locked because the questionnaire is published.';
+    return '';
   }
 
   function normalizeQuestionnaire(raw) {
@@ -1091,10 +1105,17 @@ const Builder = (() => {
   }
 
   function buildQuestionnaireCard(questionnaire) {
+    const publishedLocked = isPublishedQuestionnaire(questionnaire);
     const sectionsHtml = questionnaire.sections.map((section) => buildSectionCard(questionnaire, section)).join('');
     const rootItems = questionnaire.items.map((item) => buildItemRow(questionnaire, null, item)).join('');
     return `
       <div class="qb-card" data-q="${questionnaire.clientId}">
+        ${publishedLocked
+          ? `<div class="qb-lock-banner" role="note">
+              <strong>${escapeHtml(STRINGS.publishedLockBannerTitle)}</strong>
+              <span>${escapeHtml(STRINGS.publishedLockBannerMessage)}</span>
+            </div>`
+          : ''}
         <div class="qb-header">
           <div class="qb-field">
             <label>Title</label>
@@ -1118,14 +1139,14 @@ const Builder = (() => {
             ${sectionsHtml}
           </div>
           <div class="qb-section-actions">
-            <button type="button" class="md-button md-primary" data-role="add-section">Add Section</button>
+            <button type="button" class="md-button md-primary" data-role="add-section" ${publishedLocked ? 'disabled title="' + escapeAttr(STRINGS.publishedLockReason) + '"' : ''}>Add Section</button>
           </div>
           <div class="qb-root-items" data-role="root-items" data-q="${questionnaire.clientId}">
             <h4 class="md-card-title">Items without section</h4>
             ${rootItems || '<p class="md-hint">No items yet.</p>'}
           </div>
           <div class="qb-root-actions">
-            <button type="button" class="md-button md-outline" data-role="add-item" data-section="">Add Item</button>
+            <button type="button" class="md-button md-outline" data-role="add-item" data-section="" ${publishedLocked ? 'disabled title="' + escapeAttr(STRINGS.publishedLockReason) + '"' : ''}>Add Item</button>
           </div>
         </div>
       </div>
@@ -1133,9 +1154,16 @@ const Builder = (() => {
   }
 
   function buildSectionCard(questionnaire, section) {
+    const publishedLocked = isPublishedQuestionnaire(questionnaire);
+    const sectionActiveReason = lockReasonFor({ publishedLocked, hasResponses: section.hasResponses });
+    const removeSectionReason = lockReasonFor({ publishedLocked, hasResponses: section.hasResponses });
+    const scoringReason = lockReasonFor({ publishedLocked });
+    const sectionActiveLocked = section.hasResponses || publishedLocked;
+    const scoringLocked = publishedLocked;
+    const removeLocked = section.hasResponses || publishedLocked;
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const includeInScoringControl = CAPABILITIES.sectionIncludeScoring
-      ? `<label><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''}> Include in scoring</label>`
+      ? `<label title="${scoringLocked ? escapeAttr(scoringReason) : ''}"><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''} ${scoringLocked ? 'disabled' : ''}> Include in scoring</label>`
       : `<label title="Database schema upgrade required"><input type="checkbox" data-role="section-include-scoring" checked disabled> Include in scoring</label>
          <span class="md-hint">Upgrade required to change this setting.</span>`;
     return `
@@ -1150,29 +1178,36 @@ const Builder = (() => {
             <textarea data-role="section-description">${escapeHtml(section.description)}</textarea>
           </div>
           <div class="qb-field qb-toggle">
-            <label><input type="checkbox" data-role="section-active" ${section.is_active ? 'checked' : ''} ${section.hasResponses ? 'disabled' : ''}> Active</label>
+            <label title="${sectionActiveLocked ? escapeAttr(sectionActiveReason) : ''}"><input type="checkbox" data-role="section-active" ${section.is_active ? 'checked' : ''} ${sectionActiveLocked ? 'disabled' : ''}> Active</label>
             ${includeInScoringControl}
           </div>
           <div class="qb-actions">
-            <button type="button" class="md-button md-outline" data-role="remove-section" ${section.hasResponses ? 'disabled' : ''}>Remove section</button>
+            <button type="button" class="md-button md-outline" data-role="remove-section" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(removeSectionReason) + '"' : ''}>Remove section</button>
           </div>
         </div>
         <div class="qb-items" data-role="items" data-section="${section.clientId}">
           ${items || '<p class="md-hint">No questions in this section.</p>'}
         </div>
         <div class="qb-section-actions">
-          <button type="button" class="md-button md-outline" data-role="add-item" data-section="${section.clientId}">Add Question</button>
+          <button type="button" class="md-button md-outline" data-role="add-item" data-section="${section.clientId}" ${publishedLocked ? 'disabled title="' + escapeAttr(scoringReason) + '"' : ''}>Add Question</button>
         </div>
       </div>
     `;
   }
 
   function buildItemRow(questionnaire, sectionClientId, item) {
+    const publishedLocked = isPublishedQuestionnaire(questionnaire);
+    const publishedReason = lockReasonFor({ publishedLocked });
+    const itemResponseReason = lockReasonFor({ publishedLocked, hasResponses: item.hasResponses });
     const scorable = isScorable(item.type);
     const showRequiresCorrect = item.type === 'choice' && !item.allow_multiple;
     const conditionEnabled = Boolean(item.condition_source_linkid);
+    const typeLocked = publishedLocked;
+    const toggleLocked = publishedLocked;
+    const activeLocked = item.hasResponses || publishedLocked;
+    const removeLocked = item.hasResponses || publishedLocked;
     const optionsHtml = ['choice', 'likert'].includes(item.type)
-      ? buildOptionsEditor(sectionClientId, item)
+      ? buildOptionsEditor(sectionClientId, item, { publishedLocked, lockReason: publishedReason })
       : '';
     return `
       <div class="qb-item" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
@@ -1193,20 +1228,20 @@ const Builder = (() => {
               <label>Response Type</label>
               <div class="qb-choice-chips" role="radiogroup" aria-label="Response Type">
                 ${QUESTION_TYPES
-                  .map((type) => `<label class="qb-choice-chip"><input type="radio" name="item_type_${item.clientId}" data-role="item-type" value="${type}" ${type === item.type ? 'checked' : ''}><span>${QUESTION_TYPE_LABELS[type] || type}</span></label>`)
+                  .map((type) => `<label class="qb-choice-chip" ${typeLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}><input type="radio" name="item_type_${item.clientId}" data-role="item-type" value="${type}" ${type === item.type ? 'checked' : ''} ${typeLocked ? 'disabled' : ''}><span>${QUESTION_TYPE_LABELS[type] || type}</span></label>`)
                   .join('')}
               </div>
             </div>
             <div class="qb-item-toggles">
-              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''}> Required</label>
-              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${item.type !== 'choice' ? 'disabled' : ''}> Allow multiple</label>
+              <label class="qb-chip-toggle" ${toggleLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}><input type="checkbox" data-role="item-required" ${item.is_required ? 'checked' : ''} ${toggleLocked ? 'disabled' : ''}> Required</label>
+              <label class="qb-chip-toggle" ${toggleLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}><input type="checkbox" data-role="item-multi" ${item.allow_multiple ? 'checked' : ''} ${(toggleLocked || item.type !== 'choice') ? 'disabled' : ''}> Allow multiple</label>
               ${showRequiresCorrect
-                ? `<label class="qb-chip-toggle"><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''}> Require correct answer</label>`
+                ? `<label class="qb-chip-toggle" ${toggleLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}><input type="checkbox" data-role="item-requires-correct" ${item.requires_correct ? 'checked' : ''} ${toggleLocked ? 'disabled' : ''}> Require correct answer</label>`
                 : ''}
-              <label class="qb-chip-toggle"><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${item.hasResponses ? 'disabled' : ''}> Active</label>
+              <label class="qb-chip-toggle" ${activeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${activeLocked ? 'disabled' : ''}> Active</label>
             </div>
             <div class="qb-actions qb-item-actions">
-              <button type="button" class="md-button md-outline" data-role="remove-item" ${item.hasResponses ? 'disabled' : ''}>Remove</button>
+              <button type="button" class="md-button md-outline" data-role="remove-item" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}>Remove</button>
             </div>
           </div>
 
@@ -1215,19 +1250,19 @@ const Builder = (() => {
             <div class="qb-item-condition-grid">
               <div class="qb-field">
                 <label>Show when question code</label>
-                <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department">
+                <input type="text" data-role="item-condition-source" value="${escapeAttr(item.condition_source_linkid || '')}" placeholder="e.g. q_department" ${publishedLocked ? 'disabled title="' + escapeAttr(publishedReason) + '"' : ''}>
               </div>
               <div class="qb-field qb-field--item-condition qb-field--item-control">
                 <label>Condition</label>
                 <div class="qb-choice-chips" role="radiogroup" aria-label="Condition">
                   ${CONDITION_OPERATORS
-                    .map((operator) => `<label class="qb-choice-chip"><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${conditionEnabled ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
+                    .map((operator) => `<label class="qb-choice-chip" ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}><input type="radio" name="condition_operator_${item.clientId}" data-role="item-condition-operator" value="${operator}" ${operator === (item.condition_operator || 'equals') ? 'checked' : ''} ${(conditionEnabled && !publishedLocked) ? '' : 'disabled'}><span>${CONDITION_OPERATOR_LABELS[operator] || operator}</span></label>`)
                     .join('')}
                 </div>
               </div>
               <div class="qb-field">
                 <label>Condition value</label>
-                <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${conditionEnabled ? '' : 'disabled'}>
+                <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${(conditionEnabled && !publishedLocked) ? '' : 'disabled'} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>
               </div>
             </div>
           </div>
@@ -1239,7 +1274,7 @@ const Builder = (() => {
     `;
   }
 
-  function buildOptionsEditor(sectionClientId, item) {
+  function buildOptionsEditor(sectionClientId, item, { publishedLocked = false, lockReason = '' } = {}) {
     const isSingleChoice = item.type === 'choice' && !item.allow_multiple;
     const showCorrect = isSingleChoice && item.requires_correct;
     const options = item.options.length
@@ -1253,12 +1288,12 @@ const Builder = (() => {
         <div class="qb-option" data-option="${opt.clientId}" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
           ${showCorrect
             ? `<label class="qb-option-correct">
-                <input type="radio" name="correct_${item.clientId}" data-role="option-correct" ${opt.is_correct ? 'checked' : ''}>
+                <input type="radio" name="correct_${item.clientId}" data-role="option-correct" ${opt.is_correct ? 'checked' : ''} ${publishedLocked ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(lockReason) + '"' : ''}>
                 <span>Correct</span>
               </label>`
             : ''}
-          <input type="text" data-role="option-value" data-required-field="1" value="${escapeAttr(opt.value)}">
-          <button type="button" class="md-button md-ghost" data-role="remove-option">×</button>
+          <input type="text" data-role="option-value" data-required-field="1" value="${escapeAttr(opt.value)}" ${publishedLocked ? 'disabled title="' + escapeAttr(lockReason) + '"' : ''}>
+          <button type="button" class="md-button md-ghost" data-role="remove-option" ${publishedLocked ? 'disabled title="' + escapeAttr(lockReason) + '"' : ''}>×</button>
         </div>`
       )
       .join('');
@@ -1266,7 +1301,7 @@ const Builder = (() => {
       <div class="qb-options" data-role="options">
         ${showCorrect ? '<p class="qb-hint">Mark the correct answer for each single-choice question.</p>' : ''}
         <div class="qb-options-list">${rows}</div>
-        <button type="button" class="md-button md-outline" data-role="add-option" data-item="${item.clientId}" data-section="${sectionClientId || ''}">Add option</button>
+        <button type="button" class="md-button md-outline" data-role="add-option" data-item="${item.clientId}" data-section="${sectionClientId || ''}" ${publishedLocked ? 'disabled title="' + escapeAttr(lockReason) + '"' : ''}>Add option</button>
       </div>
     `;
   }

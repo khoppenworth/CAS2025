@@ -113,6 +113,26 @@ $qbStrings = [
     'previewTextareaPlaceholder' => t($t, 'qb_preview_textarea_placeholder', 'Long answer'),
     'previewBooleanYes' => t($t, 'yes', 'Yes'),
     'previewBooleanNo' => t($t, 'no', 'No'),
+    'publishedLockBannerTitle' => t(
+        $t,
+        'qb_published_lock_banner_title',
+        'Published questionnaire restrictions'
+    ),
+    'publishedLockBannerMessage' => t(
+        $t,
+        'qb_published_lock_banner_message',
+        'Some actions are locked to protect existing responses, scoring, and reporting consistency.'
+    ),
+    'publishedLockReason' => t(
+        $t,
+        'qb_published_lock_reason',
+        'This action is locked because the questionnaire is published.'
+    ),
+    'responseLockReason' => t(
+        $t,
+        'qb_response_lock_reason',
+        'This action is locked because responses already exist.'
+    ),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
