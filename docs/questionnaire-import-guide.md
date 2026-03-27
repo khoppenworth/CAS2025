@@ -10,7 +10,7 @@ This guide explains how administrators can import questionnaires using the EPSS 
 
 ## Preparing Your XML or JSON File
 
-1. Use the template as a starting point and update the `<title>` and `<description>` values (status is imported as a draft regardless of the XML value).
+1. Use the template as a starting point and update the `<title>` and `<description>` values. Status values map as follows: `draft` → Draft, `active` → Published, `retired`/`inactive` → Inactive, and unknown/missing values default to Published.
 2. Add question `<item>` entries directly under the root to create items without a section, or add section-level `<item>` blocks with `type="group"`; set `<text>` for the section title and `<description>` for optional helper text.
 3. Within each section, create question `<item>` entries with:
    - A unique `<linkId>` for stable identification.
