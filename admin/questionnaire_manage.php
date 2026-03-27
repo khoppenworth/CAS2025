@@ -179,11 +179,11 @@ function qb_import_truncate(string $value, int $maxLength): string
     return $value;
 }
 
-function qb_import_normalize_string($value, int $maxLength, string $fallback = ''): string
+function qb_import_normalize_string($value, int $maxLength, $fallback = ''): string
 {
     $normalized = trim(qb_import_extract_value($value));
     if ($normalized === '') {
-        $normalized = trim($fallback);
+        $normalized = trim(qb_import_extract_value($fallback));
     }
     if ($normalized === '') {
         return '';
@@ -1634,7 +1634,8 @@ if (isset($_POST['import'])) {
         if ($data) {
             $qs = [];
             $bundleResourceTypes = [];
-            if (($data['resourceType'] ?? '') === 'Bundle') {
+            $topResourceType = qb_import_extract_value($data['resourceType'] ?? '');
+            if ($topResourceType === 'Bundle') {
                 $entries = qb_import_list($data['entry'] ?? []);
                 foreach ($entries as $entry) {
                     if (!is_array($entry)) {
@@ -1644,15 +1645,15 @@ if (isset($_POST['import'])) {
                     if (!is_array($entryResource)) {
                         continue;
                     }
-                    $entryResourceType = $entryResource['resourceType'] ?? null;
-                    if ($entryResourceType) {
+                    $entryResourceType = qb_import_extract_value($entryResource['resourceType'] ?? null);
+                    if ($entryResourceType !== '') {
                         $bundleResourceTypes[] = $entryResourceType;
                     }
                     if ($entryResourceType === 'Questionnaire') {
                         $qs[] = $entryResource;
                     }
                 }
-            } elseif (($data['resourceType'] ?? '') === 'Questionnaire') {
+            } elseif ($topResourceType === 'Questionnaire') {
                 $qs[] = $data;
             }
 
@@ -1720,7 +1721,7 @@ if (isset($_POST['import'])) {
                             $title = 'FHIR Questionnaire';
                         }
                         $description = qb_import_normalize_nullable_string($resource['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
-                        $rawStatus = strtolower((string)($resource['status'] ?? ''));
+                        $rawStatus = strtolower(qb_import_extract_value($resource['status'] ?? ''));
                         switch ($rawStatus) {
                             case 'draft':
                                 $status = 'draft';
@@ -1818,7 +1819,7 @@ if (isset($_POST['import'])) {
                                 }
                                 $children = $it['item'] ?? [];
                                 $childList = $toList($children);
-                                $type = strtolower((string)($it['type'] ?? ''));
+                                $type = strtolower(qb_import_extract_value($it['type'] ?? ''));
                                 $hasChildren = !empty($childList);
 
                                 if ($hasChildren || $type === 'group') {
@@ -1894,6 +1895,7 @@ if (isset($_POST['import'])) {
                                         qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_OPERATOR, 'valueString'),
                                         32
                                     );
+                                    $conditionOperator = strtolower($conditionOperator);
                                     if (!in_array($conditionOperator, ['equals', 'not_equals'], true)) {
                                         $conditionOperator = 'equals';
                                     }
@@ -1995,7 +1997,10 @@ if (isset($_POST['import'])) {
                     $importDetails[] = 'Database error: ' . $e->getMessage();
                 }
             } else {
-                $resourceType = $data['resourceType'] ?? 'unknown';
+                $resourceType = qb_import_extract_value($data['resourceType'] ?? '');
+                if ($resourceType === '') {
+                    $resourceType = 'unknown';
+                }
                 $detail = 'No questionnaires found in the import file.';
                 if ($resourceType === 'Bundle') {
                     $uniqueTypes = array_values(array_unique($bundleResourceTypes));
