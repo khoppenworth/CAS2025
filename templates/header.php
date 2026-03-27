@@ -25,7 +25,7 @@ $navKeyMap = [
     'admin/supervisor_review.php' => 'team.review_queue',
     'admin/pending_accounts.php' => 'team.pending_accounts',
     'admin/questionnaire_assignments.php' => 'team.assignments',
-    'admin/dashboard.php' => 'admin.dashboard',
+    'admin/upgrade.php' => 'admin.dashboard',
     'admin/users.php' => 'admin.users',
     'admin/questionnaire_manage.php' => 'admin.manage_questionnaires',
     'admin/work_function_defaults.php' => 'admin.work_function_defaults',
@@ -357,7 +357,7 @@ if ($profileInitials === '') {
         <li>
           <a href="<?=htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('workspace.my_performance')?>>
             <span class="md-topnav-link-content">
-              <span class="md-topnav-link-title"><?=t($t, 'my_performance', 'My Performance')?></span>
+              <span class="md-topnav-link-title"><?=t($t, 'my_dashboard', 'My Dashboard')?></span>
             </span>
             <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
           </a>
@@ -484,7 +484,7 @@ if ($profileInitials === '') {
         </button>
         <ul class="md-topnav-submenu">
           <li>
-            <a href="<?=htmlspecialchars(url_for('admin/dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
+            <a href="<?=htmlspecialchars(url_for('admin/upgrade.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('admin.dashboard')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'admin_dashboard', 'System Upgrade')?></span>
               </span>
