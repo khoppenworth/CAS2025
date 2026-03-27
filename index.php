@@ -92,17 +92,55 @@ $footerHotlineLabel = htmlspecialchars($footerHotlineLabelRaw, ENT_QUOTES, 'UTF-
 $footerHotlineNumber = htmlspecialchars($footerHotlineNumberRaw, ENT_QUOTES, 'UTF-8');
 $address = htmlspecialchars($addressRaw, ENT_QUOTES, 'UTF-8');
 $contact = htmlspecialchars($contactRaw, ENT_QUOTES, 'UTF-8');
-$statSubmissionsValue = trim((string)($cfg['landing_metric_submissions'] ?? ''));
-$statCompletionValue = trim((string)($cfg['landing_metric_completion'] ?? ''));
-$statAdoptionValue = trim((string)($cfg['landing_metric_adoption'] ?? ''));
 $heroBadgeOne = htmlspecialchars(t($t, 'hero_badge_one', 'Goal alignment'), ENT_QUOTES, 'UTF-8');
 $heroBadgeTwo = htmlspecialchars(t($t, 'hero_badge_two', '360° feedback'), ENT_QUOTES, 'UTF-8');
 $heroBadgeThree = htmlspecialchars(t($t, 'hero_badge_three', 'Learning insights'), ENT_QUOTES, 'UTF-8');
+
+$landingFetchScalar = static function (PDO $pdo, string $sql) {
+    try {
+        $stmt = $pdo->query($sql);
+        if (!$stmt) {
+            return null;
+        }
+        $value = $stmt->fetchColumn();
+        return $value !== false ? $value : null;
+    } catch (Throwable $e) {
+        error_log('index.php metric query failed: ' . $e->getMessage());
+        return null;
+    }
+};
+
+$registeredUsersRaw = $landingFetchScalar($pdo, 'SELECT COUNT(*) FROM users');
+$totalSubmissionsRaw = $landingFetchScalar($pdo, 'SELECT COUNT(*) FROM questionnaire_response');
+$latestSubmissionRaw = $landingFetchScalar($pdo, 'SELECT MAX(created_at) FROM questionnaire_response');
+$topIndicatorRaw = $landingFetchScalar(
+    $pdo,
+    "SELECT ROUND((SUM(CASE WHEN max_score >= 80 THEN 1 ELSE 0 END) / COUNT(*)) * 100, 1) " .
+    "FROM (" .
+    "  SELECT user_id, MAX(score) AS max_score " .
+    "  FROM questionnaire_response " .
+    "  WHERE status <> 'draft' AND score IS NOT NULL " .
+    "  GROUP BY user_id" .
+    ") kpi"
+);
+
+$registeredUsersDisplay = $registeredUsersRaw !== null ? number_format((int)$registeredUsersRaw) : '—';
+$totalSubmissionsDisplay = $totalSubmissionsRaw !== null ? number_format((int)$totalSubmissionsRaw) : '—';
+$latestSubmissionDisplay = '—';
+if (is_string($latestSubmissionRaw) && trim($latestSubmissionRaw) !== '') {
+    try {
+        $latestSubmissionDisplay = (new DateTime($latestSubmissionRaw))->format('M j, Y');
+    } catch (Throwable $e) {
+        $latestSubmissionDisplay = trim($latestSubmissionRaw);
+    }
+}
+$topIndicatorDisplay = $topIndicatorRaw !== null ? number_format((float)$topIndicatorRaw, 1) . '%' : '—';
+
 $statTiles = [
-    ['value' => htmlspecialchars($statSubmissionsValue !== '' ? number_format((int)$statSubmissionsValue) . '+' : '12K+', ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_registered_users', 'Annual submissions'), ENT_QUOTES, 'UTF-8')],
-    ['value' => htmlspecialchars($statCompletionValue !== '' ? $statCompletionValue : '97%', ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_timely_reviews', 'On-time review completion'), ENT_QUOTES, 'UTF-8')],
-    ['value' => htmlspecialchars($statAdoptionValue !== '' ? $statAdoptionValue : '350+', ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_active_programs', 'Platform adoption'), ENT_QUOTES, 'UTF-8')],
-    ['value' => '24/7', 'label' => htmlspecialchars(t($t, 'stat_portal_access', 'Portal availability'), ENT_QUOTES, 'UTF-8')],
+    ['value' => htmlspecialchars($registeredUsersDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_registered_users', 'Total registered users'), ENT_QUOTES, 'UTF-8')],
+    ['value' => htmlspecialchars($totalSubmissionsDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_submissions', 'Total submissions'), ENT_QUOTES, 'UTF-8')],
+    ['value' => htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_latest_submission_date', 'Latest submission date'), ENT_QUOTES, 'UTF-8')],
+    ['value' => htmlspecialchars($topIndicatorDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_top_indicator', 'Staff reaching 80%+ (top KPI)'), ENT_QUOTES, 'UTF-8')],
 ];
 
 ?>
