@@ -25,7 +25,7 @@ if (
 
 if (!empty($_SESSION['user'])) {
     if (($_SESSION['user']['role'] ?? '') === 'admin') {
-        header('Location: ' . url_for('admin/dashboard.php'));
+        header('Location: ' . url_for('admin/upgrade.php'));
         exit;
     }
     header('Location: ' . url_for('my_performance.php'));
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['force_password_reset_notice'] = true;
                 header('Location: ' . url_for('profile.php?force_password_reset=1'));
             } else {
-                header('Location: ' . url_for('admin/dashboard.php'));
+                header('Location: ' . url_for('admin/upgrade.php'));
             }
             exit;
         }

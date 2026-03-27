@@ -632,6 +632,21 @@
   gap: 0.9rem;
 }
 
+.qb-lock-banner {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: #92400e;
+  font-size: 0.84rem;
+}
+
+.qb-lock-banner strong {
+  font-size: 0.86rem;
+}
+
 .qb-header {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.35fr) minmax(180px, 240px);

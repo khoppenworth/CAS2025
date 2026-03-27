@@ -117,6 +117,26 @@ $qbStrings = [
     'focusModeExit' => t($t, 'qb_focus_mode_exit', 'Exit focus mode'),
     'quickJumpLabel' => t($t, 'qb_quick_jump_label', 'Jump to'),
     'quickJumpPlaceholder' => t($t, 'qb_quick_jump_placeholder', 'Jump to section'),
+    'publishedLockBannerTitle' => t(
+        $t,
+        'qb_published_lock_banner_title',
+        'Published questionnaire restrictions'
+    ),
+    'publishedLockBannerMessage' => t(
+        $t,
+        'qb_published_lock_banner_message',
+        'Some actions are locked to protect existing responses, scoring, and reporting consistency.'
+    ),
+    'publishedLockReason' => t(
+        $t,
+        'qb_published_lock_reason',
+        'This action is locked because the questionnaire is published.'
+    ),
+    'responseLockReason' => t(
+        $t,
+        'qb_response_lock_reason',
+        'This action is locked because responses already exist.'
+    ),
 ];
 
 const LIKERT_DEFAULT_OPTIONS = [
@@ -183,11 +203,11 @@ function qb_import_truncate(string $value, int $maxLength): string
     return $value;
 }
 
-function qb_import_normalize_string($value, int $maxLength, string $fallback = ''): string
+function qb_import_normalize_string($value, int $maxLength, $fallback = ''): string
 {
     $normalized = trim(qb_import_extract_value($value));
     if ($normalized === '') {
-        $normalized = trim($fallback);
+        $normalized = trim(qb_import_extract_value($fallback));
     }
     if ($normalized === '') {
         return '';
@@ -1638,17 +1658,26 @@ if (isset($_POST['import'])) {
         if ($data) {
             $qs = [];
             $bundleResourceTypes = [];
-            if (($data['resourceType'] ?? '') === 'Bundle') {
-                foreach ($data['entry'] ?? [] as $entry) {
-                    $entryResourceType = $entry['resource']['resourceType'] ?? null;
-                    if ($entryResourceType) {
+            $topResourceType = qb_import_extract_value($data['resourceType'] ?? '');
+            if ($topResourceType === 'Bundle') {
+                $entries = qb_import_list($data['entry'] ?? []);
+                foreach ($entries as $entry) {
+                    if (!is_array($entry)) {
+                        continue;
+                    }
+                    $entryResource = $entry['resource'] ?? null;
+                    if (!is_array($entryResource)) {
+                        continue;
+                    }
+                    $entryResourceType = qb_import_extract_value($entryResource['resourceType'] ?? null);
+                    if ($entryResourceType !== '') {
                         $bundleResourceTypes[] = $entryResourceType;
                     }
                     if ($entryResourceType === 'Questionnaire') {
-                        $qs[] = $entry['resource'];
+                        $qs[] = $entryResource;
                     }
                 }
-            } elseif (($data['resourceType'] ?? '') === 'Questionnaire') {
+            } elseif ($topResourceType === 'Questionnaire') {
                 $qs[] = $data;
             }
 
@@ -1716,7 +1745,7 @@ if (isset($_POST['import'])) {
                             $title = 'FHIR Questionnaire';
                         }
                         $description = qb_import_normalize_nullable_string($resource['description'] ?? null, QB_IMPORT_MAX_DESCRIPTION);
-                        $rawStatus = strtolower((string)($resource['status'] ?? ''));
+                        $rawStatus = strtolower(qb_import_extract_value($resource['status'] ?? ''));
                         switch ($rawStatus) {
                             case 'draft':
                                 $status = 'draft';
@@ -1814,7 +1843,7 @@ if (isset($_POST['import'])) {
                                 }
                                 $children = $it['item'] ?? [];
                                 $childList = $toList($children);
-                                $type = strtolower($it['type'] ?? '');
+                                $type = strtolower(qb_import_extract_value($it['type'] ?? ''));
                                 $hasChildren = !empty($childList);
 
                                 if ($hasChildren || $type === 'group') {
@@ -1890,6 +1919,7 @@ if (isset($_POST['import'])) {
                                         qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_OPERATOR, 'valueString'),
                                         32
                                     );
+                                    $conditionOperator = strtolower($conditionOperator);
                                     if (!in_array($conditionOperator, ['equals', 'not_equals'], true)) {
                                         $conditionOperator = 'equals';
                                     }
@@ -1966,7 +1996,7 @@ if (isset($_POST['import'])) {
                         $pdo->commit();
                     }
                     $summary = sprintf(
-                        'FHIR import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
+                        'Form Builder import complete. Imported %d questionnaire(s), %d section(s), %d item(s), %d option(s).',
                         $importedQuestionnaires,
                         $importedSections,
                         $importedItems,
@@ -1987,11 +2017,14 @@ if (isset($_POST['import'])) {
                         $pdo->rollBack();
                     }
                     error_log('FHIR questionnaire import failed: ' . $e->getMessage());
-                    $msg = t($t, 'fhir_import_failed', 'FHIR import failed. Please check your file and try again.');
+                    $msg = t($t, 'fhir_import_failed', 'Form Builder import failed. Please check your file and try again.');
                     $importDetails[] = 'Database error: ' . $e->getMessage();
                 }
             } else {
-                $resourceType = $data['resourceType'] ?? 'unknown';
+                $resourceType = qb_import_extract_value($data['resourceType'] ?? '');
+                if ($resourceType === '') {
+                    $resourceType = 'unknown';
+                }
                 $detail = 'No questionnaires found in the import file.';
                 if ($resourceType === 'Bundle') {
                     $uniqueTypes = array_values(array_unique($bundleResourceTypes));
