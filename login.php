@@ -187,7 +187,21 @@ render_login:
             <div class="md-alert error" role="alert"><?= htmlspecialchars($err, ENT_QUOTES, 'UTF-8') ?></div>
           <?php endif; ?>
 
+          <?php if (!empty($oauthProviders)): ?>
+            <div class="md-sso-buttons">
+              <?php foreach ($oauthProviders as $provider => $label): ?>
+                <a
+                  class="md-button md-elev-1 md-sso-btn <?= htmlspecialchars($provider, ENT_QUOTES, 'UTF-8') ?>"
+                  href="<?= htmlspecialchars(url_for('oauth.php?provider=' . $provider), ENT_QUOTES, 'UTF-8') ?>"
+                ><?= $label ?></a>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+
           <?php if ($localLoginEnabled): ?>
+            <?php if (!empty($oauthProviders)): ?>
+              <div class="md-login-divider"><span><?= htmlspecialchars(t($t, 'or_continue_with', 'or continue with'), ENT_QUOTES, 'UTF-8') ?></span></div>
+            <?php endif; ?>
             <form
               method="post"
               class="md-form md-login-form"
@@ -216,18 +230,6 @@ render_login:
           <?php else: ?>
             <div class="md-alert info" role="note">
               <?= htmlspecialchars(t($t, 'local_login_disabled_notice', 'Local account sign-in is disabled. Use Google single sign-on to continue.'), ENT_QUOTES, 'UTF-8') ?>
-            </div>
-          <?php endif; ?>
-
-          <?php if (!empty($oauthProviders)): ?>
-            <div class="md-login-divider"><span><?= htmlspecialchars(t($t, 'or_continue_with', 'or continue with'), ENT_QUOTES, 'UTF-8') ?></span></div>
-            <div class="md-sso-buttons">
-              <?php foreach ($oauthProviders as $provider => $label): ?>
-                <a
-                  class="md-button md-elev-1 md-sso-btn <?= htmlspecialchars($provider, ENT_QUOTES, 'UTF-8') ?>"
-                  href="<?= htmlspecialchars(url_for('oauth.php?provider=' . $provider), ENT_QUOTES, 'UTF-8') ?>"
-                ><?= $label ?></a>
-              <?php endforeach; ?>
             </div>
           <?php endif; ?>
         </section>
