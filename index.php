@@ -10,9 +10,14 @@ $defaultLocale = $availableLocales[0] ?? 'en';
 $logoRenderPath = site_logo_url($cfg);
 $landingBackgroundRenderPath = site_landing_background_url($cfg);
 $landingTextRaw = trim((string)($cfg['landing_text'] ?? ''));
-$landingCopyRaw = $landingTextRaw !== ''
+$defaultHeroSubtitle = t(
+    $t,
+    'hero_subtitle',
+    'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.'
+);
+$landingCopyRaw = ($landingTextRaw !== '' && $locale === $defaultLocale)
     ? $landingTextRaw
-    : t($t, 'hero_subtitle', 'From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.');
+    : $defaultHeroSubtitle;
 
 $toAbsoluteUrl = static function (string $url): string {
     $trimmed = trim($url);

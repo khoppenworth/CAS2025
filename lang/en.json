@@ -286,7 +286,7 @@
   "frequency": "Frequency",
   "frequency_": "Frequency",
   "full_name": "Full Name",
-  "gallery_heading": "Resources and highlights",
+  "gallery_heading": "Further information",
   "gender": "Gender",
   "google_client_id": "Google Client ID",
   "google_client_secret": "Google Client Secret",
@@ -862,5 +862,9 @@
   "work_function_performance": "Work Function Performance",
   "year": "Year",
   "yes": "Yes",
-  "your_trend": "Your Score Trend"
+  "your_trend": "Your Score Trend",
+  "stat_total_registered_users": "Total registered users",
+  "stat_total_submissions": "Total submissions",
+  "stat_latest_submission_date": "Latest submission date",
+  "stat_top_indicator": "Staff reaching 80%+ (top KPI)"
 }

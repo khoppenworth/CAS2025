@@ -286,7 +286,7 @@
   "frequency": "ድግግሞሽ",
   "frequency_": "ድግግሞሽ",
   "full_name": "ሙሉ ስም",
-  "gallery_heading": "Resources and highlights",
+  "gallery_heading": "ተጨማሪ መረጃ",
   "gender": "ጾታ",
   "google_client_id": "Google የደንበኛ መለያ",
   "google_client_secret": "Google የደንበኛ ምስጢር",
@@ -319,9 +319,9 @@
   "hero_badge_three": "Learning insights",
   "hero_badge_two": "360° feedback",
   "hero_badges_label": "Platform highlights",
-  "hero_eyebrow": "National performance excellence platform",
-  "hero_subtitle": "From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.",
-  "hero_title": "Bring every performance conversation into one vibrant workspace",
+  "hero_eyebrow": "የአገር አቀፍ የአፈጻጸም እጅግ ጥራት መድረክ",
+  "hero_subtitle": "ከእቅድ እስከ ማበረታቻ ድረስ፣ በግልጽ ግቦች፣ በቅጽበታዊ ዝመናዎች እና ቀላል ትብብር ቡድኖች እንዲተባበሩ ያግዙ።",
+  "hero_title": "እያንዳንዱን የአፈጻጸም ውይይት በአንድ ንቁ የስራ ቦታ ውስጥ አካትቱ",
   "highest_score": "ከፍተኛ ውጤት",
   "id": "መለያ",
   "import": "አስገባ",
@@ -855,5 +855,9 @@
   "work_function_performance": "የስራ ተግባር አፈጻጸም",
   "year": "አመት",
   "yes": "አዎ",
-  "your_trend": "የእርስዎ አዝማሚያ"
+  "your_trend": "የእርስዎ አዝማሚያ",
+  "stat_total_registered_users": "ጠቅላላ የተመዘገቡ ተጠቃሚዎች",
+  "stat_total_submissions": "ጠቅላላ የቀረቡ ግቤቶች",
+  "stat_latest_submission_date": "የመጨረሻ ግቤት ቀን",
+  "stat_top_indicator": "80%+ የደረሱ ሰራተኞች (ዋና KPI)"
 }

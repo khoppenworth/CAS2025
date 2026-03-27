@@ -286,7 +286,7 @@
   "frequency": "Fréquence",
   "frequency_": "Fréquence",
   "full_name": "Nom complet",
-  "gallery_heading": "Resources and highlights",
+  "gallery_heading": "Informations complémentaires",
   "gender": "Genre",
   "google_client_id": "ID client Google",
   "google_client_secret": "Secret client Google",
@@ -319,9 +319,9 @@
   "hero_badge_three": "Learning insights",
   "hero_badge_two": "360° feedback",
   "hero_badges_label": "Platform highlights",
-  "hero_eyebrow": "National performance excellence platform",
-  "hero_subtitle": "From planning to recognition, help teams stay aligned with clear goals, real-time updates, and easy collaboration.",
-  "hero_title": "Bring every performance conversation into one vibrant workspace",
+  "hero_eyebrow": "Plateforme nationale d’excellence de la performance",
+  "hero_subtitle": "De la planification à la reconnaissance, aidez les équipes à rester alignées grâce à des objectifs clairs, des mises à jour en temps réel et une collaboration simple.",
+  "hero_title": "Rassemblez chaque échange sur la performance dans un espace de travail dynamique",
   "highest_score": "Score le plus élevé",
   "id": "ID",
   "import": "Importer",
@@ -855,5 +855,9 @@
   "work_function_performance": "Performance par fonction",
   "year": "Année",
   "yes": "Oui",
-  "your_trend": "Votre tendance"
+  "your_trend": "Votre tendance",
+  "stat_total_registered_users": "Nombre total d’utilisateurs inscrits",
+  "stat_total_submissions": "Nombre total de soumissions",
+  "stat_latest_submission_date": "Date de la dernière soumission",
+  "stat_top_indicator": "Personnel atteignant 80 % et plus (KPI principal)"
 }
