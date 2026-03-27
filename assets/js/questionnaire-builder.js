@@ -978,6 +978,7 @@ const Builder = (() => {
     if (!list) return;
     if (state.questionnaires.length === 0) {
       list.innerHTML = '<p class="md-hint">No questionnaires yet. Add one to get started.</p>';
+      disconnectSectionObserver();
       return;
     }
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey) || state.questionnaires[0];
@@ -1296,14 +1297,17 @@ const Builder = (() => {
 
   function setSectionNavActive(nav, key) {
     if (!nav) return;
+    let activeItem = null;
     nav.querySelectorAll('.qb-section-nav-item').forEach((item) => {
       const isActive = item.getAttribute('data-nav') === key;
       item.classList.toggle('is-active', isActive);
+      if (isActive) activeItem = item;
       const btn = item.querySelector('button');
       if (btn) {
         btn.setAttribute('aria-current', isActive ? 'true' : 'false');
       }
     });
+    activeItem?.scrollIntoView?.({ block: 'nearest' });
   }
 
   function scrollToSection(sectionKey) {
@@ -1320,12 +1324,14 @@ const Builder = (() => {
     const select = document.querySelector(selectors.quickJumpSelect);
     if (!select) return;
     const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    const nav = document.querySelector(selectors.sectionNav);
+    const rootLabel = nav?.dataset?.rootLabel || STRINGS.previewRootTitle || 'Items without a section';
+    const placeholder = STRINGS.quickJumpPlaceholder || 'Jump to section';
     if (!active) {
-      select.innerHTML = `<option value="">${escapeHtml(STRINGS.quickJumpPlaceholder || 'Jump to section')}</option>`;
+      select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
       select.disabled = true;
       return;
     }
-    const rootLabel = STRINGS.previewRootTitle || 'Items without a section';
     const options = [
       { key: 'root', label: rootLabel },
       ...active.sections.map((section, idx) => ({
@@ -1399,10 +1405,7 @@ const Builder = (() => {
   }
 
   function setupSectionObserver() {
-    if (sectionObserver) {
-      sectionObserver.disconnect();
-      sectionObserver = null;
-    }
+    disconnectSectionObserver();
     if (!('IntersectionObserver' in window)) return;
 
     const targets = [];
@@ -1432,6 +1435,12 @@ const Builder = (() => {
     );
 
     targets.forEach((el) => sectionObserver.observe(el));
+  }
+
+  function disconnectSectionObserver() {
+    if (!sectionObserver) return;
+    sectionObserver.disconnect();
+    sectionObserver = null;
   }
 
 
