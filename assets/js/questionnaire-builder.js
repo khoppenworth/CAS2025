@@ -35,6 +35,7 @@ const Builder = (() => {
     message: '#qb-message',
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
+    navToggleButton: '#qb-toggle-nav',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -69,6 +70,8 @@ const Builder = (() => {
   const STORAGE_KEYS = {
     active: 'hrassess:qb:last-active',
     focusMode: 'hrassess:qb:focus-mode',
+    navCollapsed: 'hrassess:qb:nav-collapsed',
+    collapsedItems: 'hrassess:qb:collapsed-items',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -120,6 +123,8 @@ const Builder = (() => {
     previewBooleanNo: 'No',
     focusModeEnter: 'Focus mode',
     focusModeExit: 'Exit focus mode',
+    collapseNavLabel: 'Collapse navigation',
+    expandNavLabel: 'Expand navigation',
     quickJumpLabel: 'Jump to',
     quickJumpPlaceholder: 'Jump to section',
     saveStatusUnsaved: 'Unsaved changes',
@@ -147,6 +152,8 @@ const Builder = (() => {
     csrf: '',
     lastSavedAt: null,
     focusMode: false,
+    navCollapsed: false,
+    collapsedItems: {},
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -316,6 +323,8 @@ const Builder = (() => {
     if (!csrfMeta) return;
     state.csrf = csrfMeta.getAttribute('content') || '';
     state.focusMode = rememberGet(STORAGE_KEYS.focusMode) === '1';
+    state.navCollapsed = rememberGet(STORAGE_KEYS.navCollapsed) === '1';
+    state.collapsedItems = parseCollapsedItems(rememberGet(STORAGE_KEYS.collapsedItems));
 
     attachStaticListeners();
     primeFromBootstrap();
@@ -342,6 +351,7 @@ const Builder = (() => {
     const deleteBtn = document.querySelector(selectors.deleteButton);
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
+    const navToggleBtn = document.querySelector(selectors.navToggleButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -357,6 +367,7 @@ const Builder = (() => {
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     previewBtn?.addEventListener('click', openPreview);
     focusModeBtn?.addEventListener('click', toggleFocusMode);
+    navToggleBtn?.addEventListener('click', toggleNavCollapsed);
     deleteBtn?.addEventListener('click', () => {
       const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
       removeQuestionnaire(active);
@@ -779,6 +790,34 @@ const Builder = (() => {
     }
   }
 
+  function parseCollapsedItems(raw) {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function collapseKey(questionnaire, item) {
+    if (!questionnaire?.clientId || !item?.clientId) return '';
+    return `${questionnaire.clientId}:${item.clientId}`;
+  }
+
+  function isItemCollapsed(questionnaire, item) {
+    const key = collapseKey(questionnaire, item);
+    return key ? state.collapsedItems[key] === true : false;
+  }
+
+  function setItemCollapsed(questionnaire, item, collapsed) {
+    const key = collapseKey(questionnaire, item);
+    if (!key) return;
+    state.collapsedItems[key] = Boolean(collapsed);
+    rememberSet(STORAGE_KEYS.collapsedItems, JSON.stringify(state.collapsedItems));
+  }
+
   function setActive(key) {
     if (!key) return;
     state.activeKey = key;
@@ -1193,6 +1232,7 @@ const Builder = (() => {
     return `
       <div class="qb-section" data-section="${section.clientId}">
         <div class="qb-section-header">
+          <span class="qb-section-drag-handle" aria-hidden="true" title="Drag to reorder section">⋮⋮</span>
           <div class="qb-field">
             <label>Section title</label>
             <input type="text" data-role="section-title" data-required-field="1" value="${escapeAttr(section.title)}">
@@ -1233,9 +1273,21 @@ const Builder = (() => {
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item, { publishedLocked, lockReason: publishedReason })
       : '';
+    const collapsed = isItemCollapsed(questionnaire, item);
+    const itemTitle = item.text?.trim() || 'Untitled question';
+    const itemLink = item.linkId?.trim() ? `(${item.linkId.trim()})` : '';
     return `
-      <div class="qb-item" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
+      <div class="qb-item ${collapsed ? 'is-collapsed' : ''}" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
         <div class="qb-item-main">
+          <div class="qb-item-summary">
+            <span class="qb-item-drag-handle" aria-hidden="true" title="Drag to reorder question">⋮⋮</span>
+            <button type="button" class="qb-item-collapse-toggle" data-role="item-collapse-toggle" data-collapsed="${collapsed ? '1' : '0'}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${collapsed ? 'Expand question details' : 'Collapse question details'}">${collapsed ? '▸' : '▾'}</button>
+            <div class="qb-item-summary-copy">
+              <strong>${escapeHtml(itemTitle)}</strong>
+              <small>${escapeHtml((QUESTION_TYPE_LABELS[item.type] || item.type) + (itemLink ? ` ${itemLink}` : ''))}</small>
+            </div>
+          </div>
+          <div class="qb-item-main-content">
           <div class="qb-item-main-grid">
             <div class="qb-field qb-field--item-link">
               <label>Question Code</label>
@@ -1289,6 +1341,7 @@ const Builder = (() => {
                 <input type="text" data-role="item-condition-value" value="${escapeAttr(item.condition_value || '')}" placeholder="Expected answer" ${(conditionEnabled && !publishedLocked) ? '' : 'disabled'} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>
               </div>
             </div>
+          </div>
           </div>
         </div>
         <div class="qb-item-secondary">
@@ -1447,6 +1500,28 @@ const Builder = (() => {
     applyFocusMode();
   }
 
+  function toggleNavCollapsed() {
+    state.navCollapsed = !state.navCollapsed;
+    rememberSet(STORAGE_KEYS.navCollapsed, state.navCollapsed ? '1' : '0');
+    applyNavCollapsed();
+  }
+
+  function applyNavCollapsed() {
+    const layout = document.querySelector('.qb-manager-layout');
+    const button = document.querySelector(selectors.navToggleButton);
+    if (!layout || !button) return;
+    layout.classList.toggle('is-nav-collapsed', state.navCollapsed);
+    const label = state.navCollapsed
+      ? (STRINGS.expandNavLabel || 'Expand navigation')
+      : (STRINGS.collapseNavLabel || 'Collapse navigation');
+    button.setAttribute('aria-expanded', state.navCollapsed ? 'false' : 'true');
+    button.setAttribute('aria-label', label);
+    const labelNode = button.querySelector('.qb-nav-toggle-label');
+    if (labelNode) labelNode.textContent = label;
+    const iconNode = button.querySelector('.qb-nav-toggle-icon');
+    if (iconNode) iconNode.textContent = state.navCollapsed ? '⇥' : '⇤';
+  }
+
   function applyFocusMode() {
     const layout = document.querySelector('.qb-manager-layout');
     const button = document.querySelector(selectors.focusModeButton);
@@ -1454,6 +1529,7 @@ const Builder = (() => {
     layout.classList.toggle('is-focus-mode', state.focusMode);
     button.textContent = state.focusMode ? (STRINGS.focusModeExit || 'Exit focus mode') : (STRINGS.focusModeEnter || 'Focus mode');
     button.setAttribute('aria-pressed', state.focusMode ? 'true' : 'false');
+    applyNavCollapsed();
   }
 
   function toggleScrollTopVisibility() {
@@ -1630,6 +1706,16 @@ const Builder = (() => {
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
     switch (role) {
+      case 'item-collapse-toggle': {
+        const itemRow = event.target.closest('[data-item]');
+        const itemId = itemRow?.getAttribute('data-item');
+        const sectionId = itemRow?.getAttribute('data-section') || null;
+        const item = findItem(questionnaire, sectionId, itemId);
+        if (!item) return;
+        setItemCollapsed(questionnaire, item, !isItemCollapsed(questionnaire, item));
+        rerenderItemRow(questionnaire, itemRow);
+        return;
+      }
       case 'add-section':
         addSection(questionnaire);
         break;
@@ -2075,7 +2161,7 @@ const Builder = (() => {
     if (sectionContainer) {
       Sortable.create(sectionContainer, {
         animation: 150,
-        handle: '.qb-section-header',
+        handle: '.qb-section-drag-handle',
         onEnd: () => {
           reorderSections();
           markDirty();
@@ -2091,7 +2177,7 @@ const Builder = (() => {
           put: true,
         },
         animation: 150,
-        handle: '.qb-item-main',
+        handle: '.qb-item-drag-handle',
         onEnd: () => {
           reorderItems();
           markDirty();

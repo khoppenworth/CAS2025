@@ -115,6 +115,8 @@ $qbStrings = [
     'previewBooleanNo' => t($t, 'no', 'No'),
     'focusModeEnter' => t($t, 'qb_focus_mode_enter', 'Focus mode'),
     'focusModeExit' => t($t, 'qb_focus_mode_exit', 'Exit focus mode'),
+    'collapseNavLabel' => t($t, 'qb_collapse_nav_label', 'Collapse navigation'),
+    'expandNavLabel' => t($t, 'qb_expand_nav_label', 'Expand navigation'),
     'quickJumpLabel' => t($t, 'qb_quick_jump_label', 'Jump to'),
     'quickJumpPlaceholder' => t($t, 'qb_quick_jump_placeholder', 'Jump to section'),
     'publishedLockBannerTitle' => t(
@@ -2194,6 +2196,10 @@ if ($qbJsVersion) {
   </div>
   <div class="qb-manager-layout">
     <aside class="qb-manager-sidebar" aria-labelledby="qb-navigation-title">
+      <button class="md-button md-outline qb-nav-toggle" id="qb-toggle-nav" type="button" aria-expanded="true">
+        <span class="qb-nav-toggle-icon" aria-hidden="true">⇤</span>
+        <span class="qb-nav-toggle-label"><?=t($t,'qb_collapse_nav_label','Collapse navigation')?></span>
+      </button>
       <div class="md-card md-elev-2 qb-sidebar-card qb-nav-card">
         <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
         <nav id="qb-section-nav" class="qb-section-nav" aria-label="<?=htmlspecialchars(t($t,'section_navigation','Section navigation'), ENT_QUOTES, 'UTF-8')?>" data-empty-label="<?=htmlspecialchars(t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections'), ENT_QUOTES, 'UTF-8')?>" data-root-label="<?=htmlspecialchars(t($t,'items_without_section','Items without a section'), ENT_QUOTES, 'UTF-8')?>" data-untitled-label="<?=htmlspecialchars(t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?>">
