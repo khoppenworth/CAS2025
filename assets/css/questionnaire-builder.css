@@ -155,14 +155,23 @@
 }
 
 .qb-manager-layout {
+  position: relative;
   display: grid;
   grid-template-columns: clamp(260px, 24vw, 320px) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: flex-start;
 }
 
+.qb-manager-layout.is-nav-collapsed {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
 .qb-manager-layout.is-focus-mode {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.qb-manager-layout.is-compact-density {
+  gap: 0.75rem;
 }
 
 .qb-manager-layout.is-focus-mode .qb-manager-sidebar {
@@ -232,11 +241,46 @@
   align-items: start;
 }
 
+.qb-nav-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.45rem;
+}
+
+.qb-nav-toggle-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.qb-manager-layout.is-nav-collapsed .qb-manager-sidebar {
+  max-width: 56px;
+  align-items: stretch;
+}
+
+.qb-manager-layout.is-nav-collapsed .qb-sidebar-card {
+  display: none;
+}
+
+.qb-manager-layout.is-nav-collapsed .qb-nav-toggle {
+  min-width: 0;
+  justify-content: center;
+  padding-inline: 0.35rem;
+}
+
+.qb-manager-layout.is-nav-collapsed .qb-nav-toggle-label {
+  display: none;
+}
+
 .qb-sidebar-card {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-sidebar-card {
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
 }
 
 
@@ -790,6 +834,100 @@
   gap: 0.4rem;
 }
 
+.qb-manager-layout.is-compact-density .qb-section {
+  margin-top: 0.45rem;
+  padding-left: 0.55rem;
+  gap: 0.25rem;
+}
+
+.qb-section-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.qb-section-drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+  padding-top: 1.6rem;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.qb-section-collapse-toggle {
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.16));
+  background: var(--app-surface, #fff);
+  border-radius: 6px;
+  width: 1.9rem;
+  height: 1.9rem;
+  line-height: 1;
+  margin-top: 1.2rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.qb-section-summary {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  padding-top: 1.05rem;
+}
+
+.qb-section-summary small {
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+}
+
+.qb-section-main {
+  flex: 1 1 600px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) auto auto;
+  gap: 0.45rem;
+  overflow: hidden;
+  max-height: 1000px;
+  opacity: 1;
+  transition: max-height 0.22s ease, opacity 0.2s ease;
+}
+
+.qb-items,
+.qb-section-actions {
+  overflow: hidden;
+  max-height: 1200px;
+  opacity: 1;
+  transition: max-height 0.22s ease, opacity 0.2s ease;
+}
+
+.qb-section.is-collapsed .qb-section-main,
+.qb-section.is-collapsed .qb-section-actions {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qb-collapsed-drop-hint {
+  display: none;
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px dashed var(--app-primary, #205493);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--app-primary, #205493) 7%, var(--app-surface, #fff));
+  font-size: 0.8rem;
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+}
+
+.qb-section.is-collapsed .qb-items {
+  max-height: 3rem;
+  opacity: 1;
+  pointer-events: auto;
+  margin-top: 0.1rem;
+}
+
+.qb-section.is-collapsed .qb-items > :not(.qb-collapsed-drop-hint) {
+  display: none;
+}
+
+.qb-section.is-collapsed .qb-collapsed-drop-hint {
+  display: block;
+}
+
 .qb-section:first-of-type {
   margin-top: 0.35rem;
 }
@@ -874,6 +1012,169 @@
   border-radius: 6px;
   padding: 0.35rem 0.55rem;
   flex-wrap: wrap;
+}
+
+.qb-manager-layout.is-compact-density .qb-item {
+  padding: 0.22rem 0.4rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-item-summary {
+  gap: 0.4rem;
+  padding-bottom: 0.3rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-item-main,
+.qb-manager-layout.is-compact-density .qb-item-main-content {
+  gap: 0.4rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-field {
+  gap: 0.05rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-field > label {
+  font-size: 0.76rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-item .qb-field > label {
+  font-size: 0.74rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-input,
+.qb-manager-layout.is-compact-density .qb-textarea,
+.qb-manager-layout.is-compact-density .qb-select {
+  padding: 0.4rem 0.5rem;
+}
+
+.qb-manager-layout.is-compact-density .qb-choice-chip span,
+.qb-manager-layout.is-compact-density .qb-chip-toggle {
+  padding: 0.24rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.qb-item-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--app-border, rgba(0, 0, 0, 0.12));
+  padding-bottom: 0.45rem;
+}
+
+.qb-item-drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.qb-item-collapse-toggle {
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.16));
+  background: var(--app-surface, #fff);
+  border-radius: 6px;
+  width: 1.9rem;
+  height: 1.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.qb-item-summary-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.qb-item-summary-copy strong,
+.qb-item-summary-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qb-item-summary-copy small {
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+}
+
+.qb-item-main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow: hidden;
+  max-height: 1400px;
+  opacity: 1;
+  transition: max-height 0.22s ease, opacity 0.2s ease;
+}
+
+.qb-item-secondary {
+  overflow: hidden;
+  max-height: 1200px;
+  opacity: 1;
+  transition: max-height 0.22s ease, opacity 0.2s ease;
+}
+
+.qb-item.is-collapsed .qb-item-main-content,
+.qb-item.is-collapsed .qb-item-secondary {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qb-item.is-collapsed .qb-item-summary {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.qb-section-drag-handle:hover,
+.qb-section-drag-handle:focus-visible,
+.qb-item-drag-handle:hover,
+.qb-item-drag-handle:focus-visible {
+  color: var(--app-primary, #205493);
+  transform: translateY(-1px);
+}
+
+.qb-section-collapse-toggle:hover,
+.qb-section-collapse-toggle:focus-visible,
+.qb-item-collapse-toggle:hover,
+.qb-item-collapse-toggle:focus-visible {
+  border-color: var(--app-primary, #205493);
+  background: color-mix(in srgb, var(--app-primary, #205493) 10%, var(--app-surface, #fff));
+  outline: none;
+}
+
+.qb-summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.18rem;
+}
+
+.qb-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.14));
+  padding: 0.1rem 0.42rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--app-muted, rgba(0, 0, 0, 0.65));
+  background: var(--app-surface, #fff);
+}
+
+.qb-summary-badge--primary {
+  color: var(--app-primary, #205493);
+  border-color: color-mix(in srgb, var(--app-primary, #205493) 35%, transparent);
+  background: color-mix(in srgb, var(--app-primary, #205493) 10%, var(--app-surface, #fff));
+}
+
+.qb-summary-badge--ok {
+  color: #126c40;
+  border-color: rgba(18, 108, 64, 0.35);
+  background: rgba(18, 108, 64, 0.08);
+}
+
+.qb-summary-badge--muted {
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+  background: var(--app-surface-alt, rgba(0, 0, 0, 0.04));
 }
 
 .qb-item-main {
@@ -1075,6 +1376,7 @@
 }
 
 @media (max-width: 920px) {
+  .qb-section-main,
   .qb-item-main-grid,
   .qb-item-config-row,
   .qb-item-condition-grid {
@@ -1083,6 +1385,20 @@
 
   .qb-item-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qb-section-main,
+  .qb-items,
+  .qb-section-actions,
+  .qb-item-main-content,
+  .qb-item-secondary,
+  .qb-section-drag-handle,
+  .qb-item-drag-handle,
+  .qb-section-collapse-toggle,
+  .qb-item-collapse-toggle {
+    transition: none !important;
   }
 }
 

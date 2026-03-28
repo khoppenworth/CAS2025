@@ -115,6 +115,14 @@ $qbStrings = [
     'previewBooleanNo' => t($t, 'no', 'No'),
     'focusModeEnter' => t($t, 'qb_focus_mode_enter', 'Focus mode'),
     'focusModeExit' => t($t, 'qb_focus_mode_exit', 'Exit focus mode'),
+    'collapseNavLabel' => t($t, 'qb_collapse_nav_label', 'Collapse navigation'),
+    'expandNavLabel' => t($t, 'qb_expand_nav_label', 'Expand navigation'),
+    'collapseAllSectionsLabel' => t($t, 'qb_collapse_all_sections', 'Collapse all sections'),
+    'expandAllSectionsLabel' => t($t, 'qb_expand_all_sections', 'Expand all sections'),
+    'collapseAllQuestionsLabel' => t($t, 'qb_collapse_all_questions', 'Collapse all questions'),
+    'expandAllQuestionsLabel' => t($t, 'qb_expand_all_questions', 'Expand all questions'),
+    'compactModeOnLabel' => t($t, 'qb_compact_mode_on', 'Compact mode'),
+    'compactModeOffLabel' => t($t, 'qb_compact_mode_off', 'Comfort mode'),
     'quickJumpLabel' => t($t, 'qb_quick_jump_label', 'Jump to'),
     'quickJumpPlaceholder' => t($t, 'qb_quick_jump_placeholder', 'Jump to section'),
     'publishedLockBannerTitle' => t(
@@ -2194,6 +2202,10 @@ if ($qbJsVersion) {
   </div>
   <div class="qb-manager-layout">
     <aside class="qb-manager-sidebar" aria-labelledby="qb-navigation-title">
+      <button class="md-button md-outline qb-nav-toggle" id="qb-toggle-nav" type="button" aria-expanded="true">
+        <span class="qb-nav-toggle-icon" aria-hidden="true">⇤</span>
+        <span class="qb-nav-toggle-label"><?=t($t,'qb_collapse_nav_label','Collapse navigation')?></span>
+      </button>
       <div class="md-card md-elev-2 qb-sidebar-card qb-nav-card">
         <h3 class="md-card-title" id="qb-navigation-title"><?=t($t,'questionnaire_navigation','Questionnaire Navigation')?></h3>
         <nav id="qb-section-nav" class="qb-section-nav" aria-label="<?=htmlspecialchars(t($t,'section_navigation','Section navigation'), ENT_QUOTES, 'UTF-8')?>" data-empty-label="<?=htmlspecialchars(t($t,'select_questionnaire_to_view_sections','Select a questionnaire to view its sections'), ENT_QUOTES, 'UTF-8')?>" data-root-label="<?=htmlspecialchars(t($t,'items_without_section','Items without a section'), ENT_QUOTES, 'UTF-8')?>" data-untitled-label="<?=htmlspecialchars(t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?>">
@@ -2220,6 +2232,9 @@ if ($qbJsVersion) {
                   <span class="qb-quick-jump-label"><?=t($t,'qb_quick_jump_label','Jump to')?></span>
                   <select id="qb-quick-jump" class="qb-select qb-select-input qb-quick-jump-select" aria-label="<?=htmlspecialchars(t($t,'qb_quick_jump_label','Jump to'), ENT_QUOTES, 'UTF-8')?>"></select>
                 </label>
+                <button class="md-button md-outline md-elev-1" id="qb-collapse-all-sections" type="button"><?=t($t,'qb_collapse_all_sections','Collapse all sections')?></button>
+                <button class="md-button md-outline md-elev-1" id="qb-collapse-all-questions" type="button"><?=t($t,'qb_collapse_all_questions','Collapse all questions')?></button>
+                <button class="md-button md-outline md-elev-1" id="qb-compact-mode" type="button"><?=t($t,'qb_compact_mode_on','Compact mode')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-focus-mode" type="button"><?=t($t,'qb_focus_mode_enter','Focus mode')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
