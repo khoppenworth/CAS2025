@@ -699,6 +699,7 @@
 
 .qb-status-select {
   width: 100%;
+  min-width: 0;
 }
 
 .qb-status-badge {
