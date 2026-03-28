@@ -1258,6 +1258,9 @@ const Builder = (() => {
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const collapsed = isSectionCollapsed(questionnaire, section);
     const sectionLabel = section.title?.trim() || 'Untitled section';
+    const sectionStateBadge = section.is_active
+      ? '<span class="qb-summary-badge qb-summary-badge--ok">Active</span>'
+      : '<span class="qb-summary-badge qb-summary-badge--muted">Inactive</span>';
     const includeInScoringControl = CAPABILITIES.sectionIncludeScoring
       ? `<label title="${scoringLocked ? escapeAttr(scoringReason) : ''}"><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''} ${scoringLocked ? 'disabled' : ''}> Include in scoring</label>`
       : `<label title="Database schema upgrade required"><input type="checkbox" data-role="section-include-scoring" checked disabled> Include in scoring</label>
@@ -1270,6 +1273,7 @@ const Builder = (() => {
           <div class="qb-section-summary">
             <strong>${escapeHtml(sectionLabel)}</strong>
             <small>${section.items.length} question${section.items.length === 1 ? '' : 's'}</small>
+            <div class="qb-summary-badges">${sectionStateBadge}</div>
           </div>
           <div class="qb-section-main">
           <div class="qb-field">
@@ -1316,6 +1320,10 @@ const Builder = (() => {
     const collapsed = isItemCollapsed(questionnaire, item);
     const itemTitle = item.text?.trim() || 'Untitled question';
     const itemLink = item.linkId?.trim() ? `(${item.linkId.trim()})` : '';
+    const summaryBadges = [];
+    if (item.is_required) summaryBadges.push('<span class="qb-summary-badge qb-summary-badge--primary">Required</span>');
+    if (!item.is_active) summaryBadges.push('<span class="qb-summary-badge qb-summary-badge--muted">Inactive</span>');
+    if (item.condition_source_linkid) summaryBadges.push('<span class="qb-summary-badge">Conditional</span>');
     return `
       <div class="qb-item ${collapsed ? 'is-collapsed' : ''}" data-item="${item.clientId}" data-section="${sectionClientId || ''}">
         <div class="qb-item-main">
@@ -1325,6 +1333,7 @@ const Builder = (() => {
             <div class="qb-item-summary-copy">
               <strong>${escapeHtml(itemTitle)}</strong>
               <small>${escapeHtml((QUESTION_TYPE_LABELS[item.type] || item.type) + (itemLink ? ` ${itemLink}` : ''))}</small>
+              ${summaryBadges.length ? `<div class="qb-summary-badges">${summaryBadges.join('')}</div>` : ''}
             </div>
           </div>
           <div class="qb-item-main-content">
@@ -1586,15 +1595,19 @@ const Builder = (() => {
 
     if (sectionsBtn) {
       sectionsBtn.disabled = !hasSections;
+      const sectionsCollapsed = questionnaire && allSectionsCollapsed(questionnaire);
       sectionsBtn.textContent = questionnaire && allSectionsCollapsed(questionnaire)
         ? (STRINGS.expandAllSectionsLabel || 'Expand all sections')
         : (STRINGS.collapseAllSectionsLabel || 'Collapse all sections');
+      sectionsBtn.setAttribute('aria-pressed', sectionsCollapsed ? 'true' : 'false');
     }
     if (questionsBtn) {
       questionsBtn.disabled = !hasQuestions;
+      const questionsCollapsed = questionnaire && allQuestionsCollapsed(questionnaire);
       questionsBtn.textContent = questionnaire && allQuestionsCollapsed(questionnaire)
         ? (STRINGS.expandAllQuestionsLabel || 'Expand all questions')
         : (STRINGS.collapseAllQuestionsLabel || 'Collapse all questions');
+      questionsBtn.setAttribute('aria-pressed', questionsCollapsed ? 'true' : 'false');
     }
   }
 
