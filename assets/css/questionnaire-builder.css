@@ -827,6 +827,7 @@
 
 .qb-section-header {
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .qb-section-drag-handle {
@@ -834,6 +835,41 @@
   user-select: none;
   color: var(--app-muted, rgba(0, 0, 0, 0.6));
   padding-top: 1.6rem;
+}
+
+.qb-section-collapse-toggle {
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.16));
+  background: var(--app-surface, #fff);
+  border-radius: 6px;
+  width: 1.9rem;
+  height: 1.9rem;
+  line-height: 1;
+  margin-top: 1.2rem;
+  cursor: pointer;
+}
+
+.qb-section-summary {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  padding-top: 1.05rem;
+}
+
+.qb-section-summary small {
+  color: var(--app-muted, rgba(0, 0, 0, 0.6));
+}
+
+.qb-section-main {
+  flex: 1 1 600px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) auto auto;
+  gap: 0.45rem;
+}
+
+.qb-section.is-collapsed .qb-section-main,
+.qb-section.is-collapsed .qb-items,
+.qb-section.is-collapsed .qb-section-actions {
+  display: none;
 }
 
 .qb-section:first-of-type {
@@ -1178,6 +1214,7 @@
 }
 
 @media (max-width: 920px) {
+  .qb-section-main,
   .qb-item-main-grid,
   .qb-item-config-row,
   .qb-item-condition-grid {

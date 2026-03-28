@@ -29,6 +29,8 @@ const Builder = (() => {
     previewButton: '#qb-preview-questionnaire',
     focusModeButton: '#qb-focus-mode',
     quickJumpSelect: '#qb-quick-jump',
+    collapseAllSectionsButton: '#qb-collapse-all-sections',
+    collapseAllQuestionsButton: '#qb-collapse-all-questions',
     deleteButton: '#qb-delete-questionnaire',
     destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
@@ -72,6 +74,7 @@ const Builder = (() => {
     focusMode: 'hrassess:qb:focus-mode',
     navCollapsed: 'hrassess:qb:nav-collapsed',
     collapsedItems: 'hrassess:qb:collapsed-items',
+    collapsedSections: 'hrassess:qb:collapsed-sections',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -125,6 +128,10 @@ const Builder = (() => {
     focusModeExit: 'Exit focus mode',
     collapseNavLabel: 'Collapse navigation',
     expandNavLabel: 'Expand navigation',
+    collapseAllSectionsLabel: 'Collapse all sections',
+    expandAllSectionsLabel: 'Expand all sections',
+    collapseAllQuestionsLabel: 'Collapse all questions',
+    expandAllQuestionsLabel: 'Expand all questions',
     quickJumpLabel: 'Jump to',
     quickJumpPlaceholder: 'Jump to section',
     saveStatusUnsaved: 'Unsaved changes',
@@ -154,6 +161,7 @@ const Builder = (() => {
     focusMode: false,
     navCollapsed: false,
     collapsedItems: {},
+    collapsedSections: {},
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -324,7 +332,8 @@ const Builder = (() => {
     state.csrf = csrfMeta.getAttribute('content') || '';
     state.focusMode = rememberGet(STORAGE_KEYS.focusMode) === '1';
     state.navCollapsed = rememberGet(STORAGE_KEYS.navCollapsed) === '1';
-    state.collapsedItems = parseCollapsedItems(rememberGet(STORAGE_KEYS.collapsedItems));
+    state.collapsedItems = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedItems));
+    state.collapsedSections = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedSections));
 
     attachStaticListeners();
     primeFromBootstrap();
@@ -348,6 +357,8 @@ const Builder = (() => {
     const previewBtn = document.querySelector(selectors.previewButton);
     const focusModeBtn = document.querySelector(selectors.focusModeButton);
     const quickJumpSelect = document.querySelector(selectors.quickJumpSelect);
+    const collapseAllSectionsBtn = document.querySelector(selectors.collapseAllSectionsButton);
+    const collapseAllQuestionsBtn = document.querySelector(selectors.collapseAllQuestionsButton);
     const deleteBtn = document.querySelector(selectors.deleteButton);
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
@@ -367,6 +378,8 @@ const Builder = (() => {
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     previewBtn?.addEventListener('click', openPreview);
     focusModeBtn?.addEventListener('click', toggleFocusMode);
+    collapseAllSectionsBtn?.addEventListener('click', toggleCollapseAllSections);
+    collapseAllQuestionsBtn?.addEventListener('click', toggleCollapseAllQuestions);
     navToggleBtn?.addEventListener('click', toggleNavCollapsed);
     deleteBtn?.addEventListener('click', () => {
       const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
@@ -790,7 +803,7 @@ const Builder = (() => {
     }
   }
 
-  function parseCollapsedItems(raw) {
+  function parseCollapsedState(raw) {
     if (!raw) return {};
     try {
       const parsed = JSON.parse(raw);
@@ -806,6 +819,11 @@ const Builder = (() => {
     return `${questionnaire.clientId}:${item.clientId}`;
   }
 
+  function sectionCollapseKey(questionnaire, section) {
+    if (!questionnaire?.clientId || !section?.clientId) return '';
+    return `${questionnaire.clientId}:${section.clientId}`;
+  }
+
   function isItemCollapsed(questionnaire, item) {
     const key = collapseKey(questionnaire, item);
     return key ? state.collapsedItems[key] === true : false;
@@ -816,6 +834,18 @@ const Builder = (() => {
     if (!key) return;
     state.collapsedItems[key] = Boolean(collapsed);
     rememberSet(STORAGE_KEYS.collapsedItems, JSON.stringify(state.collapsedItems));
+  }
+
+  function isSectionCollapsed(questionnaire, section) {
+    const key = sectionCollapseKey(questionnaire, section);
+    return key ? state.collapsedSections[key] === true : false;
+  }
+
+  function setSectionCollapsed(questionnaire, section, collapsed) {
+    const key = sectionCollapseKey(questionnaire, section);
+    if (!key) return;
+    state.collapsedSections[key] = Boolean(collapsed);
+    rememberSet(STORAGE_KEYS.collapsedSections, JSON.stringify(state.collapsedSections));
   }
 
   function setActive(key) {
@@ -1038,6 +1068,7 @@ const Builder = (() => {
     renderQuestionnaires();
     renderSectionNav();
     renderQuickJump();
+    updateCollapseAllButtons();
     applyFocusMode();
     renderDeleteButton();
     renderDestroyButton();
@@ -1225,14 +1256,22 @@ const Builder = (() => {
     const scoringLocked = publishedLocked;
     const removeLocked = section.hasResponses || publishedLocked;
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
+    const collapsed = isSectionCollapsed(questionnaire, section);
+    const sectionLabel = section.title?.trim() || 'Untitled section';
     const includeInScoringControl = CAPABILITIES.sectionIncludeScoring
       ? `<label title="${scoringLocked ? escapeAttr(scoringReason) : ''}"><input type="checkbox" data-role="section-include-scoring" ${section.include_in_scoring ? 'checked' : ''} ${scoringLocked ? 'disabled' : ''}> Include in scoring</label>`
       : `<label title="Database schema upgrade required"><input type="checkbox" data-role="section-include-scoring" checked disabled> Include in scoring</label>
          <span class="md-hint">Upgrade required to change this setting.</span>`;
     return `
-      <div class="qb-section" data-section="${section.clientId}">
+      <div class="qb-section ${collapsed ? 'is-collapsed' : ''}" data-section="${section.clientId}">
         <div class="qb-section-header">
           <span class="qb-section-drag-handle" aria-hidden="true" title="Drag to reorder section">⋮⋮</span>
+          <button type="button" class="qb-section-collapse-toggle" data-role="section-collapse-toggle" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${collapsed ? 'Expand section details' : 'Collapse section details'}">${collapsed ? '▸' : '▾'}</button>
+          <div class="qb-section-summary">
+            <strong>${escapeHtml(sectionLabel)}</strong>
+            <small>${section.items.length} question${section.items.length === 1 ? '' : 's'}</small>
+          </div>
+          <div class="qb-section-main">
           <div class="qb-field">
             <label>Section title</label>
             <input type="text" data-role="section-title" data-required-field="1" value="${escapeAttr(section.title)}">
@@ -1247,6 +1286,7 @@ const Builder = (() => {
           </div>
           <div class="qb-actions">
             <button type="button" class="md-button md-outline" data-role="remove-section" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(removeSectionReason) + '"' : ''}>Remove section</button>
+          </div>
           </div>
         </div>
         <div class="qb-items" data-role="items" data-section="${section.clientId}">
@@ -1522,6 +1562,67 @@ const Builder = (() => {
     if (iconNode) iconNode.textContent = state.navCollapsed ? '⇥' : '⇤';
   }
 
+  function allSectionsCollapsed(questionnaire) {
+    if (!questionnaire || !Array.isArray(questionnaire.sections) || questionnaire.sections.length === 0) return false;
+    return questionnaire.sections.every((section) => isSectionCollapsed(questionnaire, section));
+  }
+
+  function allQuestionsCollapsed(questionnaire) {
+    if (!questionnaire) return false;
+    const allItems = [
+      ...(Array.isArray(questionnaire.items) ? questionnaire.items : []),
+      ...questionnaire.sections.flatMap((section) => (Array.isArray(section.items) ? section.items : [])),
+    ];
+    if (allItems.length === 0) return false;
+    return allItems.every((item) => isItemCollapsed(questionnaire, item));
+  }
+
+  function updateCollapseAllButtons() {
+    const sectionsBtn = document.querySelector(selectors.collapseAllSectionsButton);
+    const questionsBtn = document.querySelector(selectors.collapseAllQuestionsButton);
+    const questionnaire = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    const hasSections = Boolean(questionnaire?.sections?.length);
+    const hasQuestions = Boolean(questionnaire) && (questionnaire.items.length > 0 || questionnaire.sections.some((section) => section.items.length > 0));
+
+    if (sectionsBtn) {
+      sectionsBtn.disabled = !hasSections;
+      sectionsBtn.textContent = questionnaire && allSectionsCollapsed(questionnaire)
+        ? (STRINGS.expandAllSectionsLabel || 'Expand all sections')
+        : (STRINGS.collapseAllSectionsLabel || 'Collapse all sections');
+    }
+    if (questionsBtn) {
+      questionsBtn.disabled = !hasQuestions;
+      questionsBtn.textContent = questionnaire && allQuestionsCollapsed(questionnaire)
+        ? (STRINGS.expandAllQuestionsLabel || 'Expand all questions')
+        : (STRINGS.collapseAllQuestionsLabel || 'Collapse all questions');
+    }
+  }
+
+  function toggleCollapseAllSections() {
+    const questionnaire = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!questionnaire || questionnaire.sections.length === 0) return;
+    const collapse = !allSectionsCollapsed(questionnaire);
+    questionnaire.sections.forEach((section) => {
+      setSectionCollapsed(questionnaire, section, collapse);
+    });
+    render();
+  }
+
+  function toggleCollapseAllQuestions() {
+    const questionnaire = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!questionnaire) return;
+    const allItems = [
+      ...questionnaire.items,
+      ...questionnaire.sections.flatMap((section) => section.items),
+    ];
+    if (allItems.length === 0) return;
+    const collapse = !allQuestionsCollapsed(questionnaire);
+    allItems.forEach((item) => {
+      setItemCollapsed(questionnaire, item, collapse);
+    });
+    render();
+  }
+
   function applyFocusMode() {
     const layout = document.querySelector('.qb-manager-layout');
     const button = document.querySelector(selectors.focusModeButton);
@@ -1706,6 +1807,15 @@ const Builder = (() => {
     const questionnaire = state.questionnaires.find((q) => q.clientId === qid);
     if (!questionnaire) return;
     switch (role) {
+      case 'section-collapse-toggle': {
+        const sectionNode = event.target.closest('[data-section]');
+        const sectionId = sectionNode?.getAttribute('data-section');
+        const section = questionnaire.sections.find((entry) => entry.clientId === sectionId);
+        if (!section) return;
+        setSectionCollapsed(questionnaire, section, !isSectionCollapsed(questionnaire, section));
+        render();
+        return;
+      }
       case 'item-collapse-toggle': {
         const itemRow = event.target.closest('[data-item]');
         const itemId = itemRow?.getAttribute('data-item');
@@ -1853,15 +1963,15 @@ const Builder = (() => {
   }
 
   function addSection(questionnaire) {
-    questionnaire.sections.push(
-      normalizeSection({
-        title: '',
-        description: '',
-        is_active: true,
-        include_in_scoring: true,
-        items: [],
-      })
-    );
+    const section = normalizeSection({
+      title: '',
+      description: '',
+      is_active: true,
+      include_in_scoring: true,
+      items: [],
+    });
+    questionnaire.sections.push(section);
+    setSectionCollapsed(questionnaire, section, false);
   }
 
   function removeSection(questionnaire, sectionClientId) {
@@ -1877,19 +1987,19 @@ const Builder = (() => {
       ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
       : questionnaire.items;
     if (!target) return;
-    target.push(
-      normalizeItem({
-        linkId: '',
-        text: '',
-        type: 'choice',
-        options: [
-          { value: '' },
-          { value: '' },
-        ],
-        weight_percent: 0,
-        requires_correct: false,
-      })
-    );
+    const item = normalizeItem({
+      linkId: '',
+      text: '',
+      type: 'choice',
+      options: [
+        { value: '' },
+        { value: '' },
+      ],
+      weight_percent: 0,
+      requires_correct: false,
+    });
+    target.push(item);
+    setItemCollapsed(questionnaire, item, false);
   }
 
   function removeItem(questionnaire, sectionClientId, itemClientId) {
@@ -2178,6 +2288,12 @@ const Builder = (() => {
         },
         animation: 150,
         handle: '.qb-item-drag-handle',
+        onAdd: (event) => {
+          if (!event?.from || !event?.to || event.from === event.to) return;
+          if (event.item && event.to instanceof HTMLElement) {
+            event.to.appendChild(event.item);
+          }
+        },
         onEnd: () => {
           reorderItems();
           markDirty();
