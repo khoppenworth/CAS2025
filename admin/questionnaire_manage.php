@@ -1633,9 +1633,28 @@ if (isset($_POST['import'])) {
     }
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
-        $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
-        $data = json_decode($raw, true);
-        if (!is_array($data)) {
+        $raw = (string)$raw;
+        if (strncmp($raw, "\xEF\xBB\xBF", 3) === 0) {
+            $raw = substr($raw, 3);
+        } elseif (strncmp($raw, "\xFF\xFE", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE') : substr($raw, 2);
+        } elseif (strncmp($raw, "\xFE\xFF", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE') : substr($raw, 2);
+        } elseif (strncmp($raw, "\xFF\xFE\x00\x00", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32LE') : substr($raw, 4);
+        } elseif (strncmp($raw, "\x00\x00\xFE\xFF", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32BE') : substr($raw, 4);
+        }
+        $trimmedRaw = ltrim($raw);
+        $isLikelyXmlPayload = $trimmedRaw !== '' && strpos($trimmedRaw, '<') === 0;
+        $isLikelyJsonPayload = $trimmedRaw !== '' && preg_match('/^[{\[]/', $trimmedRaw) === 1;
+        $data = null;
+
+        if ($isLikelyJsonPayload) {
+            $data = json_decode($raw, true);
+        }
+
+        if (!is_array($data) && $isLikelyXmlPayload) {
             libxml_use_internal_errors(true);
             $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
             if ($xml !== false) {
