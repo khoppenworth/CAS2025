@@ -31,6 +31,7 @@ const Builder = (() => {
     quickJumpSelect: '#qb-quick-jump',
     collapseAllSectionsButton: '#qb-collapse-all-sections',
     collapseAllQuestionsButton: '#qb-collapse-all-questions',
+    compactModeButton: '#qb-compact-mode',
     deleteButton: '#qb-delete-questionnaire',
     destroyButton: '#qb-destroy-questionnaire',
     openButton: '#qb-open-selected',
@@ -75,6 +76,7 @@ const Builder = (() => {
     navCollapsed: 'hrassess:qb:nav-collapsed',
     collapsedItems: 'hrassess:qb:collapsed-items',
     collapsedSections: 'hrassess:qb:collapsed-sections',
+    compactMode: 'hrassess:qb:compact-mode',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -132,6 +134,8 @@ const Builder = (() => {
     expandAllSectionsLabel: 'Expand all sections',
     collapseAllQuestionsLabel: 'Collapse all questions',
     expandAllQuestionsLabel: 'Expand all questions',
+    compactModeOnLabel: 'Compact mode',
+    compactModeOffLabel: 'Comfort mode',
     quickJumpLabel: 'Jump to',
     quickJumpPlaceholder: 'Jump to section',
     saveStatusUnsaved: 'Unsaved changes',
@@ -162,6 +166,7 @@ const Builder = (() => {
     navCollapsed: false,
     collapsedItems: {},
     collapsedSections: {},
+    compactMode: false,
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -334,6 +339,7 @@ const Builder = (() => {
     state.navCollapsed = rememberGet(STORAGE_KEYS.navCollapsed) === '1';
     state.collapsedItems = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedItems));
     state.collapsedSections = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedSections));
+    state.compactMode = rememberGet(STORAGE_KEYS.compactMode) === '1';
 
     attachStaticListeners();
     primeFromBootstrap();
@@ -359,6 +365,7 @@ const Builder = (() => {
     const quickJumpSelect = document.querySelector(selectors.quickJumpSelect);
     const collapseAllSectionsBtn = document.querySelector(selectors.collapseAllSectionsButton);
     const collapseAllQuestionsBtn = document.querySelector(selectors.collapseAllQuestionsButton);
+    const compactModeBtn = document.querySelector(selectors.compactModeButton);
     const deleteBtn = document.querySelector(selectors.deleteButton);
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
@@ -380,6 +387,7 @@ const Builder = (() => {
     focusModeBtn?.addEventListener('click', toggleFocusMode);
     collapseAllSectionsBtn?.addEventListener('click', toggleCollapseAllSections);
     collapseAllQuestionsBtn?.addEventListener('click', toggleCollapseAllQuestions);
+    compactModeBtn?.addEventListener('click', toggleCompactMode);
     navToggleBtn?.addEventListener('click', toggleNavCollapsed);
     deleteBtn?.addEventListener('click', () => {
       const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
@@ -1294,6 +1302,7 @@ const Builder = (() => {
           </div>
         </div>
         <div class="qb-items" data-role="items" data-section="${section.clientId}">
+          <p class="qb-collapsed-drop-hint">Drop questions here to move them into this section.</p>
           ${items || '<p class="md-hint">No questions in this section.</p>'}
         </div>
         <div class="qb-section-actions">
@@ -1636,6 +1645,25 @@ const Builder = (() => {
     render();
   }
 
+  function toggleCompactMode() {
+    state.compactMode = !state.compactMode;
+    rememberSet(STORAGE_KEYS.compactMode, state.compactMode ? '1' : '0');
+    applyCompactMode();
+  }
+
+  function applyCompactMode() {
+    const layout = document.querySelector('.qb-manager-layout');
+    const button = document.querySelector(selectors.compactModeButton);
+    if (!layout || !button) return;
+    layout.classList.toggle('is-compact-density', state.compactMode);
+    const label = state.compactMode
+      ? (STRINGS.compactModeOffLabel || 'Comfort mode')
+      : (STRINGS.compactModeOnLabel || 'Compact mode');
+    button.textContent = label;
+    button.setAttribute('aria-pressed', state.compactMode ? 'true' : 'false');
+    button.setAttribute('aria-label', label);
+  }
+
   function applyFocusMode() {
     const layout = document.querySelector('.qb-manager-layout');
     const button = document.querySelector(selectors.focusModeButton);
@@ -1644,6 +1672,7 @@ const Builder = (() => {
     button.textContent = state.focusMode ? (STRINGS.focusModeExit || 'Exit focus mode') : (STRINGS.focusModeEnter || 'Focus mode');
     button.setAttribute('aria-pressed', state.focusMode ? 'true' : 'false');
     applyNavCollapsed();
+    applyCompactMode();
   }
 
   function toggleScrollTopVisibility() {
