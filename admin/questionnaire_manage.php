@@ -250,57 +250,58 @@ function qb_import_list($value): array
     return $value;
 }
 
+function qb_import_local_name(string $key): string
+{
+    $colonPos = strrpos($key, ':');
+    if ($colonPos === false) {
+        return $key;
+    }
+    return substr($key, $colonPos + 1);
+}
+
+function qb_import_find_key_by_local_name(array $node, string $localName): ?string
+{
+    if (array_key_exists($localName, $node)) {
+        return $localName;
+    }
+    $localName = strtolower($localName);
+    foreach (array_keys($node) as $candidateKey) {
+        $candidateLocal = strtolower(qb_import_local_name((string)$candidateKey));
+        if ($candidateLocal === $localName) {
+            return (string)$candidateKey;
+        }
+    }
+    return null;
+}
+
 function qb_import_extension_values(array $node, string $url, string $valueType = ''): array
 {
     $values = [];
-    $extensionKey = 'extension';
-    if (!array_key_exists($extensionKey, $node)) {
-        foreach (array_keys($node) as $candidateKey) {
-            $keyText = (string)$candidateKey;
-            $colonPos = strrpos($keyText, ':');
-            if ($colonPos !== false && substr($keyText, $colonPos + 1) === 'extension') {
-                $extensionKey = $candidateKey;
-                break;
-            }
-        }
-    }
+    $extensionKey = qb_import_find_key_by_local_name($node, 'extension') ?? 'extension';
     $extensions = qb_import_list($node[$extensionKey] ?? []);
     foreach ($extensions as $extension) {
         if (!is_array($extension)) {
             continue;
         }
-        $extensionUrl = qb_import_extract_value($extension['@attributes']['url'] ?? ($extension['url'] ?? ''));
+        $urlKey = qb_import_find_key_by_local_name($extension, 'url');
+        $extensionUrl = trim(qb_import_extract_value($extension['@attributes']['url'] ?? ($urlKey !== null ? ($extension[$urlKey] ?? '') : '')));
         if ($extensionUrl !== $url) {
             continue;
         }
         if ($valueType !== '') {
-            $valueKey = $valueType;
-            if (!array_key_exists($valueKey, $extension)) {
-                foreach (array_keys($extension) as $candidateKey) {
-                    $keyText = (string)$candidateKey;
-                    $colonPos = strrpos($keyText, ':');
-                    if ($colonPos !== false && substr($keyText, $colonPos + 1) === $valueType) {
-                        $valueKey = $candidateKey;
-                        break;
-                    }
-                }
-            }
-            $raw = qb_import_extract_value($extension[$valueKey] ?? '');
+            $valueKey = qb_import_find_key_by_local_name($extension, $valueType) ?? $valueType;
+            $raw = trim(qb_import_extract_value($extension[$valueKey] ?? ''));
             if ($raw !== '') {
                 $values[] = $raw;
             }
             continue;
         }
         foreach ($extension as $k => $v) {
-            $keyText = (string)$k;
-            $colonPos = strrpos($keyText, ':');
-            if ($colonPos !== false) {
-                $keyText = substr($keyText, $colonPos + 1);
-            }
+            $keyText = qb_import_local_name((string)$k);
             if (strpos($keyText, 'value') !== 0) {
                 continue;
             }
-            $raw = qb_import_extract_value($v);
+            $raw = trim(qb_import_extract_value($v));
             if ($raw !== '') {
                 $values[] = $raw;
             }
