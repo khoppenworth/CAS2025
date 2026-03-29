@@ -1694,6 +1694,20 @@ if (isset($_POST['import'])) {
                 $rootName = preg_replace('/^.*:/', '', $xml->getName());
                 $json = json_encode($xml);
                 $data = json_decode($json, true);
+                if (is_array($data) && $data === []) {
+                    $strippedNamespaces = preg_replace('/(<\/?)([A-Za-z_][A-Za-z0-9_.-]*:)/', '$1', $raw);
+                    if (is_string($strippedNamespaces)) {
+                        $strippedNamespaces = preg_replace('/\sxmlns(?::[A-Za-z_][A-Za-z0-9_.-]*)?=(["\']).*?\1/', '', $strippedNamespaces);
+                    }
+                    if (is_string($strippedNamespaces) && $strippedNamespaces !== '') {
+                        $xmlWithoutNamespaces = simplexml_load_string($strippedNamespaces, 'SimpleXMLElement', LIBXML_NOCDATA);
+                        if ($xmlWithoutNamespaces !== false) {
+                            $rootName = preg_replace('/^.*:/', '', $xmlWithoutNamespaces->getName());
+                            $json = json_encode($xmlWithoutNamespaces);
+                            $data = json_decode($json, true);
+                        }
+                    }
+                }
                 if (is_array($data) && $rootName && !isset($data['resourceType'])) {
                     $data['resourceType'] = $rootName;
                 }
