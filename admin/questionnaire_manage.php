@@ -433,9 +433,22 @@ function qb_questionnaire_items_to_fhir_items(array $items): array
             $fhirItem['required'] = true;
         }
         if ($fhirType === 'choice' && !empty($item['options'])) {
+            if ($type === 'choice' && empty($item['allow_multiple']) && !empty($item['requires_correct'])) {
+                $fhirItem['extension'][] = [
+                    'url' => QB_FHIR_EXT_ITEM_REQUIRES_CORRECT,
+                    'valueBoolean' => true,
+                ];
+            }
             $fhirItem['answerOption'] = array_map(static function ($option) {
-                return ['valueString' => (string)($option['value'] ?? '')];
-            }, $item['options']);
+                $answerOption = ['valueString' => (string)($option['value'] ?? '')];
+                if (!empty($option['is_correct'])) {
+                    $answerOption['extension'][] = [
+                        'url' => QB_FHIR_EXT_OPTION_IS_CORRECT,
+                        'valueBoolean' => true,
+                    ];
+                }
+                return $answerOption;
+                }, $item['options']);
         }
         $fhirItems[] = $fhirItem;
     }
