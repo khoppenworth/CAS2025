@@ -253,7 +253,18 @@ function qb_import_list($value): array
 function qb_import_extension_values(array $node, string $url, string $valueType = ''): array
 {
     $values = [];
-    $extensions = qb_import_list($node['extension'] ?? []);
+    $extensionKey = 'extension';
+    if (!array_key_exists($extensionKey, $node)) {
+        foreach (array_keys($node) as $candidateKey) {
+            $keyText = (string)$candidateKey;
+            $colonPos = strrpos($keyText, ':');
+            if ($colonPos !== false && substr($keyText, $colonPos + 1) === 'extension') {
+                $extensionKey = $candidateKey;
+                break;
+            }
+        }
+    }
+    $extensions = qb_import_list($node[$extensionKey] ?? []);
     foreach ($extensions as $extension) {
         if (!is_array($extension)) {
             continue;
@@ -263,14 +274,30 @@ function qb_import_extension_values(array $node, string $url, string $valueType 
             continue;
         }
         if ($valueType !== '') {
-            $raw = qb_import_extract_value($extension[$valueType] ?? '');
+            $valueKey = $valueType;
+            if (!array_key_exists($valueKey, $extension)) {
+                foreach (array_keys($extension) as $candidateKey) {
+                    $keyText = (string)$candidateKey;
+                    $colonPos = strrpos($keyText, ':');
+                    if ($colonPos !== false && substr($keyText, $colonPos + 1) === $valueType) {
+                        $valueKey = $candidateKey;
+                        break;
+                    }
+                }
+            }
+            $raw = qb_import_extract_value($extension[$valueKey] ?? '');
             if ($raw !== '') {
                 $values[] = $raw;
             }
             continue;
         }
         foreach ($extension as $k => $v) {
-            if (strpos((string)$k, 'value') !== 0) {
+            $keyText = (string)$k;
+            $colonPos = strrpos($keyText, ':');
+            if ($colonPos !== false) {
+                $keyText = substr($keyText, $colonPos + 1);
+            }
+            if (strpos($keyText, 'value') !== 0) {
                 continue;
             }
             $raw = qb_import_extract_value($v);
@@ -1633,15 +1660,81 @@ if (isset($_POST['import'])) {
     }
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
-        $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
-        $data = json_decode($raw, true);
-        if (!is_array($data)) {
+        $raw = (string)$raw;
+        if (strncmp($raw, "\xFF\xFE\x00\x00", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32LE') : substr($raw, 4);
+        } elseif (strncmp($raw, "\x00\x00\xFE\xFF", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32BE') : substr($raw, 4);
+        } elseif (strncmp($raw, "\xEF\xBB\xBF", 3) === 0) {
+            $raw = substr($raw, 3);
+        } elseif (strncmp($raw, "\xFF\xFE", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE') : substr($raw, 2);
+        } elseif (strncmp($raw, "\xFE\xFF", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE') : substr($raw, 2);
+        }
+        $trimmedRaw = ltrim($raw);
+        $decodedStringPayload = json_decode($trimmedRaw, true);
+        if (is_string($decodedStringPayload)) {
+            $decodedTrimmed = ltrim($decodedStringPayload);
+            if ($decodedTrimmed !== '' && (strpos($decodedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $decodedTrimmed) === 1)) {
+                $raw = $decodedStringPayload;
+                $trimmedRaw = $decodedTrimmed;
+            }
+        }
+        if ($trimmedRaw !== '' && ($trimmedRaw[0] === '"' || $trimmedRaw[0] === "'")) {
+            $unwrapped = trim($trimmedRaw, "\"' \t\r\n");
+            $unwrappedTrimmed = ltrim($unwrapped);
+            if ($unwrappedTrimmed !== '' && (strpos($unwrappedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $unwrappedTrimmed) === 1)) {
+                $raw = $unwrapped;
+                $trimmedRaw = $unwrappedTrimmed;
+            } elseif (strpos($unwrapped, '\\') !== false) {
+                $unescaped = stripcslashes($unwrapped);
+                $unescapedTrimmed = ltrim($unescaped);
+                if ($unescapedTrimmed !== '' && (strpos($unescapedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $unescapedTrimmed) === 1)) {
+                    $raw = $unescaped;
+                    $trimmedRaw = $unescapedTrimmed;
+                }
+            }
+        }
+        if ($trimmedRaw !== '' && strpos($trimmedRaw, '<') !== 0) {
+            $firstTagPos = strpos($trimmedRaw, '<');
+            if ($firstTagPos !== false) {
+                $prefix = substr($trimmedRaw, 0, $firstTagPos);
+                if ($prefix === '' || preg_match('/^[\s\'"\\\\]+$/u', $prefix) === 1) {
+                    $trimmedRaw = substr($trimmedRaw, $firstTagPos);
+                    $raw = $trimmedRaw;
+                }
+            }
+        }
+        $isLikelyXmlPayload = $trimmedRaw !== '' && strpos($trimmedRaw, '<') === 0;
+        $isLikelyJsonPayload = $trimmedRaw !== '' && preg_match('/^[{\[]/', $trimmedRaw) === 1;
+        $data = null;
+
+        if ($isLikelyJsonPayload) {
+            $data = json_decode($raw, true);
+        }
+
+        if (!is_array($data) && $isLikelyXmlPayload) {
             libxml_use_internal_errors(true);
             $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
             if ($xml !== false) {
-                $rootName = $xml->getName();
+                $rootName = preg_replace('/^.*:/', '', $xml->getName());
                 $json = json_encode($xml);
                 $data = json_decode($json, true);
+                if (is_array($data) && $data === []) {
+                    $strippedNamespaces = preg_replace('/(<\/?)([A-Za-z_][A-Za-z0-9_.-]*:)/', '$1', $raw);
+                    if (is_string($strippedNamespaces)) {
+                        $strippedNamespaces = preg_replace('/\sxmlns(?::[A-Za-z_][A-Za-z0-9_.-]*)?=(["\']).*?\1/', '', $strippedNamespaces);
+                    }
+                    if (is_string($strippedNamespaces) && $strippedNamespaces !== '') {
+                        $xmlWithoutNamespaces = simplexml_load_string($strippedNamespaces, 'SimpleXMLElement', LIBXML_NOCDATA);
+                        if ($xmlWithoutNamespaces !== false) {
+                            $rootName = preg_replace('/^.*:/', '', $xmlWithoutNamespaces->getName());
+                            $json = json_encode($xmlWithoutNamespaces);
+                            $data = json_decode($json, true);
+                        }
+                    }
+                }
                 if (is_array($data) && $rootName && !isset($data['resourceType'])) {
                     $data['resourceType'] = $rootName;
                 }
