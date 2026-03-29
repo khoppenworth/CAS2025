@@ -335,10 +335,19 @@ const Builder = (() => {
     const csrfMeta = document.querySelector(selectors.metaCsrf);
     if (!csrfMeta) return;
     state.csrf = csrfMeta.getAttribute('content') || '';
-    state.focusMode = rememberGet(STORAGE_KEYS.focusMode) === '1';
-    state.navCollapsed = rememberGet(STORAGE_KEYS.navCollapsed) === '1';
-    state.collapsedItems = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedItems));
-    state.collapsedSections = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedSections));
+    // Do not restore focus-mode/nav-collapsed across sessions:
+    // these layout states can hide sidebar controls (including danger actions)
+    // and feel like content has disappeared unexpectedly.
+    state.focusMode = false;
+    state.navCollapsed = false;
+    rememberSet(STORAGE_KEYS.focusMode, '0');
+    rememberSet(STORAGE_KEYS.navCollapsed, '0');
+    // Also reset persisted collapse state to avoid stale UI-only visibility issues
+    // across questionnaire revisions/imports.
+    state.collapsedItems = {};
+    state.collapsedSections = {};
+    rememberSet(STORAGE_KEYS.collapsedItems, '{}');
+    rememberSet(STORAGE_KEYS.collapsedSections, '{}');
     state.compactMode = rememberGet(STORAGE_KEYS.compactMode) === '1';
 
     attachStaticListeners();
