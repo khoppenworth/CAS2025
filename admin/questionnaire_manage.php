@@ -253,7 +253,18 @@ function qb_import_list($value): array
 function qb_import_extension_values(array $node, string $url, string $valueType = ''): array
 {
     $values = [];
-    $extensions = qb_import_list($node['extension'] ?? []);
+    $extensionKey = 'extension';
+    if (!array_key_exists($extensionKey, $node)) {
+        foreach (array_keys($node) as $candidateKey) {
+            $keyText = (string)$candidateKey;
+            $colonPos = strrpos($keyText, ':');
+            if ($colonPos !== false && substr($keyText, $colonPos + 1) === 'extension') {
+                $extensionKey = $candidateKey;
+                break;
+            }
+        }
+    }
+    $extensions = qb_import_list($node[$extensionKey] ?? []);
     foreach ($extensions as $extension) {
         if (!is_array($extension)) {
             continue;
@@ -263,14 +274,30 @@ function qb_import_extension_values(array $node, string $url, string $valueType 
             continue;
         }
         if ($valueType !== '') {
-            $raw = qb_import_extract_value($extension[$valueType] ?? '');
+            $valueKey = $valueType;
+            if (!array_key_exists($valueKey, $extension)) {
+                foreach (array_keys($extension) as $candidateKey) {
+                    $keyText = (string)$candidateKey;
+                    $colonPos = strrpos($keyText, ':');
+                    if ($colonPos !== false && substr($keyText, $colonPos + 1) === $valueType) {
+                        $valueKey = $candidateKey;
+                        break;
+                    }
+                }
+            }
+            $raw = qb_import_extract_value($extension[$valueKey] ?? '');
             if ($raw !== '') {
                 $values[] = $raw;
             }
             continue;
         }
         foreach ($extension as $k => $v) {
-            if (strpos((string)$k, 'value') !== 0) {
+            $keyText = (string)$k;
+            $colonPos = strrpos($keyText, ':');
+            if ($colonPos !== false) {
+                $keyText = substr($keyText, $colonPos + 1);
+            }
+            if (strpos($keyText, 'value') !== 0) {
                 continue;
             }
             $raw = qb_import_extract_value($v);
