@@ -1515,7 +1515,16 @@ const Builder = (() => {
         btn.setAttribute('aria-current', isActive ? 'true' : 'false');
       }
     });
-    activeItem?.scrollIntoView?.({ block: 'nearest' });
+    if (!activeItem || nav.scrollHeight <= nav.clientHeight + 1) return;
+    const activeTop = activeItem.offsetTop;
+    const activeBottom = activeTop + activeItem.offsetHeight;
+    const visibleTop = nav.scrollTop;
+    const visibleBottom = visibleTop + nav.clientHeight;
+    if (activeTop < visibleTop) {
+      nav.scrollTop = activeTop;
+    } else if (activeBottom > visibleBottom) {
+      nav.scrollTop = activeBottom - nav.clientHeight;
+    }
   }
 
   function scrollToSection(sectionKey) {
