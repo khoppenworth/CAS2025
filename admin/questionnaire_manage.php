@@ -1839,6 +1839,10 @@ if (isset($_POST['import'])) {
                             'UPDATE questionnaire_item SET ' . implode(', ', $itemUpdateColumns) . ' WHERE id = ?'
                         );
                     }
+                    $forceRequiresCorrectStmt = null;
+                    if ($supportsItemRequiresCorrect) {
+                        $forceRequiresCorrectStmt = $pdo->prepare('UPDATE questionnaire_item SET requires_correct = 1 WHERE id = ?');
+                    }
 
                     foreach ($qs as $resource) {
                         $title = qb_import_normalize_string($resource['title'] ?? null, QB_IMPORT_MAX_QUESTIONNAIRE_TITLE, 'FHIR Questionnaire');
@@ -1936,7 +1940,7 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, &$importedSections, &$importedItems, &$importedOptions) {
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, &$importedSections, &$importedItems, &$importedOptions) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -2053,6 +2057,7 @@ if (isset($_POST['import'])) {
                                 if ($dbType === 'choice' || $dbType === 'likert') {
                                     $options = $toList($it['answerOption'] ?? []);
                                     $optionOrder = 1;
+                                    $hasCorrectOption = false;
                                     foreach ($options as $option) {
                                         if (!is_array($option)) {
                                             continue;
@@ -2074,9 +2079,15 @@ if (isset($_POST['import'])) {
                                             $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
                                             $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
                                         }
+                                        if ($isCorrect) {
+                                            $hasCorrectOption = true;
+                                        }
                                         $insertOptionStmt->execute([$itemId, $normalizedValue, $isCorrect ? 1 : 0, $optionOrder]);
                                         $optionOrder++;
                                         $importedOptions++;
+                                    }
+                                    if ($hasCorrectOption && $dbType === 'choice' && !$allowMultiple && $forceRequiresCorrectStmt) {
+                                        $forceRequiresCorrectStmt->execute([$itemId]);
                                     }
                                     if ($dbType === 'likert' && $optionOrder === 1) {
                                         foreach (LIKERT_DEFAULT_OPTIONS as $label) {
