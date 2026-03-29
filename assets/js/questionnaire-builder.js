@@ -342,8 +342,12 @@ const Builder = (() => {
     state.navCollapsed = false;
     rememberSet(STORAGE_KEYS.focusMode, '0');
     rememberSet(STORAGE_KEYS.navCollapsed, '0');
-    state.collapsedItems = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedItems));
-    state.collapsedSections = parseCollapsedState(rememberGet(STORAGE_KEYS.collapsedSections));
+    // Also reset persisted collapse state to avoid stale UI-only visibility issues
+    // across questionnaire revisions/imports.
+    state.collapsedItems = {};
+    state.collapsedSections = {};
+    rememberSet(STORAGE_KEYS.collapsedItems, '{}');
+    rememberSet(STORAGE_KEYS.collapsedSections, '{}');
     state.compactMode = rememberGet(STORAGE_KEYS.compactMode) === '1';
 
     attachStaticListeners();

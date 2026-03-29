@@ -1960,11 +1960,12 @@ if (isset($_POST['import'])) {
                                     $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
                                     $newSectionId = (int)$pdo->lastInsertId();
                                     if ($updateSectionFlagsStmt) {
-                                        $sectionActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_ACTIVE, 'valueBoolean');
                                         $sectionScoringExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_INCLUDE_SCORING, 'valueBoolean');
                                         $updateParams = [];
                                         if ($supportsSectionActive) {
-                                            $updateParams[] = $sectionActiveExt === '' ? 1 : ($isTruthy($sectionActiveExt) ? 1 : 0);
+                                            // Keep imported sections visible by default; external templates may include
+                                            // inactive flags that unintentionally hide large parts of the questionnaire.
+                                            $updateParams[] = 1;
                                         }
                                         if ($supportsSectionScoring) {
                                             $updateParams[] = $sectionScoringExt === '' ? 1 : ($isTruthy($sectionScoringExt) ? 1 : 0);
@@ -2015,7 +2016,6 @@ if (isset($_POST['import'])) {
                                 $itemId = (int)$pdo->lastInsertId();
                                 if ($updateImportedItemExtrasStmt) {
                                     $requiresCorrectExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_REQUIRES_CORRECT, 'valueBoolean');
-                                    $itemActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_ACTIVE, 'valueBoolean');
                                     $conditionSource = qb_import_normalize_string(
                                         qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_SOURCE, 'valueString'),
                                         QB_IMPORT_MAX_LINK_ID
@@ -2042,8 +2042,8 @@ if (isset($_POST['import'])) {
                                         $updateParams[] = $requiresCorrect ? 1 : 0;
                                     }
                                     if ($supportsItemActive) {
-                                        $isActive = $itemActiveExt === '' ? 1 : ($isTruthy($itemActiveExt) ? 1 : 0);
-                                        $updateParams[] = $isActive;
+                                        // Keep imported items visible by default for consistency across templates.
+                                        $updateParams[] = 1;
                                     }
                                     if ($supportsItemConditions) {
                                         $updateParams[] = $conditionSource;
