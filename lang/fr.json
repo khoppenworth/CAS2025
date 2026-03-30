@@ -544,6 +544,7 @@
   "qb_navigation_hint": "Utilisez la barre latérale pour passer d’une section à l’autre.",
   "qb_preview_condition_prefix": "Shown when",
   "qb_preview_label": "Preview questionnaire",
+  "qb_preview_correct_answer_tag": "Correct answer",
   "qb_preview_no_description": "No description provided.",
   "qb_preview_no_items": "No questions yet. Add items in the builder to preview them.",
   "qb_preview_option_placeholder": "Option",

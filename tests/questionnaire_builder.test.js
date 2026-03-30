@@ -146,7 +146,18 @@ class FakeDocument {
       description: '',
       status: 'draft',
       sections: [],
-      items: [],
+      items: [{
+        clientId: 'item-1',
+        text: 'Question 1',
+        type: 'choice',
+        allow_multiple: false,
+        requires_correct: true,
+        is_active: true,
+        options: [
+          { clientId: 'opt-1', value: 'Option A', is_correct: true },
+          { clientId: 'opt-2', value: 'Option B', is_correct: false },
+        ],
+      }],
     }],
     QB_INITIAL_ACTIVE_ID: 1,
     QB_STRINGS: undefined,
@@ -229,6 +240,9 @@ class FakeDocument {
   if (window.openCalls !== 1) throw new Error('preview window did not open');
   if (!window.lastPreviewDocument?.lastHtml || !window.lastPreviewDocument.lastHtml.includes('New title')) {
     throw new Error('preview html was not written with questionnaire content');
+  }
+  if (!window.lastPreviewDocument.lastHtml.includes('Correct answer')) {
+    throw new Error('preview html did not indicate the correct answer');
   }
 
   // click floating save

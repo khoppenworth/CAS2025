@@ -126,6 +126,7 @@ const Builder = (() => {
     previewTextareaPlaceholder: 'Long answer',
     previewBooleanYes: 'Yes',
     previewBooleanNo: 'No',
+    previewCorrectAnswerTag: 'Correct answer',
     focusModeEnter: 'Focus mode',
     focusModeExit: 'Exit focus mode',
     collapseNavLabel: 'Collapse navigation',
@@ -550,6 +551,16 @@ const Builder = (() => {
         display: grid;
         gap: .45rem;
       }
+      .qb-preview-option-correct {
+        display: inline-block;
+        margin-left: .4rem;
+        padding: .05rem .4rem;
+        border-radius: 999px;
+        background: #dcfce7;
+        color: #166534;
+        font-size: .75rem;
+        font-weight: 600;
+      }
       .qb-preview-condition {
         margin: .55rem 0 0;
         font-size: .85rem;
@@ -661,9 +672,15 @@ const Builder = (() => {
         </div>
       `;
     }
+    const showCorrectAnswer = item.type === 'choice' && !item.allow_multiple && item.requires_correct;
     return `
       <div class="qb-preview-options">
-        ${options.map((opt) => `<label><input type="radio" disabled> ${escapeHtml(opt.value || STRINGS.previewOptionPlaceholder)}</label>`).join('')}
+        ${options.map((opt) => {
+          const correctTag = showCorrectAnswer && opt.is_correct
+            ? ` <span class="qb-preview-option-correct">${escapeHtml(STRINGS.previewCorrectAnswerTag)}</span>`
+            : '';
+          return `<label><input type="radio" disabled> ${escapeHtml(opt.value || STRINGS.previewOptionPlaceholder)}${correctTag}</label>`;
+        }).join('')}
       </div>
     `;
   }
