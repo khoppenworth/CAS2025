@@ -2205,6 +2205,9 @@ if (isset($_POST['import'])) {
                                         if ($isCorrect) {
                                             $hasCorrectOption = true;
                                         }
+                                        if ($isCorrect) {
+                                            $hasCorrectOption = true;
+                                        }
                                         $insertOptionStmt->execute([$itemId, $normalizedValue, $isCorrect ? 1 : 0, $optionOrder]);
                                         $optionOrder++;
                                         $importedOptions++;
