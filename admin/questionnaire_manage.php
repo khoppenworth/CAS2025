@@ -1070,6 +1070,18 @@ if ($action === 'save' || $action === 'publish') {
             && isset($itemColumns['condition_value']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire_item columns fetch failed: ' . $columnError->getMessage());
+        // Some database roles can read/select but cannot run SHOW COLUMNS.
+        // Fallback to direct SELECT probing so import correctness flags still work.
+        try {
+            $probe = $pdo->query('SELECT requires_correct, is_active, condition_source_linkid, condition_operator, condition_value FROM questionnaire_item LIMIT 1');
+            if ($probe !== false) {
+                $supportsItemRequiresCorrect = true;
+                $supportsItemActive = true;
+                $supportsItemConditions = true;
+            }
+        } catch (PDOException $probeError) {
+            error_log('questionnaire_manage questionnaire_item probe failed: ' . $probeError->getMessage());
+        }
     }
 
     try {
@@ -1087,6 +1099,15 @@ if ($action === 'save' || $action === 'publish') {
         $supportsOptionOrder = isset($optionColumns['order_index']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire_item_option columns fetch failed: ' . $columnError->getMessage());
+        try {
+            $probe = $pdo->query('SELECT is_correct, order_index FROM questionnaire_item_option LIMIT 1');
+            if ($probe !== false) {
+                $supportsOptionCorrect = true;
+                $supportsOptionOrder = true;
+            }
+        } catch (PDOException $probeError) {
+            error_log('questionnaire_manage questionnaire_item_option probe failed: ' . $probeError->getMessage());
+        }
     }
 
     $itemResponsePresence = [];
@@ -1949,8 +1970,10 @@ if (isset($_POST['import'])) {
                         );
                     }
                     $forceRequiresCorrectStmt = null;
-                    if ($supportsItemRequiresCorrect) {
+                    try {
                         $forceRequiresCorrectStmt = $pdo->prepare('UPDATE questionnaire_item SET requires_correct = 1 WHERE id = ?');
+                    } catch (PDOException $forceRequiresCorrectStmtError) {
+                        error_log('questionnaire_manage import requires_correct update statement unavailable: ' . $forceRequiresCorrectStmtError->getMessage());
                     }
 
                     foreach ($qs as $resource) {
@@ -2194,16 +2217,10 @@ if (isset($_POST['import'])) {
                                         if ($normalizedValue === '') {
                                             continue;
                                         }
-                                        $isCorrect = false;
-                                        if ($supportsOptionCorrect) {
-                                            $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
-                                            $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
-                                            if (!$isCorrect && isset($correctOptionsFromXml[$normalizedValue])) {
-                                                $isCorrect = true;
-                                            }
-                                        }
-                                        if ($isCorrect) {
-                                            $hasCorrectOption = true;
+                                        $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
+                                        $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
+                                        if (!$isCorrect && isset($correctOptionsFromXml[$normalizedValue])) {
+                                            $isCorrect = true;
                                         }
                                         if ($isCorrect) {
                                             $hasCorrectOption = true;
