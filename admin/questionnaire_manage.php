@@ -113,6 +113,7 @@ $qbStrings = [
     'previewTextareaPlaceholder' => t($t, 'qb_preview_textarea_placeholder', 'Long answer'),
     'previewBooleanYes' => t($t, 'yes', 'Yes'),
     'previewBooleanNo' => t($t, 'no', 'No'),
+    'previewCorrectAnswerTag' => t($t, 'qb_preview_correct_answer_tag', 'Correct answer'),
     'focusModeEnter' => t($t, 'qb_focus_mode_enter', 'Focus mode'),
     'focusModeExit' => t($t, 'qb_focus_mode_exit', 'Exit focus mode'),
     'collapseNavLabel' => t($t, 'qb_collapse_nav_label', 'Collapse navigation'),
