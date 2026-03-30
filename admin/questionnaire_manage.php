@@ -319,6 +319,96 @@ function qb_import_extension_value(array $node, string $url, string $valueType =
     return (string)$values[0];
 }
 
+function qb_import_xml_node_value(DOMXPath $xpath, DOMElement $context, string $localName): string
+{
+    $nodes = $xpath->query('./*[local-name()="' . $localName . '"]', $context);
+    if (!$nodes || $nodes->length === 0) {
+        return '';
+    }
+    $node = $nodes->item(0);
+    if (!$node instanceof DOMElement) {
+        return '';
+    }
+    if ($node->hasAttribute('value')) {
+        return trim((string)$node->getAttribute('value'));
+    }
+    return trim((string)$node->textContent);
+}
+
+function qb_import_xml_extension_boolean(DOMXPath $xpath, DOMElement $context, string $url): bool
+{
+    $extensions = $xpath->query('./*[local-name()="extension"]', $context);
+    if (!$extensions) {
+        return false;
+    }
+    foreach ($extensions as $extensionNode) {
+        if (!$extensionNode instanceof DOMElement) {
+            continue;
+        }
+        $urlValue = trim((string)$extensionNode->getAttribute('url'));
+        if ($urlValue === '') {
+            $urlValue = qb_import_xml_node_value($xpath, $extensionNode, 'url');
+        }
+        if ($urlValue !== $url) {
+            continue;
+        }
+        $boolValue = strtolower(qb_import_xml_node_value($xpath, $extensionNode, 'valueBoolean'));
+        return in_array($boolValue, ['1', 'true', 'yes'], true);
+    }
+    return false;
+}
+
+function qb_import_correctness_map_from_xml(string $xmlPayload): array
+{
+    $map = [];
+    $dom = new DOMDocument();
+    $loaded = @$dom->loadXML($xmlPayload, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+    if (!$loaded) {
+        return $map;
+    }
+    $xpath = new DOMXPath($dom);
+    $itemNodes = $xpath->query('//*[local-name()="item"]');
+    if (!$itemNodes) {
+        return $map;
+    }
+    foreach ($itemNodes as $itemNode) {
+        if (!$itemNode instanceof DOMElement) {
+            continue;
+        }
+        $linkId = qb_import_xml_node_value($xpath, $itemNode, 'linkId');
+        if ($linkId === '') {
+            continue;
+        }
+        $linkId = qb_import_truncate($linkId, QB_IMPORT_MAX_LINK_ID);
+        $requiresCorrect = qb_import_xml_extension_boolean($xpath, $itemNode, QB_FHIR_EXT_ITEM_REQUIRES_CORRECT);
+        $optionNodes = $xpath->query('./*[local-name()="answerOption"]', $itemNode);
+        $correctOptions = [];
+        if ($optionNodes) {
+            foreach ($optionNodes as $optionNode) {
+                if (!$optionNode instanceof DOMElement) {
+                    continue;
+                }
+                if (!qb_import_xml_extension_boolean($xpath, $optionNode, QB_FHIR_EXT_OPTION_IS_CORRECT)) {
+                    continue;
+                }
+                $value = qb_import_xml_node_value($xpath, $optionNode, 'valueString');
+                if ($value === '') {
+                    continue;
+                }
+                $value = qb_import_truncate($value, QB_IMPORT_MAX_OPTION_VALUE);
+                $correctOptions[$value] = true;
+            }
+        }
+        if ($requiresCorrect || $correctOptions) {
+            $map[$linkId] = [
+                'requires_correct' => $requiresCorrect,
+                'correct_options' => $correctOptions,
+            ];
+        }
+    }
+    return $map;
+}
+
 
 function qb_questionnaire_to_fhir_resource(array $questionnaire): array
 {
@@ -1723,6 +1813,7 @@ if (isset($_POST['import'])) {
         $isLikelyXmlPayload = $trimmedRaw !== '' && strpos($trimmedRaw, '<') === 0;
         $isLikelyJsonPayload = $trimmedRaw !== '' && preg_match('/^[{\[]/', $trimmedRaw) === 1;
         $data = null;
+        $xmlCorrectnessMap = [];
 
         if ($isLikelyJsonPayload) {
             $data = json_decode($raw, true);
@@ -1732,6 +1823,7 @@ if (isset($_POST['import'])) {
             libxml_use_internal_errors(true);
             $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
             if ($xml !== false) {
+                $xmlCorrectnessMap = qb_import_correctness_map_from_xml($raw);
                 $rootName = preg_replace('/^.*:/', '', $xml->getName());
                 $json = json_encode($xml);
                 $data = json_decode($json, true);
@@ -1743,6 +1835,9 @@ if (isset($_POST['import'])) {
                     if (is_string($strippedNamespaces) && $strippedNamespaces !== '') {
                         $xmlWithoutNamespaces = simplexml_load_string($strippedNamespaces, 'SimpleXMLElement', LIBXML_NOCDATA);
                         if ($xmlWithoutNamespaces !== false) {
+                            if (!$xmlCorrectnessMap) {
+                                $xmlCorrectnessMap = qb_import_correctness_map_from_xml($strippedNamespaces);
+                            }
                             $rootName = preg_replace('/^.*:/', '', $xmlWithoutNamespaces->getName());
                             $json = json_encode($xmlWithoutNamespaces);
                             $data = json_decode($json, true);
@@ -1954,7 +2049,7 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, &$importedSections, &$importedItems, &$importedOptions) {
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, $xmlCorrectnessMap, &$importedSections, &$importedItems, &$importedOptions) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -2004,6 +2099,9 @@ if (isset($_POST['import'])) {
                                 if ($linkId === '') {
                                     $linkId = 'i' . $itemOrder;
                                 }
+                                $correctnessFromXml = isset($xmlCorrectnessMap[$linkId]) && is_array($xmlCorrectnessMap[$linkId])
+                                    ? $xmlCorrectnessMap[$linkId]
+                                    : ['requires_correct' => false, 'correct_options' => []];
                                 $text = qb_import_normalize_string($it['text'] ?? null, QB_IMPORT_MAX_ITEM_TEXT, $linkId);
                                 if ($text === '') {
                                     $text = $linkId;
@@ -2052,7 +2150,12 @@ if (isset($_POST['import'])) {
                                     }
                                     $updateParams = [];
                                     if ($supportsItemRequiresCorrect) {
-                                        $requiresCorrect = $dbType === 'choice' && !$allowMultiple && $requiresCorrectExt !== '' && $isTruthy($requiresCorrectExt);
+                                        $requiresCorrect = $dbType === 'choice'
+                                            && !$allowMultiple
+                                            && (
+                                                ($requiresCorrectExt !== '' && $isTruthy($requiresCorrectExt))
+                                                || !empty($correctnessFromXml['requires_correct'])
+                                            );
                                         $updateParams[] = $requiresCorrect ? 1 : 0;
                                     }
                                     if ($supportsItemActive) {
@@ -2072,6 +2175,9 @@ if (isset($_POST['import'])) {
                                     $options = $toList($it['answerOption'] ?? []);
                                     $optionOrder = 1;
                                     $hasCorrectOption = false;
+                                    $correctOptionsFromXml = is_array($correctnessFromXml['correct_options'] ?? null)
+                                        ? $correctnessFromXml['correct_options']
+                                        : [];
                                     foreach ($options as $option) {
                                         if (!is_array($option)) {
                                             continue;
@@ -2092,6 +2198,12 @@ if (isset($_POST['import'])) {
                                         if ($supportsOptionCorrect) {
                                             $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
                                             $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
+                                            if (!$isCorrect && isset($correctOptionsFromXml[$normalizedValue])) {
+                                                $isCorrect = true;
+                                            }
+                                        }
+                                        if ($isCorrect) {
+                                            $hasCorrectOption = true;
                                         }
                                         if ($isCorrect) {
                                             $hasCorrectOption = true;
