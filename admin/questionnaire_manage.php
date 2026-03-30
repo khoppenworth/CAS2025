@@ -250,30 +250,58 @@ function qb_import_list($value): array
     return $value;
 }
 
+function qb_import_local_name(string $key): string
+{
+    $colonPos = strrpos($key, ':');
+    if ($colonPos === false) {
+        return $key;
+    }
+    return substr($key, $colonPos + 1);
+}
+
+function qb_import_find_key_by_local_name(array $node, string $localName): ?string
+{
+    if (array_key_exists($localName, $node)) {
+        return $localName;
+    }
+    $localName = strtolower($localName);
+    foreach (array_keys($node) as $candidateKey) {
+        $candidateLocal = strtolower(qb_import_local_name((string)$candidateKey));
+        if ($candidateLocal === $localName) {
+            return (string)$candidateKey;
+        }
+    }
+    return null;
+}
+
 function qb_import_extension_values(array $node, string $url, string $valueType = ''): array
 {
     $values = [];
-    $extensions = qb_import_list($node['extension'] ?? []);
+    $extensionKey = qb_import_find_key_by_local_name($node, 'extension') ?? 'extension';
+    $extensions = qb_import_list($node[$extensionKey] ?? []);
     foreach ($extensions as $extension) {
         if (!is_array($extension)) {
             continue;
         }
-        $extensionUrl = qb_import_extract_value($extension['@attributes']['url'] ?? ($extension['url'] ?? ''));
+        $urlKey = qb_import_find_key_by_local_name($extension, 'url');
+        $extensionUrl = trim(qb_import_extract_value($extension['@attributes']['url'] ?? ($urlKey !== null ? ($extension[$urlKey] ?? '') : '')));
         if ($extensionUrl !== $url) {
             continue;
         }
         if ($valueType !== '') {
-            $raw = qb_import_extract_value($extension[$valueType] ?? '');
+            $valueKey = qb_import_find_key_by_local_name($extension, $valueType) ?? $valueType;
+            $raw = trim(qb_import_extract_value($extension[$valueKey] ?? ''));
             if ($raw !== '') {
                 $values[] = $raw;
             }
             continue;
         }
         foreach ($extension as $k => $v) {
-            if (strpos((string)$k, 'value') !== 0) {
+            $keyText = qb_import_local_name((string)$k);
+            if (strpos($keyText, 'value') !== 0) {
                 continue;
             }
-            $raw = qb_import_extract_value($v);
+            $raw = trim(qb_import_extract_value($v));
             if ($raw !== '') {
                 $values[] = $raw;
             }
@@ -289,6 +317,96 @@ function qb_import_extension_value(array $node, string $url, string $valueType =
         return '';
     }
     return (string)$values[0];
+}
+
+function qb_import_xml_node_value(DOMXPath $xpath, DOMElement $context, string $localName): string
+{
+    $nodes = $xpath->query('./*[local-name()="' . $localName . '"]', $context);
+    if (!$nodes || $nodes->length === 0) {
+        return '';
+    }
+    $node = $nodes->item(0);
+    if (!$node instanceof DOMElement) {
+        return '';
+    }
+    if ($node->hasAttribute('value')) {
+        return trim((string)$node->getAttribute('value'));
+    }
+    return trim((string)$node->textContent);
+}
+
+function qb_import_xml_extension_boolean(DOMXPath $xpath, DOMElement $context, string $url): bool
+{
+    $extensions = $xpath->query('./*[local-name()="extension"]', $context);
+    if (!$extensions) {
+        return false;
+    }
+    foreach ($extensions as $extensionNode) {
+        if (!$extensionNode instanceof DOMElement) {
+            continue;
+        }
+        $urlValue = trim((string)$extensionNode->getAttribute('url'));
+        if ($urlValue === '') {
+            $urlValue = qb_import_xml_node_value($xpath, $extensionNode, 'url');
+        }
+        if ($urlValue !== $url) {
+            continue;
+        }
+        $boolValue = strtolower(qb_import_xml_node_value($xpath, $extensionNode, 'valueBoolean'));
+        return in_array($boolValue, ['1', 'true', 'yes'], true);
+    }
+    return false;
+}
+
+function qb_import_correctness_map_from_xml(string $xmlPayload): array
+{
+    $map = [];
+    $dom = new DOMDocument();
+    $loaded = @$dom->loadXML($xmlPayload, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+    if (!$loaded) {
+        return $map;
+    }
+    $xpath = new DOMXPath($dom);
+    $itemNodes = $xpath->query('//*[local-name()="item"]');
+    if (!$itemNodes) {
+        return $map;
+    }
+    foreach ($itemNodes as $itemNode) {
+        if (!$itemNode instanceof DOMElement) {
+            continue;
+        }
+        $linkId = qb_import_xml_node_value($xpath, $itemNode, 'linkId');
+        if ($linkId === '') {
+            continue;
+        }
+        $linkId = qb_import_truncate($linkId, QB_IMPORT_MAX_LINK_ID);
+        $requiresCorrect = qb_import_xml_extension_boolean($xpath, $itemNode, QB_FHIR_EXT_ITEM_REQUIRES_CORRECT);
+        $optionNodes = $xpath->query('./*[local-name()="answerOption"]', $itemNode);
+        $correctOptions = [];
+        if ($optionNodes) {
+            foreach ($optionNodes as $optionNode) {
+                if (!$optionNode instanceof DOMElement) {
+                    continue;
+                }
+                if (!qb_import_xml_extension_boolean($xpath, $optionNode, QB_FHIR_EXT_OPTION_IS_CORRECT)) {
+                    continue;
+                }
+                $value = qb_import_xml_node_value($xpath, $optionNode, 'valueString');
+                if ($value === '') {
+                    continue;
+                }
+                $value = qb_import_truncate($value, QB_IMPORT_MAX_OPTION_VALUE);
+                $correctOptions[$value] = true;
+            }
+        }
+        if ($requiresCorrect || $correctOptions) {
+            $map[$linkId] = [
+                'requires_correct' => $requiresCorrect,
+                'correct_options' => $correctOptions,
+            ];
+        }
+    }
+    return $map;
 }
 
 
@@ -406,9 +524,22 @@ function qb_questionnaire_items_to_fhir_items(array $items): array
             $fhirItem['required'] = true;
         }
         if ($fhirType === 'choice' && !empty($item['options'])) {
+            if ($type === 'choice' && empty($item['allow_multiple']) && !empty($item['requires_correct'])) {
+                $fhirItem['extension'][] = [
+                    'url' => QB_FHIR_EXT_ITEM_REQUIRES_CORRECT,
+                    'valueBoolean' => true,
+                ];
+            }
             $fhirItem['answerOption'] = array_map(static function ($option) {
-                return ['valueString' => (string)($option['value'] ?? '')];
-            }, $item['options']);
+                $answerOption = ['valueString' => (string)($option['value'] ?? '')];
+                if (!empty($option['is_correct'])) {
+                    $answerOption['extension'][] = [
+                        'url' => QB_FHIR_EXT_OPTION_IS_CORRECT,
+                        'valueBoolean' => true,
+                    ];
+                }
+                return $answerOption;
+                }, $item['options']);
         }
         $fhirItems[] = $fhirItem;
     }
@@ -939,6 +1070,18 @@ if ($action === 'save' || $action === 'publish') {
             && isset($itemColumns['condition_value']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire_item columns fetch failed: ' . $columnError->getMessage());
+        // Some database roles can read/select but cannot run SHOW COLUMNS.
+        // Fallback to direct SELECT probing so import correctness flags still work.
+        try {
+            $probe = $pdo->query('SELECT requires_correct, is_active, condition_source_linkid, condition_operator, condition_value FROM questionnaire_item LIMIT 1');
+            if ($probe !== false) {
+                $supportsItemRequiresCorrect = true;
+                $supportsItemActive = true;
+                $supportsItemConditions = true;
+            }
+        } catch (PDOException $probeError) {
+            error_log('questionnaire_manage questionnaire_item probe failed: ' . $probeError->getMessage());
+        }
     }
 
     try {
@@ -956,6 +1099,15 @@ if ($action === 'save' || $action === 'publish') {
         $supportsOptionOrder = isset($optionColumns['order_index']);
     } catch (PDOException $columnError) {
         error_log('questionnaire_manage questionnaire_item_option columns fetch failed: ' . $columnError->getMessage());
+        try {
+            $probe = $pdo->query('SELECT is_correct, order_index FROM questionnaire_item_option LIMIT 1');
+            if ($probe !== false) {
+                $supportsOptionCorrect = true;
+                $supportsOptionOrder = true;
+            }
+        } catch (PDOException $probeError) {
+            error_log('questionnaire_manage questionnaire_item_option probe failed: ' . $probeError->getMessage());
+        }
     }
 
     $itemResponsePresence = [];
@@ -1633,15 +1785,86 @@ if (isset($_POST['import'])) {
     }
     if (!empty($_FILES['file']['tmp_name'])) {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
-        $raw = ltrim((string)$raw, "\xEF\xBB\xBF");
-        $data = json_decode($raw, true);
-        if (!is_array($data)) {
+        $raw = (string)$raw;
+        if (strncmp($raw, "\xFF\xFE\x00\x00", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32LE') : substr($raw, 4);
+        } elseif (strncmp($raw, "\x00\x00\xFE\xFF", 4) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 4), 'UTF-8', 'UTF-32BE') : substr($raw, 4);
+        } elseif (strncmp($raw, "\xEF\xBB\xBF", 3) === 0) {
+            $raw = substr($raw, 3);
+        } elseif (strncmp($raw, "\xFF\xFE", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE') : substr($raw, 2);
+        } elseif (strncmp($raw, "\xFE\xFF", 2) === 0) {
+            $raw = function_exists('mb_convert_encoding') ? mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE') : substr($raw, 2);
+        }
+        $trimmedRaw = ltrim($raw);
+        $decodedStringPayload = json_decode($trimmedRaw, true);
+        if (is_string($decodedStringPayload)) {
+            $decodedTrimmed = ltrim($decodedStringPayload);
+            if ($decodedTrimmed !== '' && (strpos($decodedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $decodedTrimmed) === 1)) {
+                $raw = $decodedStringPayload;
+                $trimmedRaw = $decodedTrimmed;
+            }
+        }
+        if ($trimmedRaw !== '' && ($trimmedRaw[0] === '"' || $trimmedRaw[0] === "'")) {
+            $unwrapped = trim($trimmedRaw, "\"' \t\r\n");
+            $unwrappedTrimmed = ltrim($unwrapped);
+            if ($unwrappedTrimmed !== '' && (strpos($unwrappedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $unwrappedTrimmed) === 1)) {
+                $raw = $unwrapped;
+                $trimmedRaw = $unwrappedTrimmed;
+            } elseif (strpos($unwrapped, '\\') !== false) {
+                $unescaped = stripcslashes($unwrapped);
+                $unescapedTrimmed = ltrim($unescaped);
+                if ($unescapedTrimmed !== '' && (strpos($unescapedTrimmed, '<') === 0 || preg_match('/^[{\[]/', $unescapedTrimmed) === 1)) {
+                    $raw = $unescaped;
+                    $trimmedRaw = $unescapedTrimmed;
+                }
+            }
+        }
+        if ($trimmedRaw !== '' && strpos($trimmedRaw, '<') !== 0) {
+            $firstTagPos = strpos($trimmedRaw, '<');
+            if ($firstTagPos !== false) {
+                $prefix = substr($trimmedRaw, 0, $firstTagPos);
+                if ($prefix === '' || preg_match('/^[\s\'"\\\\]+$/u', $prefix) === 1) {
+                    $trimmedRaw = substr($trimmedRaw, $firstTagPos);
+                    $raw = $trimmedRaw;
+                }
+            }
+        }
+        $isLikelyXmlPayload = $trimmedRaw !== '' && strpos($trimmedRaw, '<') === 0;
+        $isLikelyJsonPayload = $trimmedRaw !== '' && preg_match('/^[{\[]/', $trimmedRaw) === 1;
+        $data = null;
+        $xmlCorrectnessMap = [];
+
+        if ($isLikelyJsonPayload) {
+            $data = json_decode($raw, true);
+        }
+
+        if (!is_array($data) && $isLikelyXmlPayload) {
             libxml_use_internal_errors(true);
             $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NOCDATA);
             if ($xml !== false) {
-                $rootName = $xml->getName();
+                $xmlCorrectnessMap = qb_import_correctness_map_from_xml($raw);
+                $rootName = preg_replace('/^.*:/', '', $xml->getName());
                 $json = json_encode($xml);
                 $data = json_decode($json, true);
+                if (is_array($data) && $data === []) {
+                    $strippedNamespaces = preg_replace('/(<\/?)([A-Za-z_][A-Za-z0-9_.-]*:)/', '$1', $raw);
+                    if (is_string($strippedNamespaces)) {
+                        $strippedNamespaces = preg_replace('/\sxmlns(?::[A-Za-z_][A-Za-z0-9_.-]*)?=(["\']).*?\1/', '', $strippedNamespaces);
+                    }
+                    if (is_string($strippedNamespaces) && $strippedNamespaces !== '') {
+                        $xmlWithoutNamespaces = simplexml_load_string($strippedNamespaces, 'SimpleXMLElement', LIBXML_NOCDATA);
+                        if ($xmlWithoutNamespaces !== false) {
+                            if (!$xmlCorrectnessMap) {
+                                $xmlCorrectnessMap = qb_import_correctness_map_from_xml($strippedNamespaces);
+                            }
+                            $rootName = preg_replace('/^.*:/', '', $xmlWithoutNamespaces->getName());
+                            $json = json_encode($xmlWithoutNamespaces);
+                            $data = json_decode($json, true);
+                        }
+                    }
+                }
                 if (is_array($data) && $rootName && !isset($data['resourceType'])) {
                     $data['resourceType'] = $rootName;
                 }
@@ -1746,6 +1969,12 @@ if (isset($_POST['import'])) {
                             'UPDATE questionnaire_item SET ' . implode(', ', $itemUpdateColumns) . ' WHERE id = ?'
                         );
                     }
+                    $forceRequiresCorrectStmt = null;
+                    try {
+                        $forceRequiresCorrectStmt = $pdo->prepare('UPDATE questionnaire_item SET requires_correct = 1 WHERE id = ?');
+                    } catch (PDOException $forceRequiresCorrectStmtError) {
+                        error_log('questionnaire_manage import requires_correct update statement unavailable: ' . $forceRequiresCorrectStmtError->getMessage());
+                    }
 
                     foreach ($qs as $resource) {
                         $title = qb_import_normalize_string($resource['title'] ?? null, QB_IMPORT_MAX_QUESTIONNAIRE_TITLE, 'FHIR Questionnaire');
@@ -1843,7 +2072,7 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, &$importedSections, &$importedItems, &$importedOptions) {
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, $xmlCorrectnessMap, &$importedSections, &$importedItems, &$importedOptions) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -1863,11 +2092,12 @@ if (isset($_POST['import'])) {
                                     $insertSectionStmt->execute([$qid, $sectionTitle, $sectionDescription, $sectionOrder]);
                                     $newSectionId = (int)$pdo->lastInsertId();
                                     if ($updateSectionFlagsStmt) {
-                                        $sectionActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_ACTIVE, 'valueBoolean');
                                         $sectionScoringExt = qb_import_extension_value($it, QB_FHIR_EXT_SECTION_INCLUDE_SCORING, 'valueBoolean');
                                         $updateParams = [];
                                         if ($supportsSectionActive) {
-                                            $updateParams[] = $sectionActiveExt === '' ? 1 : ($isTruthy($sectionActiveExt) ? 1 : 0);
+                                            // Keep imported sections visible by default; external templates may include
+                                            // inactive flags that unintentionally hide large parts of the questionnaire.
+                                            $updateParams[] = 1;
                                         }
                                         if ($supportsSectionScoring) {
                                             $updateParams[] = $sectionScoringExt === '' ? 1 : ($isTruthy($sectionScoringExt) ? 1 : 0);
@@ -1892,6 +2122,9 @@ if (isset($_POST['import'])) {
                                 if ($linkId === '') {
                                     $linkId = 'i' . $itemOrder;
                                 }
+                                $correctnessFromXml = isset($xmlCorrectnessMap[$linkId]) && is_array($xmlCorrectnessMap[$linkId])
+                                    ? $xmlCorrectnessMap[$linkId]
+                                    : ['requires_correct' => false, 'correct_options' => []];
                                 $text = qb_import_normalize_string($it['text'] ?? null, QB_IMPORT_MAX_ITEM_TEXT, $linkId);
                                 if ($text === '') {
                                     $text = $linkId;
@@ -1918,7 +2151,6 @@ if (isset($_POST['import'])) {
                                 $itemId = (int)$pdo->lastInsertId();
                                 if ($updateImportedItemExtrasStmt) {
                                     $requiresCorrectExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_REQUIRES_CORRECT, 'valueBoolean');
-                                    $itemActiveExt = qb_import_extension_value($it, QB_FHIR_EXT_ITEM_ACTIVE, 'valueBoolean');
                                     $conditionSource = qb_import_normalize_string(
                                         qb_import_extension_value($it, QB_FHIR_EXT_ITEM_CONDITION_SOURCE, 'valueString'),
                                         QB_IMPORT_MAX_LINK_ID
@@ -1941,12 +2173,17 @@ if (isset($_POST['import'])) {
                                     }
                                     $updateParams = [];
                                     if ($supportsItemRequiresCorrect) {
-                                        $requiresCorrect = $dbType === 'choice' && !$allowMultiple && $requiresCorrectExt !== '' && $isTruthy($requiresCorrectExt);
+                                        $requiresCorrect = $dbType === 'choice'
+                                            && !$allowMultiple
+                                            && (
+                                                ($requiresCorrectExt !== '' && $isTruthy($requiresCorrectExt))
+                                                || !empty($correctnessFromXml['requires_correct'])
+                                            );
                                         $updateParams[] = $requiresCorrect ? 1 : 0;
                                     }
                                     if ($supportsItemActive) {
-                                        $isActive = $itemActiveExt === '' ? 1 : ($isTruthy($itemActiveExt) ? 1 : 0);
-                                        $updateParams[] = $isActive;
+                                        // Keep imported items visible by default for consistency across templates.
+                                        $updateParams[] = 1;
                                     }
                                     if ($supportsItemConditions) {
                                         $updateParams[] = $conditionSource;
@@ -1960,6 +2197,10 @@ if (isset($_POST['import'])) {
                                 if ($dbType === 'choice' || $dbType === 'likert') {
                                     $options = $toList($it['answerOption'] ?? []);
                                     $optionOrder = 1;
+                                    $hasCorrectOption = false;
+                                    $correctOptionsFromXml = is_array($correctnessFromXml['correct_options'] ?? null)
+                                        ? $correctnessFromXml['correct_options']
+                                        : [];
                                     foreach ($options as $option) {
                                         if (!is_array($option)) {
                                             continue;
@@ -1976,14 +2217,20 @@ if (isset($_POST['import'])) {
                                         if ($normalizedValue === '') {
                                             continue;
                                         }
-                                        $isCorrect = false;
-                                        if ($supportsOptionCorrect) {
-                                            $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
-                                            $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
+                                        $optionCorrectExt = qb_import_extension_value($option, QB_FHIR_EXT_OPTION_IS_CORRECT, 'valueBoolean');
+                                        $isCorrect = $optionCorrectExt !== '' && $isTruthy($optionCorrectExt);
+                                        if (!$isCorrect && isset($correctOptionsFromXml[$normalizedValue])) {
+                                            $isCorrect = true;
+                                        }
+                                        if ($isCorrect) {
+                                            $hasCorrectOption = true;
                                         }
                                         $insertOptionStmt->execute([$itemId, $normalizedValue, $isCorrect ? 1 : 0, $optionOrder]);
                                         $optionOrder++;
                                         $importedOptions++;
+                                    }
+                                    if ($hasCorrectOption && $dbType === 'choice' && !$allowMultiple && $forceRequiresCorrectStmt) {
+                                        $forceRequiresCorrectStmt->execute([$itemId]);
                                     }
                                     if ($dbType === 'likert' && $optionOrder === 1) {
                                         foreach (LIKERT_DEFAULT_OPTIONS as $label) {
