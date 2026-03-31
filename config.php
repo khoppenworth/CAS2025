@@ -345,8 +345,65 @@ function auth_required(array $roles = []): void {
 }
 function current_user() { return $_SESSION['user'] ?? null; }
 
+function user_profile_is_complete(array $user): bool
+{
+    $requiredFields = [
+        'full_name',
+        'email',
+        'gender',
+        'date_of_birth',
+        'phone',
+        'department',
+        'cadre',
+        'work_function',
+        'profile_role',
+        'job_grade',
+        'education_level',
+        'highest_degree_subject',
+        'work_experience_profile',
+        'total_work_experience_band',
+        'epss_work_experience_band',
+    ];
+
+    foreach ($requiredFields as $field) {
+        if (trim((string)($user[$field] ?? '')) === '') {
+            return false;
+        }
+    }
+
+    if ((string)($user['profile_role'] ?? '') === 'other' && trim((string)($user['profile_role_other'] ?? '')) === '') {
+        return false;
+    }
+
+    return true;
+}
+
 function require_profile_completion(PDO $pdo, string $redirect = 'profile.php'): void {
     if (!isset($_SESSION['user']['id'])) { return; }
+    $userId = (int)($_SESSION['user']['id'] ?? 0);
+    if ($userId <= 0) {
+        return;
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $latestUser = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($latestUser)) {
+            $_SESSION['user'] = $latestUser;
+            $isComplete = user_profile_is_complete($latestUser);
+            if ((int)($latestUser['profile_completed'] ?? 0) !== ($isComplete ? 1 : 0)) {
+                $pdo->prepare('UPDATE users SET profile_completed = ? WHERE id = ?')->execute([$isComplete ? 1 : 0, $userId]);
+                $_SESSION['user']['profile_completed'] = $isComplete ? 1 : 0;
+            }
+            if ($isComplete) {
+                return;
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('require_profile_completion profile check failed: ' . $e->getMessage());
+    }
+
     if (($_SESSION['user']['profile_completed'] ?? 0) == 1) { return; }
 
     $scriptSources = [
