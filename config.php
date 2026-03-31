@@ -971,6 +971,14 @@ function ensure_users_schema(PDO $pdo): void
         'approved_by' => 'ALTER TABLE users ADD COLUMN approved_by INT NULL AFTER next_assessment_date',
         'approved_at' => 'ALTER TABLE users ADD COLUMN approved_at DATETIME NULL AFTER approved_by',
         'sso_provider' => 'ALTER TABLE users ADD COLUMN sso_provider VARCHAR(50) NULL AFTER approved_at',
+        'profile_role' => 'ALTER TABLE users ADD COLUMN profile_role VARCHAR(100) NULL AFTER work_function',
+        'profile_role_other' => 'ALTER TABLE users ADD COLUMN profile_role_other VARCHAR(200) NULL AFTER profile_role',
+        'job_grade' => 'ALTER TABLE users ADD COLUMN job_grade VARCHAR(50) NULL AFTER profile_role_other',
+        'education_level' => 'ALTER TABLE users ADD COLUMN education_level VARCHAR(50) NULL AFTER job_grade',
+        'highest_degree_subject' => 'ALTER TABLE users ADD COLUMN highest_degree_subject VARCHAR(200) NULL AFTER education_level',
+        'work_experience_profile' => 'ALTER TABLE users ADD COLUMN work_experience_profile VARCHAR(255) NULL AFTER highest_degree_subject',
+        'total_work_experience_band' => 'ALTER TABLE users ADD COLUMN total_work_experience_band VARCHAR(50) NULL AFTER work_experience_profile',
+        'epss_work_experience_band' => 'ALTER TABLE users ADD COLUMN epss_work_experience_band VARCHAR(50) NULL AFTER total_work_experience_band',
     ];
 
     foreach ($changes as $field => $sql) {
