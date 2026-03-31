@@ -1169,6 +1169,134 @@ PREPARE stmt FROM @users_sso_provider_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @users_profile_role_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'profile_role'
+);
+SET @users_profile_role_sql = IF(
+  @users_profile_role_exists = 0,
+  'ALTER TABLE users ADD COLUMN profile_role VARCHAR(100) NULL AFTER work_function',
+  'DO 1'
+);
+PREPARE stmt FROM @users_profile_role_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_profile_role_other_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'profile_role_other'
+);
+SET @users_profile_role_other_sql = IF(
+  @users_profile_role_other_exists = 0,
+  'ALTER TABLE users ADD COLUMN profile_role_other VARCHAR(200) NULL AFTER profile_role',
+  'DO 1'
+);
+PREPARE stmt FROM @users_profile_role_other_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_job_grade_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'job_grade'
+);
+SET @users_job_grade_sql = IF(
+  @users_job_grade_exists = 0,
+  'ALTER TABLE users ADD COLUMN job_grade VARCHAR(50) NULL AFTER profile_role_other',
+  'DO 1'
+);
+PREPARE stmt FROM @users_job_grade_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_education_level_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'education_level'
+);
+SET @users_education_level_sql = IF(
+  @users_education_level_exists = 0,
+  'ALTER TABLE users ADD COLUMN education_level VARCHAR(50) NULL AFTER job_grade',
+  'DO 1'
+);
+PREPARE stmt FROM @users_education_level_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_highest_degree_subject_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'highest_degree_subject'
+);
+SET @users_highest_degree_subject_sql = IF(
+  @users_highest_degree_subject_exists = 0,
+  'ALTER TABLE users ADD COLUMN highest_degree_subject VARCHAR(200) NULL AFTER education_level',
+  'DO 1'
+);
+PREPARE stmt FROM @users_highest_degree_subject_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_work_experience_profile_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'work_experience_profile'
+);
+SET @users_work_experience_profile_sql = IF(
+  @users_work_experience_profile_exists = 0,
+  'ALTER TABLE users ADD COLUMN work_experience_profile VARCHAR(255) NULL AFTER highest_degree_subject',
+  'DO 1'
+);
+PREPARE stmt FROM @users_work_experience_profile_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_total_work_experience_band_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'total_work_experience_band'
+);
+SET @users_total_work_experience_band_sql = IF(
+  @users_total_work_experience_band_exists = 0,
+  'ALTER TABLE users ADD COLUMN total_work_experience_band VARCHAR(50) NULL AFTER work_experience_profile',
+  'DO 1'
+);
+PREPARE stmt FROM @users_total_work_experience_band_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_epss_work_experience_band_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'epss_work_experience_band'
+);
+SET @users_epss_work_experience_band_sql = IF(
+  @users_epss_work_experience_band_exists = 0,
+  'ALTER TABLE users ADD COLUMN epss_work_experience_band VARCHAR(50) NULL AFTER total_work_experience_band',
+  'DO 1'
+);
+PREPARE stmt FROM @users_epss_work_experience_band_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 
 CREATE TABLE IF NOT EXISTS performance_period (
   id INT AUTO_INCREMENT PRIMARY KEY,
