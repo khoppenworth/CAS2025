@@ -152,6 +152,7 @@ try {
             $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
         } else {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
+        $qb_danger_zone_enabled = isset($_POST['qb_danger_zone_enabled']) ? 1 : 0;
         $local_login_enabled = isset($_POST['local_login_enabled']) ? 1 : 0;
         $google_oauth_enabled = isset($_POST['google_oauth_enabled']) ? 1 : 0;
         $google_oauth_client_id = trim($_POST['google_oauth_client_id'] ?? '');
@@ -228,6 +229,7 @@ try {
             'smtp_from_name' => $smtp_from_name !== '' ? $smtp_from_name : null,
             'smtp_timeout' => $smtp_timeout,
             'review_enabled' => $review_enabled,
+            'qb_danger_zone_enabled' => $qb_danger_zone_enabled,
             'email_templates' => encode_email_templates($emailTemplates),
         ];
 
@@ -395,6 +397,16 @@ $pageHelpKey = 'admin.settings';
         <label>
           <input type="checkbox" name="review_enabled" value="1" <?=((int)($cfg['review_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
           <span><?=t($t,'enable_review_feature','Enable supervisor review workflow')?></span>
+        </label>
+      </div>
+      <h3 class="md-subhead">
+        <?=t($t,'questionnaire_builder_settings','Questionnaire Builder')?>
+        <?=render_help_icon(t($t,'questionnaire_builder_settings_hint','Show or hide advanced questionnaire builder controls used during setup.'))?>
+      </h3>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="qb_danger_zone_enabled" value="1" <?=((int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'qb_show_danger_zone','Show Danger Zone tile in Questionnaire Builder')?></span>
         </label>
       </div>
       <h3 class="md-subhead"><?=t($t,'sso_settings','Single Sign-On (SSO)')?></h3>
