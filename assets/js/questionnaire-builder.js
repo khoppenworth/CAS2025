@@ -808,17 +808,9 @@ const Builder = (() => {
       const exists = state.questionnaires.some((q) => q.clientId === state.activeKey || `${q.id}` === `${state.activeKey}`);
       if (exists) return;
     }
-    const remembered = rememberGet(STORAGE_KEYS.active);
-    if (remembered) {
-      const match = state.questionnaires.find((q) => q.clientId === remembered || `${q.id}` === `${remembered}`);
-      if (match) {
-        state.activeKey = match.clientId;
-        state.navActiveKey = 'root';
-        return;
-      }
-    }
-    state.activeKey = state.questionnaires[0].clientId;
+    state.activeKey = null;
     state.navActiveKey = 'root';
+    rememberRemove(STORAGE_KEYS.active);
   }
 
   function rememberSet(key, value) {
@@ -834,6 +826,14 @@ const Builder = (() => {
       return sessionStorage?.getItem(key) || null;
     } catch (_) {
       return null;
+    }
+  }
+
+  function rememberRemove(key) {
+    try {
+      sessionStorage?.removeItem(key);
+    } catch (_) {
+      /* ignore */
     }
   }
 
@@ -883,12 +883,15 @@ const Builder = (() => {
   }
 
   function setActive(key) {
-    if (!key) return;
-    state.activeKey = key;
+    state.activeKey = key || null;
     state.navActiveKey = 'root';
-    const selected = state.questionnaires.find((q) => q.clientId === key);
-    const rememberKey = selected?.id ? String(selected.id) : key;
-    rememberSet(STORAGE_KEYS.active, rememberKey);
+    if (state.activeKey) {
+      const selected = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      const rememberKey = selected?.id ? String(selected.id) : state.activeKey;
+      rememberSet(STORAGE_KEYS.active, rememberKey);
+    } else {
+      rememberRemove(STORAGE_KEYS.active);
+    }
     render();
   }
 
@@ -1024,6 +1027,7 @@ const Builder = (() => {
     if (!window.confirm(confirmText)) return;
     dropQuestionnaireFromState(questionnaire, { markDirty: true });
     renderMessage(STRINGS.deleteQuestionnaireSuccess, 'success');
+    scrollBuilderToTop();
   }
 
   function destroyQuestionnaire(questionnaire) {
@@ -1034,6 +1038,7 @@ const Builder = (() => {
     if (!questionnaire.id) {
       dropQuestionnaireFromState(questionnaire, { markDirty: true });
       renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+      scrollBuilderToTop();
       return;
     }
 
@@ -1059,6 +1064,7 @@ const Builder = (() => {
         state.csrf = data.csrf || state.csrf;
         dropQuestionnaireFromState(questionnaire, { markDirty: false });
         renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+        scrollBuilderToTop();
         fetchData({ silent: true });
       })
       .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
@@ -1073,11 +1079,9 @@ const Builder = (() => {
     if (index === -1) return;
     state.questionnaires.splice(index, 1);
     if (state.activeKey === questionnaire.clientId) {
-      state.activeKey = state.questionnaires[0]?.clientId || null;
+      state.activeKey = null;
       state.navActiveKey = 'root';
-      if (state.activeKey) {
-        rememberSet(STORAGE_KEYS.active, state.activeKey);
-      }
+      rememberRemove(STORAGE_KEYS.active);
     }
     if (markDirty) {
       markDirty();
@@ -1128,7 +1132,8 @@ const Builder = (() => {
       )
       .map((q) => `<option value="${q.clientId}">${escapeHtml(labelForQuestionnaire(q))}</option>`)
       .join('');
-    select.innerHTML = options;
+    const placeholder = escapeHtml(STRINGS.selectQuestionnaireToViewSections || 'Select a questionnaire to view its sections');
+    select.innerHTML = `<option value="">${placeholder}</option>${options}`;
     select.value = state.activeKey || '';
   }
 
@@ -1152,12 +1157,21 @@ const Builder = (() => {
       disconnectSectionObserver();
       return;
     }
-    const active = state.questionnaires.find((q) => q.clientId === state.activeKey) || state.questionnaires[0];
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      list.innerHTML = `<p class="md-hint">${escapeHtml(STRINGS.selectQuestionnaireToViewSections || 'Select a questionnaire to view its sections')}</p>`;
+      disconnectSectionObserver();
+      return;
+    }
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     setupSectionObserver();
     bindSortables();
     bindQuestionnaireMetaHandlers(active);
+  }
+
+  function scrollBuilderToTop() {
+    document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function bindQuestionnaireMetaHandlers(questionnaire) {

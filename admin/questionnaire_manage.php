@@ -9,6 +9,7 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$showDangerZone = (int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1;
 $workFunctionChoices = work_function_choices($pdo);
 $availableWorkFunctions = array_keys(work_function_definitions($pdo));
 $qbStrings = [
@@ -2497,20 +2498,22 @@ if ($qbJsVersion) {
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
-      <div class="qb-manager-footer-panels">
-        <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
-          <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
-          <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
-          <div class="qb-start-actions qb-danger-actions">
-            <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
-            </button>
-            <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
-            </button>
+      <?php if ($showDangerZone): ?>
+        <div class="qb-manager-footer-panels">
+          <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
+            <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
+            <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
+            <div class="qb-start-actions qb-danger-actions">
+              <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+                <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+              </button>
+              <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+                <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      <?php endif; ?>
     </div>
   </div>
   <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>
