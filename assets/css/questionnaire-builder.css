@@ -104,6 +104,11 @@
   margin: 0;
 }
 
+.qb-active-questionnaire-label {
+  font-weight: 600;
+  color: var(--app-on-surface, inherit);
+}
+
 .qb-start-grid {
   display: grid;
   gap: 0.4rem;

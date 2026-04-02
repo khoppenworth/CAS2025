@@ -2489,6 +2489,7 @@ if ($qbJsVersion) {
             <p class="md-overline"><?=t($t, 'qb_workspace_label', 'Workspace')?></p>
             <h3 class="md-card-title"><?=t($t, 'qb_workspace_title', 'Questionnaire editor')?></h3>
             <p class="md-hint"><?=t($t, 'qb_workspace_hint', 'Build sections and questions here, then preview and publish when checks are ready.')?></p>
+            <p class="md-hint qb-active-questionnaire-label" id="qb-active-questionnaire-label"><?=t($t,'qb_active_questionnaire_none','No questionnaire selected')?></p>
           </div>
           <div class="qb-workspace-actions">
             <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
