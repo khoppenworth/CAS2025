@@ -345,8 +345,65 @@ function auth_required(array $roles = []): void {
 }
 function current_user() { return $_SESSION['user'] ?? null; }
 
+function user_profile_is_complete(array $user): bool
+{
+    $requiredFields = [
+        'full_name',
+        'email',
+        'gender',
+        'date_of_birth',
+        'phone',
+        'department',
+        'cadre',
+        'work_function',
+        'profile_role',
+        'job_grade',
+        'education_level',
+        'highest_degree_subject',
+        'work_experience_profile',
+        'total_work_experience_band',
+        'epss_work_experience_band',
+    ];
+
+    foreach ($requiredFields as $field) {
+        if (trim((string)($user[$field] ?? '')) === '') {
+            return false;
+        }
+    }
+
+    if ((string)($user['profile_role'] ?? '') === 'other' && trim((string)($user['profile_role_other'] ?? '')) === '') {
+        return false;
+    }
+
+    return true;
+}
+
 function require_profile_completion(PDO $pdo, string $redirect = 'profile.php'): void {
     if (!isset($_SESSION['user']['id'])) { return; }
+    $userId = (int)($_SESSION['user']['id'] ?? 0);
+    if ($userId <= 0) {
+        return;
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $latestUser = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($latestUser)) {
+            $_SESSION['user'] = $latestUser;
+            $isComplete = user_profile_is_complete($latestUser);
+            if ((int)($latestUser['profile_completed'] ?? 0) !== ($isComplete ? 1 : 0)) {
+                $pdo->prepare('UPDATE users SET profile_completed = ? WHERE id = ?')->execute([$isComplete ? 1 : 0, $userId]);
+                $_SESSION['user']['profile_completed'] = $isComplete ? 1 : 0;
+            }
+            if ($isComplete) {
+                return;
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('require_profile_completion profile check failed: ' . $e->getMessage());
+    }
+
     if (($_SESSION['user']['profile_completed'] ?? 0) == 1) { return; }
 
     $scriptSources = [
@@ -488,6 +545,7 @@ function ensure_site_config_schema(PDO $pdo): void {
         'enabled_locales' => 'ALTER TABLE site_config ADD COLUMN enabled_locales TEXT NULL',
         'upgrade_repo' => 'ALTER TABLE site_config ADD COLUMN upgrade_repo VARCHAR(255) NULL',
         'review_enabled' => 'ALTER TABLE site_config ADD COLUMN review_enabled TINYINT(1) NOT NULL DEFAULT 1',
+        'qb_danger_zone_enabled' => 'ALTER TABLE site_config ADD COLUMN qb_danger_zone_enabled TINYINT(1) NOT NULL DEFAULT 1',
         'email_templates' => 'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL'
     ];
 
@@ -676,6 +734,7 @@ function site_config_defaults(): array
         'enabled_locales' => ['en', 'fr', 'am'],
         'upgrade_repo' => 'khoppenworth/HRassessv300',
         'review_enabled' => 1,
+        'qb_danger_zone_enabled' => 1,
         'email_templates' => default_email_templates(),
     ];
 }
@@ -689,7 +748,7 @@ function get_site_config(PDO $pdo): array
         ensure_site_config_schema($pdo);
         $defaultTemplatesJson = encode_email_templates(default_email_templates());
         $quotedTemplates = $pdo->quote($defaultTemplatesJson);
-        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, landing_metric_submissions, landing_metric_completion, landing_metric_adoption, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, $quotedTemplates)");
+        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, landing_metric_submissions, landing_metric_completion, landing_metric_adoption, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, qb_danger_zone_enabled, email_templates) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, 1, $quotedTemplates)");
         $cfg = $pdo->query('SELECT * FROM site_config WHERE id=1')->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('get_site_config failed: ' . $e->getMessage());

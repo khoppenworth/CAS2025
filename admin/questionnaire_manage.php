@@ -9,6 +9,7 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$showDangerZone = (int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1;
 $workFunctionChoices = work_function_choices($pdo);
 $availableWorkFunctions = array_keys(work_function_definitions($pdo));
 $qbStrings = [
@@ -1993,10 +1994,12 @@ if (isset($_POST['import'])) {
                                 $status = 'inactive';
                                 break;
                             case 'active':
+                                // Keep source-active records published for compatibility.
                                 $status = 'published';
                                 break;
                             default:
-                                $status = 'published';
+                                // Safety default: imported questionnaires remain editable until explicitly published.
+                                $status = 'draft';
                                 break;
                         }
                         if ($supportsQuestionnaireStatus) {
@@ -2399,7 +2402,7 @@ if ($qbJsVersion) {
       });
     </script>
   <?php endif; ?>
-  <div class="qb-start-grid">
+  <div class="qb-start-grid" id="qb-start-state" aria-label="<?=htmlspecialchars(t($t,'qb_start_choose_mode','Choose how you want to work'), ENT_QUOTES, 'UTF-8')?>">
     <div class="md-card md-elev-2 qb-start-card">
       <div class="qb-start-card-header">
         <p class="md-overline"><?=t($t,'qb_start_create_label','Start new')?></p>
@@ -2431,24 +2434,12 @@ if ($qbJsVersion) {
         <h2 class="md-card-title"><?=t($t,'qb_start_import_title','Import or align a questionnaire')?></h2>
         <p class="md-hint"><?=t($t,'qb_start_import_hint','Upload a questionnaire XML file or download our template to mirror other survey tools.')?></p>
       </div>
-      <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
-        <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-        <div class="qb-import-inline">
-          <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
-          <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
-        </div>
-        <div class="qb-start-actions">
-          <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(url_for('scripts/download_questionnaire_template.php'), ENT_QUOTES, 'UTF-8')?>" download>
-            <?=t($t,'download_xml_template','Download XML template')?>
-          </a>
-          <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(asset_url('docs/questionnaire-import-guide.md'), ENT_QUOTES, 'UTF-8')?>" download>
-            <?=t($t,'download_import_guide','Download Import Guide')?>
-          </a>
-        </div>
-      </form>
+      <div class="qb-start-actions">
+        <button class="md-button md-elev-2" id="qb-open-import-workspace" type="button"><?=t($t,'qb_open_import_workspace','Open import tools')?></button>
+      </div>
     </div>
   </div>
-  <div class="qb-manager-layout">
+  <div class="qb-manager-layout" id="qb-workspace-state" aria-hidden="true">
     <aside class="qb-manager-sidebar" aria-labelledby="qb-navigation-title">
       <button class="md-button md-outline qb-nav-toggle" id="qb-toggle-nav" type="button" aria-expanded="true">
         <span class="qb-nav-toggle-icon" aria-hidden="true">⇤</span>
@@ -2462,6 +2453,32 @@ if ($qbJsVersion) {
       </div>
     </aside>
     <div class="qb-manager-main">
+      <div class="qb-workspace-modebar">
+        <button type="button" class="md-button md-outline md-elev-1" id="qb-back-to-start"><?=t($t,'qb_back_to_start','Back to start')?></button>
+        <p class="md-hint qb-workspace-mode-label" id="qb-workspace-mode-label"><?=t($t,'qb_workspace_mode_default','Workspace')?></p>
+      </div>
+      <div class="md-card md-elev-2 qb-import-workspace" id="qb-import-workspace" aria-live="polite">
+        <div class="qb-start-card-header">
+          <p class="md-overline"><?=t($t,'qb_start_import_label','Import')?></p>
+          <h3 class="md-card-title"><?=t($t,'qb_workspace_import_title','Import questionnaire package')?></h3>
+          <p class="md-hint"><?=t($t,'qb_workspace_import_hint','Upload your questionnaire XML file or download templates and guidance first.')?></p>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <div class="qb-import-inline">
+            <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
+            <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
+          </div>
+          <div class="qb-start-actions">
+            <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(url_for('scripts/download_questionnaire_template.php'), ENT_QUOTES, 'UTF-8')?>" download>
+              <?=t($t,'download_xml_template','Download XML template')?>
+            </a>
+            <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(asset_url('docs/questionnaire-import-guide.md'), ENT_QUOTES, 'UTF-8')?>" download>
+              <?=t($t,'download_import_guide','Download Import Guide')?>
+            </a>
+          </div>
+        </form>
+      </div>
       <button type="button" class="md-button md-secondary md-elev-2 qb-scroll-top" id="qb-scroll-top" aria-label="<?=t($t,'qb_scroll_to_top','Back to top')?>" aria-hidden="true" tabindex="-1">
         <span class="qb-scroll-top-icon" aria-hidden="true">⇧</span>
         <span class="qb-scroll-top-label"><?=t($t,'qb_scroll_to_top','Back to top')?></span>
@@ -2497,20 +2514,22 @@ if ($qbJsVersion) {
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
-      <div class="qb-manager-footer-panels">
-        <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
-          <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
-          <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
-          <div class="qb-start-actions qb-danger-actions">
-            <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
-            </button>
-            <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
-              <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
-            </button>
+      <?php if ($showDangerZone): ?>
+        <div class="qb-manager-footer-panels">
+          <div class="md-card md-elev-2 qb-sidebar-card qb-danger-zone qb-danger-drawer">
+            <h3 class="md-card-title"><?=t($t, 'qb_danger_zone', 'Danger zone')?></h3>
+            <p class="md-hint"><?=t($t, 'qb_danger_zone_hint', 'Deleting is irreversible. Use only when you are certain.')?></p>
+            <div class="qb-start-actions qb-danger-actions">
+              <button class="md-button md-outline qb-danger" id="qb-delete-questionnaire" type="button">
+                <?=t($t,'qb_delete_questionnaire','Delete questionnaire')?>
+              </button>
+              <button class="md-button md-outline qb-danger" id="qb-destroy-questionnaire" type="button">
+                <?=t($t,'qb_delete_questionnaire_destroy','Delete questionnaire + responses')?>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      <?php endif; ?>
     </div>
   </div>
   <button type="button" class="md-button md-outline md-floating-save-draft qb-floating-save" id="qb-save-floating" disabled>

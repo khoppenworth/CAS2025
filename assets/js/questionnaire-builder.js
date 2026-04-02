@@ -39,6 +39,11 @@ const Builder = (() => {
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
     navToggleButton: '#qb-toggle-nav',
+    startState: '#qb-start-state',
+    workspaceState: '#qb-workspace-state',
+    backToStartButton: '#qb-back-to-start',
+    openImportWorkspaceButton: '#qb-open-import-workspace',
+    workspaceModeLabel: '#qb-workspace-mode-label',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -144,6 +149,7 @@ const Builder = (() => {
     saveStatusSaving: 'Saving…',
     saveStatusPublished: 'Published successfully',
     saveStatusLastSaved: 'Last saved just now',
+    publishConfirm: 'Publish now? Published questionnaires lock editing and require setting status to Inactive before updates.',
     publishedLockBannerTitle: 'Published questionnaire restrictions',
     publishedLockBannerMessage: 'Some actions are locked to protect existing responses, scoring, and reporting consistency.',
     publishedLockReason: 'This action is locked because the questionnaire is published.',
@@ -168,6 +174,7 @@ const Builder = (() => {
     collapsedItems: {},
     collapsedSections: {},
     compactMode: false,
+    viewMode: 'start',
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -354,6 +361,7 @@ const Builder = (() => {
     attachStaticListeners();
     primeFromBootstrap();
     fetchData({ silent: true });
+    setViewMode('start');
   }
 
   function primeFromBootstrap() {
@@ -380,6 +388,8 @@ const Builder = (() => {
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const navToggleBtn = document.querySelector(selectors.navToggleButton);
+    const backToStartBtn = document.querySelector(selectors.backToStartButton);
+    const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -387,6 +397,7 @@ const Builder = (() => {
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
+      setViewMode('create');
     });
 
     saveBtn?.addEventListener('click', () => saveAll(false));
@@ -411,7 +422,14 @@ const Builder = (() => {
       const key = selector?.value;
       if (!key) return;
       setActive(key);
+      setViewMode('edit');
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    openImportWorkspaceBtn?.addEventListener('click', () => {
+      setViewMode('import');
+    });
+    backToStartBtn?.addEventListener('click', () => {
+      setViewMode('start');
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
@@ -474,6 +492,26 @@ const Builder = (() => {
     previewWindow.document.open();
     previewWindow.document.write(buildPreviewPage(active));
     previewWindow.document.close();
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = ['start', 'create', 'edit', 'import'].includes(mode) ? mode : 'start';
+    const startState = document.querySelector(selectors.startState);
+    const workspaceState = document.querySelector(selectors.workspaceState);
+    const modeLabel = document.querySelector(selectors.workspaceModeLabel);
+    if (startState) {
+      startState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'false' : 'true');
+    }
+    if (workspaceState) {
+      workspaceState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'true' : 'false');
+      workspaceState.classList.toggle('is-import-mode', state.viewMode === 'import');
+    }
+    if (modeLabel) {
+      if (state.viewMode === 'create') modeLabel.textContent = 'Mode: Create questionnaire';
+      else if (state.viewMode === 'edit') modeLabel.textContent = 'Mode: Edit questionnaire';
+      else if (state.viewMode === 'import') modeLabel.textContent = 'Mode: Import questionnaire';
+      else modeLabel.textContent = 'Workspace';
+    }
   }
 
   function buildPreviewPage(questionnaire) {
@@ -808,17 +846,9 @@ const Builder = (() => {
       const exists = state.questionnaires.some((q) => q.clientId === state.activeKey || `${q.id}` === `${state.activeKey}`);
       if (exists) return;
     }
-    const remembered = rememberGet(STORAGE_KEYS.active);
-    if (remembered) {
-      const match = state.questionnaires.find((q) => q.clientId === remembered || `${q.id}` === `${remembered}`);
-      if (match) {
-        state.activeKey = match.clientId;
-        state.navActiveKey = 'root';
-        return;
-      }
-    }
-    state.activeKey = state.questionnaires[0].clientId;
+    state.activeKey = null;
     state.navActiveKey = 'root';
+    rememberRemove(STORAGE_KEYS.active);
   }
 
   function rememberSet(key, value) {
@@ -834,6 +864,14 @@ const Builder = (() => {
       return sessionStorage?.getItem(key) || null;
     } catch (_) {
       return null;
+    }
+  }
+
+  function rememberRemove(key) {
+    try {
+      sessionStorage?.removeItem(key);
+    } catch (_) {
+      /* ignore */
     }
   }
 
@@ -883,12 +921,15 @@ const Builder = (() => {
   }
 
   function setActive(key) {
-    if (!key) return;
-    state.activeKey = key;
+    state.activeKey = key || null;
     state.navActiveKey = 'root';
-    const selected = state.questionnaires.find((q) => q.clientId === key);
-    const rememberKey = selected?.id ? String(selected.id) : key;
-    rememberSet(STORAGE_KEYS.active, rememberKey);
+    if (state.activeKey) {
+      const selected = state.questionnaires.find((q) => q.clientId === state.activeKey);
+      const rememberKey = selected?.id ? String(selected.id) : state.activeKey;
+      rememberSet(STORAGE_KEYS.active, rememberKey);
+    } else {
+      rememberRemove(STORAGE_KEYS.active);
+    }
     render();
   }
 
@@ -1024,6 +1065,7 @@ const Builder = (() => {
     if (!window.confirm(confirmText)) return;
     dropQuestionnaireFromState(questionnaire, { markDirty: true });
     renderMessage(STRINGS.deleteQuestionnaireSuccess, 'success');
+    scrollBuilderToTop();
   }
 
   function destroyQuestionnaire(questionnaire) {
@@ -1034,6 +1076,7 @@ const Builder = (() => {
     if (!questionnaire.id) {
       dropQuestionnaireFromState(questionnaire, { markDirty: true });
       renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+      scrollBuilderToTop();
       return;
     }
 
@@ -1059,6 +1102,7 @@ const Builder = (() => {
         state.csrf = data.csrf || state.csrf;
         dropQuestionnaireFromState(questionnaire, { markDirty: false });
         renderMessage(STRINGS.deleteQuestionnaireDestroySuccess, 'success');
+        scrollBuilderToTop();
         fetchData({ silent: true });
       })
       .catch((err) => renderMessage(err.message || 'Delete failed', 'error'))
@@ -1073,11 +1117,9 @@ const Builder = (() => {
     if (index === -1) return;
     state.questionnaires.splice(index, 1);
     if (state.activeKey === questionnaire.clientId) {
-      state.activeKey = state.questionnaires[0]?.clientId || null;
+      state.activeKey = null;
       state.navActiveKey = 'root';
-      if (state.activeKey) {
-        rememberSet(STORAGE_KEYS.active, state.activeKey);
-      }
+      rememberRemove(STORAGE_KEYS.active);
     }
     if (markDirty) {
       markDirty();
@@ -1128,7 +1170,8 @@ const Builder = (() => {
       )
       .map((q) => `<option value="${q.clientId}">${escapeHtml(labelForQuestionnaire(q))}</option>`)
       .join('');
-    select.innerHTML = options;
+    const placeholder = escapeHtml(STRINGS.selectQuestionnaireToViewSections || 'Select a questionnaire to view its sections');
+    select.innerHTML = `<option value="">${placeholder}</option>${options}`;
     select.value = state.activeKey || '';
   }
 
@@ -1152,12 +1195,21 @@ const Builder = (() => {
       disconnectSectionObserver();
       return;
     }
-    const active = state.questionnaires.find((q) => q.clientId === state.activeKey) || state.questionnaires[0];
+    const active = state.questionnaires.find((q) => q.clientId === state.activeKey);
+    if (!active) {
+      list.innerHTML = `<p class="md-hint">${escapeHtml(STRINGS.selectQuestionnaireToViewSections || 'Select a questionnaire to view its sections')}</p>`;
+      disconnectSectionObserver();
+      return;
+    }
     const html = buildQuestionnaireCard(active);
     list.innerHTML = html;
     setupSectionObserver();
     bindSortables();
     bindQuestionnaireMetaHandlers(active);
+  }
+
+  function scrollBuilderToTop() {
+    document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function bindQuestionnaireMetaHandlers(questionnaire) {
@@ -2404,6 +2456,12 @@ const Builder = (() => {
 
   function saveAll(publish = false) {
     if (state.saving) return;
+    if (publish) {
+      const confirmMessage = STRINGS.publishConfirm || 'Publish now? Published questionnaires lock editing and require setting status to Inactive before updates.';
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    }
     if (!validateBuilderRequiredFields()) return;
     hydrateActiveQuestionnaireFromDom();
     state.saving = true;
