@@ -362,7 +362,7 @@ const Builder = (() => {
     attachStaticListeners();
     primeFromBootstrap();
     fetchData({ silent: true });
-    setViewMode('start');
+    setViewMode(pendingImportFocus ? 'edit' : 'start');
   }
 
   function primeFromBootstrap() {
@@ -1177,6 +1177,9 @@ const Builder = (() => {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
     }
     if (pendingImportFocus) {
+      if (state.viewMode === 'start') {
+        setViewMode('edit');
+      }
       pendingImportFocus = false;
       focusActiveQuestionnaire();
     }
