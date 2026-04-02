@@ -1994,10 +1994,12 @@ if (isset($_POST['import'])) {
                                 $status = 'inactive';
                                 break;
                             case 'active':
+                                // Keep source-active records published for compatibility.
                                 $status = 'published';
                                 break;
                             default:
-                                $status = 'published';
+                                // Safety default: imported questionnaires remain editable until explicitly published.
+                                $status = 'draft';
                                 break;
                         }
                         if ($supportsQuestionnaireStatus) {
