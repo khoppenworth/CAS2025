@@ -39,6 +39,12 @@ const Builder = (() => {
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
     navToggleButton: '#qb-toggle-nav',
+    startState: '#qb-start-state',
+    workspaceState: '#qb-workspace-state',
+    backToStartButton: '#qb-back-to-start',
+    openImportWorkspaceButton: '#qb-open-import-workspace',
+    workspaceModeLabel: '#qb-workspace-mode-label',
+    activeQuestionnaireLabel: '#qb-active-questionnaire-label',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -168,6 +174,7 @@ const Builder = (() => {
     collapsedItems: {},
     collapsedSections: {},
     compactMode: false,
+    viewMode: 'start',
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -354,6 +361,7 @@ const Builder = (() => {
     attachStaticListeners();
     primeFromBootstrap();
     fetchData({ silent: true });
+    setViewMode('start');
   }
 
   function primeFromBootstrap() {
@@ -380,6 +388,8 @@ const Builder = (() => {
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const navToggleBtn = document.querySelector(selectors.navToggleButton);
+    const backToStartBtn = document.querySelector(selectors.backToStartButton);
+    const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -387,6 +397,7 @@ const Builder = (() => {
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
+      setViewMode('create');
     });
 
     saveBtn?.addEventListener('click', () => saveAll(false));
@@ -411,7 +422,14 @@ const Builder = (() => {
       const key = selector?.value;
       if (!key) return;
       setActive(key);
+      setViewMode('edit');
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    openImportWorkspaceBtn?.addEventListener('click', () => {
+      setViewMode('import');
+    });
+    backToStartBtn?.addEventListener('click', () => {
+      setViewMode('start');
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
@@ -474,6 +492,20 @@ const Builder = (() => {
     previewWindow.document.open();
     previewWindow.document.write(buildPreviewPage(active));
     previewWindow.document.close();
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = ['start', 'create', 'edit', 'import'].includes(mode) ? mode : 'start';
+    const startState = document.querySelector(selectors.startState);
+    const workspaceState = document.querySelector(selectors.workspaceState);
+    if (startState) {
+      startState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'false' : 'true');
+    }
+    if (workspaceState) {
+      workspaceState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'true' : 'false');
+      workspaceState.classList.toggle('is-import-mode', state.viewMode === 'import');
+    }
+    renderWorkspaceContext();
   }
 
   function buildPreviewPage(questionnaire) {
@@ -892,7 +924,35 @@ const Builder = (() => {
     } else {
       rememberRemove(STORAGE_KEYS.active);
     }
+    renderWorkspaceContext();
     render();
+  }
+
+  function getActiveQuestionnaire() {
+    return state.questionnaires.find((q) => q.clientId === state.activeKey) || null;
+  }
+
+  function getActiveQuestionnaireTitle() {
+    const active = getActiveQuestionnaire();
+    const title = String(active?.title || '').trim();
+    return title || 'Untitled questionnaire';
+  }
+
+  function renderWorkspaceContext() {
+    const modeLabel = document.querySelector(selectors.workspaceModeLabel);
+    const activeLabel = document.querySelector(selectors.activeQuestionnaireLabel);
+    const hasActive = Boolean(getActiveQuestionnaire());
+    const activeTitle = getActiveQuestionnaireTitle();
+
+    if (modeLabel) {
+      if (state.viewMode === 'create') modeLabel.textContent = `Mode: Create questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'edit') modeLabel.textContent = `Mode: Edit questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'import') modeLabel.textContent = 'Mode: Import questionnaire';
+      else modeLabel.textContent = 'Workspace';
+    }
+    if (activeLabel) {
+      activeLabel.textContent = hasActive ? `Editing: ${activeTitle}` : 'No questionnaire selected';
+    }
   }
 
   function normalizeStatusValue(value) {
@@ -1110,6 +1170,7 @@ const Builder = (() => {
     applyFocusMode();
     renderDeleteButton();
     renderDestroyButton();
+    renderWorkspaceContext();
     toggleSaveButtons();
     if (!state.dirty && state.lastSavedAt) {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
@@ -1838,6 +1899,7 @@ const Builder = (() => {
         renderTabs();
         renderSelector();
         renderSectionNav();
+        renderWorkspaceContext();
         break;
       case 'q-description':
         questionnaire.description = event.target.value;

@@ -2400,7 +2400,7 @@ if ($qbJsVersion) {
       });
     </script>
   <?php endif; ?>
-  <div class="qb-start-grid">
+  <div class="qb-start-grid" id="qb-start-state" aria-label="<?=htmlspecialchars(t($t,'qb_start_choose_mode','Choose how you want to work'), ENT_QUOTES, 'UTF-8')?>">
     <div class="md-card md-elev-2 qb-start-card">
       <div class="qb-start-card-header">
         <p class="md-overline"><?=t($t,'qb_start_create_label','Start new')?></p>
@@ -2432,24 +2432,12 @@ if ($qbJsVersion) {
         <h2 class="md-card-title"><?=t($t,'qb_start_import_title','Import or align a questionnaire')?></h2>
         <p class="md-hint"><?=t($t,'qb_start_import_hint','Upload a questionnaire XML file or download our template to mirror other survey tools.')?></p>
       </div>
-      <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
-        <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-        <div class="qb-import-inline">
-          <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
-          <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
-        </div>
-        <div class="qb-start-actions">
-          <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(url_for('scripts/download_questionnaire_template.php'), ENT_QUOTES, 'UTF-8')?>" download>
-            <?=t($t,'download_xml_template','Download XML template')?>
-          </a>
-          <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(asset_url('docs/questionnaire-import-guide.md'), ENT_QUOTES, 'UTF-8')?>" download>
-            <?=t($t,'download_import_guide','Download Import Guide')?>
-          </a>
-        </div>
-      </form>
+      <div class="qb-start-actions">
+        <button class="md-button md-elev-2" id="qb-open-import-workspace" type="button"><?=t($t,'qb_open_import_workspace','Open import tools')?></button>
+      </div>
     </div>
   </div>
-  <div class="qb-manager-layout">
+  <div class="qb-manager-layout" id="qb-workspace-state" aria-hidden="true">
     <aside class="qb-manager-sidebar" aria-labelledby="qb-navigation-title">
       <button class="md-button md-outline qb-nav-toggle" id="qb-toggle-nav" type="button" aria-expanded="true">
         <span class="qb-nav-toggle-icon" aria-hidden="true">⇤</span>
@@ -2463,6 +2451,32 @@ if ($qbJsVersion) {
       </div>
     </aside>
     <div class="qb-manager-main">
+      <div class="qb-workspace-modebar">
+        <button type="button" class="md-button md-outline md-elev-1" id="qb-back-to-start"><?=t($t,'qb_back_to_start','Back to start')?></button>
+        <p class="md-hint qb-workspace-mode-label" id="qb-workspace-mode-label"><?=t($t,'qb_workspace_mode_default','Workspace')?></p>
+      </div>
+      <div class="md-card md-elev-2 qb-import-workspace" id="qb-import-workspace" aria-live="polite">
+        <div class="qb-start-card-header">
+          <p class="md-overline"><?=t($t,'qb_start_import_label','Import')?></p>
+          <h3 class="md-card-title"><?=t($t,'qb_workspace_import_title','Import questionnaire package')?></h3>
+          <p class="md-hint"><?=t($t,'qb_workspace_import_hint','Upload your questionnaire XML file or download templates and guidance first.')?></p>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="qb-import-form" action="<?=htmlspecialchars(url_for('admin/questionnaire_manage.php'), ENT_QUOTES, 'UTF-8')?>">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <div class="qb-import-inline">
+            <label class="md-field md-field--compact"><span><?=t($t,'file','File')?></span><input type="file" name="file" required></label>
+            <button class="md-button md-elev-2" name="import"><?=t($t,'import','Import')?></button>
+          </div>
+          <div class="qb-start-actions">
+            <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(url_for('scripts/download_questionnaire_template.php'), ENT_QUOTES, 'UTF-8')?>" download>
+              <?=t($t,'download_xml_template','Download XML template')?>
+            </a>
+            <a class="md-button md-outline md-elev-1" href="<?=htmlspecialchars(asset_url('docs/questionnaire-import-guide.md'), ENT_QUOTES, 'UTF-8')?>" download>
+              <?=t($t,'download_import_guide','Download Import Guide')?>
+            </a>
+          </div>
+        </form>
+      </div>
       <button type="button" class="md-button md-secondary md-elev-2 qb-scroll-top" id="qb-scroll-top" aria-label="<?=t($t,'qb_scroll_to_top','Back to top')?>" aria-hidden="true" tabindex="-1">
         <span class="qb-scroll-top-icon" aria-hidden="true">⇧</span>
         <span class="qb-scroll-top-label"><?=t($t,'qb_scroll_to_top','Back to top')?></span>
@@ -2473,6 +2487,7 @@ if ($qbJsVersion) {
             <p class="md-overline"><?=t($t, 'qb_workspace_label', 'Workspace')?></p>
             <h3 class="md-card-title"><?=t($t, 'qb_workspace_title', 'Questionnaire editor')?></h3>
             <p class="md-hint"><?=t($t, 'qb_workspace_hint', 'Build sections and questions here, then preview and publish when checks are ready.')?></p>
+            <p class="md-hint qb-active-questionnaire-label" id="qb-active-questionnaire-label"><?=t($t,'qb_active_questionnaire_none','No questionnaire selected')?></p>
           </div>
           <div class="qb-workspace-actions">
             <div class="qb-toolbar" aria-label="<?=htmlspecialchars(t($t, 'qb_workspace_actions', 'Workspace actions'), ENT_QUOTES, 'UTF-8')?>">
