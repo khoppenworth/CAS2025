@@ -2373,6 +2373,13 @@ if ($qbJsVersion) {
   <?php if ($msg): ?>
     <div class="md-alert"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div>
   <?php endif; ?>
+  <div class="md-card md-elev-2 qb-mobile-recommendation" id="qb-mobile-recommendation" role="dialog" aria-live="polite" aria-hidden="true" aria-label="<?=htmlspecialchars(t($t,'qb_mobile_recommendation_title','Desktop recommended for Form Builder'), ENT_QUOTES, 'UTF-8')?>">
+    <div class="qb-mobile-recommendation__head">
+      <h2 class="md-card-title"><?=t($t,'qb_mobile_recommendation_title','Desktop recommended for Form Builder')?></h2>
+      <button type="button" class="md-button md-outline md-elev-1" id="qb-mobile-recommendation-close"><?=t($t,'close','Close')?></button>
+    </div>
+    <p class="md-hint"><?=t($t,'qb_mobile_recommendation_body','For reliable editing, use the Form Builder on a larger desktop or laptop screen (recommended minimum width: 1280px).')?></p>
+  </div>
   <?php if ($importPopup): ?>
     <div class="md-upgrade-popup md-import-popup" role="alertdialog" aria-live="assertive" aria-label="<?=htmlspecialchars($importPopup['title'] ?? t($t, 'import_log_title', 'Import log'), ENT_QUOTES, 'UTF-8')?>">
       <div class="md-upgrade-popup__backdrop"></div>

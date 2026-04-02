@@ -45,6 +45,8 @@ const Builder = (() => {
     openImportWorkspaceButton: '#qb-open-import-workspace',
     workspaceModeLabel: '#qb-workspace-mode-label',
     activeQuestionnaireLabel: '#qb-active-questionnaire-label',
+    mobileRecommendation: '#qb-mobile-recommendation',
+    mobileRecommendationClose: '#qb-mobile-recommendation-close',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -83,6 +85,7 @@ const Builder = (() => {
     collapsedItems: 'hrassess:qb:collapsed-items',
     collapsedSections: 'hrassess:qb:collapsed-sections',
     compactMode: 'hrassess:qb:compact-mode',
+    mobileRecommendationDismissed: 'hrassess:qb:mobile-recommendation-dismissed',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -363,6 +366,7 @@ const Builder = (() => {
     primeFromBootstrap();
     fetchData({ silent: true });
     setViewMode('start');
+    renderMobileRecommendation();
   }
 
   function primeFromBootstrap() {
@@ -391,6 +395,7 @@ const Builder = (() => {
     const navToggleBtn = document.querySelector(selectors.navToggleButton);
     const backToStartBtn = document.querySelector(selectors.backToStartButton);
     const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
+    const mobileRecommendationCloseBtn = document.querySelector(selectors.mobileRecommendationClose);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -432,6 +437,10 @@ const Builder = (() => {
     backToStartBtn?.addEventListener('click', () => {
       setViewMode('start');
     });
+    mobileRecommendationCloseBtn?.addEventListener('click', () => {
+      rememberSet(STORAGE_KEYS.mobileRecommendationDismissed, '1');
+      renderMobileRecommendation();
+    });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
       const sectionKey = event.target.value;
@@ -468,6 +477,15 @@ const Builder = (() => {
       window.addEventListener('scroll', toggleScrollTopVisibility, { passive: true });
       toggleScrollTopVisibility();
     }
+    window.addEventListener('resize', renderMobileRecommendation, { passive: true });
+  }
+
+  function renderMobileRecommendation() {
+    const panel = document.querySelector(selectors.mobileRecommendation);
+    if (!panel) return;
+    const dismissed = rememberGet(STORAGE_KEYS.mobileRecommendationDismissed) === '1';
+    const smallViewport = window.matchMedia('(max-width: 1279px)').matches;
+    panel.setAttribute('aria-hidden', dismissed || !smallViewport ? 'true' : 'false');
   }
 
   function openPreview() {
