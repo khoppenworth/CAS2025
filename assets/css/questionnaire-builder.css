@@ -54,7 +54,7 @@
 
 .qb-select-input {
   min-height: 2.75rem;
-  min-width: 240px;
+  min-width: 0;
   color: var(--app-on-surface, inherit);
   background: var(--app-surface);
   border-color: var(--app-border, rgba(0, 0, 0, 0.1));
@@ -63,7 +63,7 @@
 .qb-select,
 .qb-select-input {
   width: 100%;
-  min-width: 240px;
+  min-width: 0;
   padding: 0.55rem 0.65rem;
   border-radius: 6px;
   border: 1px solid var(--app-border, rgba(0, 0, 0, 0.1));
@@ -163,7 +163,7 @@
 .qb-manager-layout {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(300px, 23vw) minmax(980px, 1fr);
+  grid-template-columns: minmax(280px, 23vw) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: flex-start;
   overflow-x: auto;
