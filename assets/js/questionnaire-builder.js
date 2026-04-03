@@ -39,6 +39,14 @@ const Builder = (() => {
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
     navToggleButton: '#qb-toggle-nav',
+    startState: '#qb-start-state',
+    workspaceState: '#qb-workspace-state',
+    backToStartButton: '#qb-back-to-start',
+    openImportWorkspaceButton: '#qb-open-import-workspace',
+    workspaceModeLabel: '#qb-workspace-mode-label',
+    activeQuestionnaireLabel: '#qb-active-questionnaire-label',
+    mobileRecommendation: '#qb-mobile-recommendation',
+    mobileRecommendationClose: '#qb-mobile-recommendation-close',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -77,6 +85,7 @@ const Builder = (() => {
     collapsedItems: 'hrassess:qb:collapsed-items',
     collapsedSections: 'hrassess:qb:collapsed-sections',
     compactMode: 'hrassess:qb:compact-mode',
+    mobileRecommendationDismissed: 'hrassess:qb:mobile-recommendation-dismissed',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -168,6 +177,7 @@ const Builder = (() => {
     collapsedItems: {},
     collapsedSections: {},
     compactMode: false,
+    viewMode: 'start',
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -354,6 +364,8 @@ const Builder = (() => {
     attachStaticListeners();
     primeFromBootstrap();
     fetchData({ silent: true });
+    setViewMode('start');
+    renderMobileRecommendation();
   }
 
   function primeFromBootstrap() {
@@ -380,6 +392,9 @@ const Builder = (() => {
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const navToggleBtn = document.querySelector(selectors.navToggleButton);
+    const backToStartBtn = document.querySelector(selectors.backToStartButton);
+    const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
+    const mobileRecommendationCloseBtn = document.querySelector(selectors.mobileRecommendationClose);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -387,6 +402,7 @@ const Builder = (() => {
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
+      setViewMode('create');
     });
 
     saveBtn?.addEventListener('click', () => saveAll(false));
@@ -411,7 +427,18 @@ const Builder = (() => {
       const key = selector?.value;
       if (!key) return;
       setActive(key);
+      setViewMode('edit');
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    openImportWorkspaceBtn?.addEventListener('click', () => {
+      setViewMode('import');
+    });
+    backToStartBtn?.addEventListener('click', () => {
+      setViewMode('start');
+    });
+    mobileRecommendationCloseBtn?.addEventListener('click', () => {
+      rememberSet(STORAGE_KEYS.mobileRecommendationDismissed, '1');
+      renderMobileRecommendation();
     });
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
@@ -449,6 +476,15 @@ const Builder = (() => {
       window.addEventListener('scroll', toggleScrollTopVisibility, { passive: true });
       toggleScrollTopVisibility();
     }
+    window.addEventListener('resize', renderMobileRecommendation, { passive: true });
+  }
+
+  function renderMobileRecommendation() {
+    const panel = document.querySelector(selectors.mobileRecommendation);
+    if (!panel) return;
+    const dismissed = rememberGet(STORAGE_KEYS.mobileRecommendationDismissed) === '1';
+    const smallViewport = window.matchMedia('(max-width: 1279px)').matches;
+    panel.setAttribute('aria-hidden', dismissed || !smallViewport ? 'true' : 'false');
   }
 
   function openPreview() {
@@ -474,6 +510,20 @@ const Builder = (() => {
     previewWindow.document.open();
     previewWindow.document.write(buildPreviewPage(active));
     previewWindow.document.close();
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = ['start', 'create', 'edit', 'import'].includes(mode) ? mode : 'start';
+    const startState = document.querySelector(selectors.startState);
+    const workspaceState = document.querySelector(selectors.workspaceState);
+    if (startState) {
+      startState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'false' : 'true');
+    }
+    if (workspaceState) {
+      workspaceState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'true' : 'false');
+      workspaceState.classList.toggle('is-import-mode', state.viewMode === 'import');
+    }
+    renderWorkspaceContext();
   }
 
   function buildPreviewPage(questionnaire) {
@@ -892,7 +942,35 @@ const Builder = (() => {
     } else {
       rememberRemove(STORAGE_KEYS.active);
     }
+    renderWorkspaceContext();
     render();
+  }
+
+  function getActiveQuestionnaire() {
+    return state.questionnaires.find((q) => q.clientId === state.activeKey) || null;
+  }
+
+  function getActiveQuestionnaireTitle() {
+    const active = getActiveQuestionnaire();
+    const title = String(active?.title || '').trim();
+    return title || 'Untitled questionnaire';
+  }
+
+  function renderWorkspaceContext() {
+    const modeLabel = document.querySelector(selectors.workspaceModeLabel);
+    const activeLabel = document.querySelector(selectors.activeQuestionnaireLabel);
+    const hasActive = Boolean(getActiveQuestionnaire());
+    const activeTitle = getActiveQuestionnaireTitle();
+
+    if (modeLabel) {
+      if (state.viewMode === 'create') modeLabel.textContent = `Mode: Create questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'edit') modeLabel.textContent = `Mode: Edit questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'import') modeLabel.textContent = 'Mode: Import questionnaire';
+      else modeLabel.textContent = 'Workspace';
+    }
+    if (activeLabel) {
+      activeLabel.textContent = hasActive ? `Editing: ${activeTitle}` : 'No questionnaire selected';
+    }
   }
 
   function normalizeStatusValue(value) {
@@ -1110,6 +1188,7 @@ const Builder = (() => {
     applyFocusMode();
     renderDeleteButton();
     renderDestroyButton();
+    renderWorkspaceContext();
     toggleSaveButtons();
     if (!state.dirty && state.lastSavedAt) {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
@@ -1303,6 +1382,9 @@ const Builder = (() => {
     const sectionActiveLocked = section.hasResponses || publishedLocked;
     const scoringLocked = publishedLocked;
     const removeLocked = section.hasResponses || publishedLocked;
+    const sectionIndex = questionnaire.sections.findIndex((entry) => entry.clientId === section.clientId);
+    const moveSectionUpDisabled = publishedLocked || sectionIndex <= 0;
+    const moveSectionDownDisabled = publishedLocked || sectionIndex === -1 || sectionIndex >= questionnaire.sections.length - 1;
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const collapsed = isSectionCollapsed(questionnaire, section);
     const sectionLabel = section.title?.trim() || 'Untitled section';
@@ -1337,6 +1419,8 @@ const Builder = (() => {
             ${includeInScoringControl}
           </div>
           <div class="qb-actions">
+            <button type="button" class="md-button md-outline" data-role="move-section-up" ${moveSectionUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move up</button>
+            <button type="button" class="md-button md-outline" data-role="move-section-down" ${moveSectionDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move down</button>
             <button type="button" class="md-button md-outline" data-role="remove-section" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(removeSectionReason) + '"' : ''}>Remove section</button>
           </div>
           </div>
@@ -1363,6 +1447,12 @@ const Builder = (() => {
     const toggleLocked = publishedLocked;
     const activeLocked = item.hasResponses || publishedLocked;
     const removeLocked = item.hasResponses || publishedLocked;
+    const itemCollection = sectionClientId
+      ? (questionnaire.sections.find((section) => section.clientId === sectionClientId)?.items || [])
+      : questionnaire.items;
+    const itemIndex = itemCollection.findIndex((entry) => entry.clientId === item.clientId);
+    const moveItemUpDisabled = publishedLocked || itemIndex <= 0;
+    const moveItemDownDisabled = publishedLocked || itemIndex === -1 || itemIndex >= itemCollection.length - 1;
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item, { publishedLocked, lockReason: publishedReason })
       : '';
@@ -1415,6 +1505,8 @@ const Builder = (() => {
               <label class="qb-chip-toggle" ${activeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${activeLocked ? 'disabled' : ''}> Active</label>
             </div>
             <div class="qb-actions qb-item-actions">
+              <button type="button" class="md-button md-outline" data-role="move-item-up" ${moveItemUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move up</button>
+              <button type="button" class="md-button md-outline" data-role="move-item-down" ${moveItemDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move down</button>
               <button type="button" class="md-button md-outline" data-role="remove-item" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}>Remove</button>
             </div>
           </div>
@@ -1838,6 +1930,7 @@ const Builder = (() => {
         renderTabs();
         renderSelector();
         renderSectionNav();
+        renderWorkspaceContext();
         break;
       case 'q-description':
         questionnaire.description = event.target.value;
@@ -1925,6 +2018,16 @@ const Builder = (() => {
         removeSection(questionnaire, sectionId);
         break;
       }
+      case 'move-section-up': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, -1);
+        break;
+      }
+      case 'move-section-down': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, 1);
+        break;
+      }
       case 'add-item': {
         const sectionId = event.target.getAttribute('data-section') || null;
         addItem(questionnaire, sectionId);
@@ -1934,6 +2037,18 @@ const Builder = (() => {
         const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
         const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
         removeItem(questionnaire, sectionId, itemId);
+        break;
+      }
+      case 'move-item-up': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, -1);
+        break;
+      }
+      case 'move-item-down': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, 1);
         break;
       }
       case 'add-option': {
@@ -2073,6 +2188,16 @@ const Builder = (() => {
     questionnaire.sections.splice(index, 1);
   }
 
+  function moveSection(questionnaire, sectionClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const index = questionnaire.sections.findIndex((s) => s.clientId === sectionClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= questionnaire.sections.length) return;
+    const [section] = questionnaire.sections.splice(index, 1);
+    questionnaire.sections.splice(targetIndex, 0, section);
+  }
+
   function addItem(questionnaire, sectionClientId) {
     const target = sectionClientId
       ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
@@ -2102,6 +2227,20 @@ const Builder = (() => {
     if (idx === -1) return;
     if (collection[idx].hasResponses) return;
     collection.splice(idx, 1);
+  }
+
+  function moveItem(questionnaire, sectionClientId, itemClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const collection = sectionClientId
+      ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
+      : questionnaire.items;
+    if (!collection) return;
+    const index = collection.findIndex((item) => item.clientId === itemClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= collection.length) return;
+    const [item] = collection.splice(index, 1);
+    collection.splice(targetIndex, 0, item);
   }
 
   function findItem(questionnaire, sectionClientId, itemClientId) {
