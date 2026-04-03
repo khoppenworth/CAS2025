@@ -837,7 +837,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  min-width: 160px;
+  min-width: 0;
   align-items: flex-start;
 }
 
@@ -928,7 +928,7 @@
 }
 
 .qb-section-summary {
-  min-width: 160px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   padding-top: 1.05rem;
@@ -939,7 +939,7 @@
 }
 
 .qb-section-main {
-  flex: 1 1 600px;
+  flex: 1 1 420px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   gap: 0.45rem;
@@ -1245,6 +1245,7 @@
 
 .qb-item-main {
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -1457,6 +1458,16 @@
 }
 
 @media (max-width: 1400px) {
+  .qb-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qb-questionnaire-header,
+  .qb-section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .qb-section-main,
   .qb-item-main-grid,
   .qb-item-config-row,
