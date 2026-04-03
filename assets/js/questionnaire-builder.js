@@ -1449,7 +1449,6 @@ const Builder = (() => {
           </div>
         </div>
         <div class="qb-items" data-role="items" data-section="${section.clientId}">
-          <p class="qb-collapsed-drop-hint">Drop questions here to move them into this section.</p>
           ${items || '<p class="md-hint">No questions in this section.</p>'}
         </div>
         <div class="qb-section-actions">

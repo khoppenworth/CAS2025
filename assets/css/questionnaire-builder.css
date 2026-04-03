@@ -34,7 +34,7 @@
 }
 
 .qb-quick-jump-select {
-  min-width: 150px;
+  min-width: 120px;
 }
 
 .qb-toolbar-actions--secondary .md-button {
@@ -45,9 +45,9 @@
 }
 
 .qb-toolbar-actions--secondary {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding-bottom: 0.1rem;
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: 0.28rem;
 }
 
 .qb-select-label {
@@ -597,9 +597,13 @@
 }
 
 .qb-message {
-  margin-top: 0.5rem;
+  margin-top: 0.2rem;
   font-size: 0.95rem;
-  min-height: 1.25rem;
+  min-height: 0;
+}
+
+.qb-message:empty {
+  display: none;
 }
 
 .qb-message[data-state="error"] {
@@ -995,17 +999,6 @@
   pointer-events: none;
 }
 
-.qb-collapsed-drop-hint {
-  display: none;
-  margin: 0;
-  padding: 0.35rem 0.55rem;
-  border: 1px dashed var(--app-primary, #205493);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--app-primary, #205493) 7%, var(--app-surface, #fff));
-  font-size: 0.8rem;
-  color: var(--app-muted, rgba(0, 0, 0, 0.6));
-}
-
 .qb-section.is-collapsed .qb-items {
   max-height: 3rem;
   opacity: 1;
@@ -1013,12 +1006,8 @@
   margin-top: 0.1rem;
 }
 
-.qb-section.is-collapsed .qb-items > :not(.qb-collapsed-drop-hint) {
+.qb-section.is-collapsed .qb-items > * {
   display: none;
-}
-
-.qb-section.is-collapsed .qb-collapsed-drop-hint {
-  display: block;
 }
 
 .qb-section:first-of-type {
@@ -1890,7 +1879,8 @@ body.qb-preview-open {
 .qb-save-status {
   font-size: 0.84rem;
   color: var(--app-muted, rgba(0, 0, 0, 0.65));
-  margin-top: -0.2rem;
+  margin-top: 0;
+  line-height: 1.2;
 }
 
 .qb-floating-save {
