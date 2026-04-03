@@ -175,6 +175,7 @@
   grid-template-columns: minmax(280px, 23vw) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: flex-start;
+  overflow-x: auto;
 }
 
 .qb-manager-layout.is-nav-collapsed {
@@ -200,7 +201,7 @@
 }
 
 .qb-manager-main {
-  min-width: 0;
+  min-width: 980px;
   position: relative;
 }
 
@@ -767,7 +768,7 @@
 
 .qb-header {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.35fr) minmax(180px, 240px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 240px);
   gap: 0.7rem;
   align-items: end;
   padding-bottom: 0.65rem;
@@ -1346,6 +1347,16 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-width: 0;
+}
+
+.qb-field input,
+.qb-field textarea,
+.qb-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .qb-field.qb-field--missing input,
