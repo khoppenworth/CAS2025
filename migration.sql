@@ -145,16 +145,9 @@ PREPARE stmt FROM @q_family_key_index_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-SET @existing_published := (
-  SELECT COUNT(*)
-  FROM questionnaire
-  WHERE status = 'published'
-);
-SET @publish_existing_sql := IF(
-  @existing_published = 0,
-  'UPDATE questionnaire SET status = ''published'' WHERE status = ''draft'';',
-  'DO 1'
-);
+-- Safety: never auto-publish draft questionnaires during upgrade/migration.
+-- Publishing must remain an explicit admin action.
+SET @publish_existing_sql := 'DO 1';
 PREPARE stmt FROM @publish_existing_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;

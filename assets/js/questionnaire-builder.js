@@ -157,6 +157,7 @@ const Builder = (() => {
     saveStatusSaving: 'Saving…',
     saveStatusPublished: 'Published successfully',
     saveStatusLastSaved: 'Last saved just now',
+    publishConfirm: 'Publish now? Published questionnaires lock editing and require setting status to Inactive before updates.',
     publishedLockBannerTitle: 'Published questionnaire restrictions',
     publishedLockBannerMessage: 'Some actions are locked to protect existing responses, scoring, and reporting consistency.',
     publishedLockReason: 'This action is locked because the questionnaire is published.',
@@ -2660,6 +2661,12 @@ const Builder = (() => {
 
   function saveAll(publish = false) {
     if (state.saving) return;
+    if (publish) {
+      const confirmMessage = STRINGS.publishConfirm || 'Publish now? Published questionnaires lock editing and require setting status to Inactive before updates.';
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    }
     if (!validateBuilderRequiredFields()) return;
     hydrateActiveQuestionnaireFromDom();
     state.saving = true;
