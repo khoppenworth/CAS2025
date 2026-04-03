@@ -28,6 +28,7 @@ const Builder = (() => {
     exportButton: '#qb-export-questionnaire',
     previewButton: '#qb-preview-questionnaire',
     focusModeButton: '#qb-focus-mode',
+    reorderModeButton: '#qb-reorder-mode',
     quickJumpSelect: '#qb-quick-jump',
     collapseAllSectionsButton: '#qb-collapse-all-sections',
     collapseAllQuestionsButton: '#qb-collapse-all-questions',
@@ -39,6 +40,16 @@ const Builder = (() => {
     selector: '#qb-selector',
     sectionNav: '#qb-section-nav',
     navToggleButton: '#qb-toggle-nav',
+    startState: '#qb-start-state',
+    workspaceState: '#qb-workspace-state',
+    backToStartButton: '#qb-back-to-start',
+    openImportWorkspaceButton: '#qb-open-import-workspace',
+    workspaceModeLabel: '#qb-workspace-mode-label',
+    activeQuestionnaireLabel: '#qb-active-questionnaire-label',
+    mobileRecommendation: '#qb-mobile-recommendation',
+    mobileRecommendationClose: '#qb-mobile-recommendation-close',
+    reorderUndo: '#qb-reorder-undo',
+    undoReorderButton: '#qb-undo-reorder',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -77,6 +88,8 @@ const Builder = (() => {
     collapsedItems: 'hrassess:qb:collapsed-items',
     collapsedSections: 'hrassess:qb:collapsed-sections',
     compactMode: 'hrassess:qb:compact-mode',
+    mobileRecommendationDismissed: 'hrassess:qb:mobile-recommendation-dismissed',
+    reorderMode: 'hrassess:qb:reorder-mode',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -168,6 +181,10 @@ const Builder = (() => {
     collapsedItems: {},
     collapsedSections: {},
     compactMode: false,
+    viewMode: 'start',
+    reorderMode: false,
+    reorderUndo: null,
+    reorderUndoTimer: null,
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -350,10 +367,13 @@ const Builder = (() => {
     rememberSet(STORAGE_KEYS.collapsedItems, '{}');
     rememberSet(STORAGE_KEYS.collapsedSections, '{}');
     state.compactMode = rememberGet(STORAGE_KEYS.compactMode) === '1';
+    state.reorderMode = rememberGet(STORAGE_KEYS.reorderMode) === '1';
 
     attachStaticListeners();
     primeFromBootstrap();
     fetchData({ silent: true });
+    setViewMode('start');
+    renderMobileRecommendation();
   }
 
   function primeFromBootstrap() {
@@ -372,6 +392,7 @@ const Builder = (() => {
     const exportBtns = document.querySelectorAll(selectors.exportButton);
     const previewBtn = document.querySelector(selectors.previewButton);
     const focusModeBtn = document.querySelector(selectors.focusModeButton);
+    const reorderModeBtn = document.querySelector(selectors.reorderModeButton);
     const quickJumpSelect = document.querySelector(selectors.quickJumpSelect);
     const collapseAllSectionsBtn = document.querySelector(selectors.collapseAllSectionsButton);
     const collapseAllQuestionsBtn = document.querySelector(selectors.collapseAllQuestionsButton);
@@ -380,6 +401,10 @@ const Builder = (() => {
     const destroyBtn = document.querySelector(selectors.destroyButton);
     const openBtn = document.querySelector(selectors.openButton);
     const navToggleBtn = document.querySelector(selectors.navToggleButton);
+    const backToStartBtn = document.querySelector(selectors.backToStartButton);
+    const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
+    const mobileRecommendationCloseBtn = document.querySelector(selectors.mobileRecommendationClose);
+    const undoReorderBtn = document.querySelector(selectors.undoReorderButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -387,6 +412,7 @@ const Builder = (() => {
 
     addBtn?.addEventListener('click', () => {
       addQuestionnaire();
+      setViewMode('create');
     });
 
     saveBtn?.addEventListener('click', () => saveAll(false));
@@ -395,6 +421,7 @@ const Builder = (() => {
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     previewBtn?.addEventListener('click', openPreview);
     focusModeBtn?.addEventListener('click', toggleFocusMode);
+    reorderModeBtn?.addEventListener('click', toggleReorderMode);
     collapseAllSectionsBtn?.addEventListener('click', toggleCollapseAllSections);
     collapseAllQuestionsBtn?.addEventListener('click', toggleCollapseAllQuestions);
     compactModeBtn?.addEventListener('click', toggleCompactMode);
@@ -411,8 +438,20 @@ const Builder = (() => {
       const key = selector?.value;
       if (!key) return;
       setActive(key);
+      setViewMode('edit');
       document.querySelector(selectors.list)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+    openImportWorkspaceBtn?.addEventListener('click', () => {
+      setViewMode('import');
+    });
+    backToStartBtn?.addEventListener('click', () => {
+      setViewMode('start');
+    });
+    mobileRecommendationCloseBtn?.addEventListener('click', () => {
+      rememberSet(STORAGE_KEYS.mobileRecommendationDismissed, '1');
+      renderMobileRecommendation();
+    });
+    undoReorderBtn?.addEventListener('click', undoLastReorder);
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
       const sectionKey = event.target.value;
@@ -449,6 +488,15 @@ const Builder = (() => {
       window.addEventListener('scroll', toggleScrollTopVisibility, { passive: true });
       toggleScrollTopVisibility();
     }
+    window.addEventListener('resize', renderMobileRecommendation, { passive: true });
+  }
+
+  function renderMobileRecommendation() {
+    const panel = document.querySelector(selectors.mobileRecommendation);
+    if (!panel) return;
+    const dismissed = rememberGet(STORAGE_KEYS.mobileRecommendationDismissed) === '1';
+    const smallViewport = window.matchMedia('(max-width: 1279px)').matches;
+    panel.setAttribute('aria-hidden', dismissed || !smallViewport ? 'true' : 'false');
   }
 
   function openPreview() {
@@ -474,6 +522,20 @@ const Builder = (() => {
     previewWindow.document.open();
     previewWindow.document.write(buildPreviewPage(active));
     previewWindow.document.close();
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = ['start', 'create', 'edit', 'import'].includes(mode) ? mode : 'start';
+    const startState = document.querySelector(selectors.startState);
+    const workspaceState = document.querySelector(selectors.workspaceState);
+    if (startState) {
+      startState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'false' : 'true');
+    }
+    if (workspaceState) {
+      workspaceState.setAttribute('aria-hidden', state.viewMode === 'start' ? 'true' : 'false');
+      workspaceState.classList.toggle('is-import-mode', state.viewMode === 'import');
+    }
+    renderWorkspaceContext();
   }
 
   function buildPreviewPage(questionnaire) {
@@ -892,7 +954,35 @@ const Builder = (() => {
     } else {
       rememberRemove(STORAGE_KEYS.active);
     }
+    renderWorkspaceContext();
     render();
+  }
+
+  function getActiveQuestionnaire() {
+    return state.questionnaires.find((q) => q.clientId === state.activeKey) || null;
+  }
+
+  function getActiveQuestionnaireTitle() {
+    const active = getActiveQuestionnaire();
+    const title = String(active?.title || '').trim();
+    return title || 'Untitled questionnaire';
+  }
+
+  function renderWorkspaceContext() {
+    const modeLabel = document.querySelector(selectors.workspaceModeLabel);
+    const activeLabel = document.querySelector(selectors.activeQuestionnaireLabel);
+    const hasActive = Boolean(getActiveQuestionnaire());
+    const activeTitle = getActiveQuestionnaireTitle();
+
+    if (modeLabel) {
+      if (state.viewMode === 'create') modeLabel.textContent = `Mode: Create questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'edit') modeLabel.textContent = `Mode: Edit questionnaire (${activeTitle})`;
+      else if (state.viewMode === 'import') modeLabel.textContent = 'Mode: Import questionnaire';
+      else modeLabel.textContent = 'Workspace';
+    }
+    if (activeLabel) {
+      activeLabel.textContent = hasActive ? `Editing: ${activeTitle}` : 'No questionnaire selected';
+    }
   }
 
   function normalizeStatusValue(value) {
@@ -1110,6 +1200,8 @@ const Builder = (() => {
     applyFocusMode();
     renderDeleteButton();
     renderDestroyButton();
+    renderWorkspaceContext();
+    renderReorderModeButton();
     toggleSaveButtons();
     if (!state.dirty && state.lastSavedAt) {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
@@ -1118,6 +1210,15 @@ const Builder = (() => {
       pendingImportFocus = false;
       focusActiveQuestionnaire();
     }
+  }
+
+  function renderReorderModeButton() {
+    const button = document.querySelector(selectors.reorderModeButton);
+    const layout = document.querySelector(selectors.workspaceState);
+    if (layout) layout.classList.toggle('is-reorder-mode', state.reorderMode);
+    if (!button) return;
+    button.textContent = state.reorderMode ? 'Disable reorder mode' : 'Enable reorder mode';
+    button.setAttribute('aria-pressed', state.reorderMode ? 'true' : 'false');
   }
 
   function renderSelector() {
@@ -1303,6 +1404,9 @@ const Builder = (() => {
     const sectionActiveLocked = section.hasResponses || publishedLocked;
     const scoringLocked = publishedLocked;
     const removeLocked = section.hasResponses || publishedLocked;
+    const sectionIndex = questionnaire.sections.findIndex((entry) => entry.clientId === section.clientId);
+    const moveSectionUpDisabled = publishedLocked || sectionIndex <= 0;
+    const moveSectionDownDisabled = publishedLocked || sectionIndex === -1 || sectionIndex >= questionnaire.sections.length - 1;
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const collapsed = isSectionCollapsed(questionnaire, section);
     const sectionLabel = section.title?.trim() || 'Untitled section';
@@ -1337,6 +1441,8 @@ const Builder = (() => {
             ${includeInScoringControl}
           </div>
           <div class="qb-actions">
+            <button type="button" class="md-button md-outline" data-role="move-section-up" ${moveSectionUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move up</button>
+            <button type="button" class="md-button md-outline" data-role="move-section-down" ${moveSectionDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move down</button>
             <button type="button" class="md-button md-outline" data-role="remove-section" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(removeSectionReason) + '"' : ''}>Remove section</button>
           </div>
           </div>
@@ -1363,6 +1469,12 @@ const Builder = (() => {
     const toggleLocked = publishedLocked;
     const activeLocked = item.hasResponses || publishedLocked;
     const removeLocked = item.hasResponses || publishedLocked;
+    const itemCollection = sectionClientId
+      ? (questionnaire.sections.find((section) => section.clientId === sectionClientId)?.items || [])
+      : questionnaire.items;
+    const itemIndex = itemCollection.findIndex((entry) => entry.clientId === item.clientId);
+    const moveItemUpDisabled = publishedLocked || itemIndex <= 0;
+    const moveItemDownDisabled = publishedLocked || itemIndex === -1 || itemIndex >= itemCollection.length - 1;
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item, { publishedLocked, lockReason: publishedReason })
       : '';
@@ -1415,6 +1527,8 @@ const Builder = (() => {
               <label class="qb-chip-toggle" ${activeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${activeLocked ? 'disabled' : ''}> Active</label>
             </div>
             <div class="qb-actions qb-item-actions">
+              <button type="button" class="md-button md-outline" data-role="move-item-up" ${moveItemUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move up</button>
+              <button type="button" class="md-button md-outline" data-role="move-item-down" ${moveItemDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move down</button>
               <button type="button" class="md-button md-outline" data-role="remove-item" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}>Remove</button>
             </div>
           </div>
@@ -1700,6 +1814,12 @@ const Builder = (() => {
     applyCompactMode();
   }
 
+  function toggleReorderMode() {
+    state.reorderMode = !state.reorderMode;
+    rememberSet(STORAGE_KEYS.reorderMode, state.reorderMode ? '1' : '0');
+    render();
+  }
+
   function applyCompactMode() {
     const layout = document.querySelector('.qb-manager-layout');
     const button = document.querySelector(selectors.compactModeButton);
@@ -1838,6 +1958,7 @@ const Builder = (() => {
         renderTabs();
         renderSelector();
         renderSectionNav();
+        renderWorkspaceContext();
         break;
       case 'q-description':
         questionnaire.description = event.target.value;
@@ -1925,6 +2046,16 @@ const Builder = (() => {
         removeSection(questionnaire, sectionId);
         break;
       }
+      case 'move-section-up': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, -1);
+        break;
+      }
+      case 'move-section-down': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, 1);
+        break;
+      }
       case 'add-item': {
         const sectionId = event.target.getAttribute('data-section') || null;
         addItem(questionnaire, sectionId);
@@ -1934,6 +2065,18 @@ const Builder = (() => {
         const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
         const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
         removeItem(questionnaire, sectionId, itemId);
+        break;
+      }
+      case 'move-item-up': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, -1);
+        break;
+      }
+      case 'move-item-down': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, 1);
         break;
       }
       case 'add-option': {
@@ -2073,6 +2216,17 @@ const Builder = (() => {
     questionnaire.sections.splice(index, 1);
   }
 
+  function moveSection(questionnaire, sectionClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const index = questionnaire.sections.findIndex((s) => s.clientId === sectionClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= questionnaire.sections.length) return;
+    rememberReorderUndo(questionnaire.clientId);
+    const [section] = questionnaire.sections.splice(index, 1);
+    questionnaire.sections.splice(targetIndex, 0, section);
+  }
+
   function addItem(questionnaire, sectionClientId) {
     const target = sectionClientId
       ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
@@ -2102,6 +2256,90 @@ const Builder = (() => {
     if (idx === -1) return;
     if (collection[idx].hasResponses) return;
     collection.splice(idx, 1);
+  }
+
+  function moveItem(questionnaire, sectionClientId, itemClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const collection = sectionClientId
+      ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
+      : questionnaire.items;
+    if (!collection) return;
+    const index = collection.findIndex((item) => item.clientId === itemClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= collection.length) return;
+    rememberReorderUndo(questionnaire.clientId);
+    const [item] = collection.splice(index, 1);
+    collection.splice(targetIndex, 0, item);
+  }
+
+  function buildOrderSnapshot(questionnaire) {
+    return {
+      sections: questionnaire.sections.map((section) => section.clientId),
+      rootItems: questionnaire.items.map((item) => item.clientId),
+      sectionItems: questionnaire.sections.reduce((acc, section) => {
+        acc[section.clientId] = section.items.map((item) => item.clientId);
+        return acc;
+      }, {}),
+    };
+  }
+
+  function rememberReorderUndo(questionnaireClientId) {
+    const questionnaire = state.questionnaires.find((q) => q.clientId === questionnaireClientId);
+    if (!questionnaire) return;
+    state.reorderUndo = {
+      questionnaireClientId,
+      snapshot: buildOrderSnapshot(questionnaire),
+    };
+    showReorderUndoToast();
+  }
+
+  function applyOrderSnapshot(questionnaire, snapshot) {
+    if (!questionnaire || !snapshot) return;
+    const sectionLookup = new Map(questionnaire.sections.map((section) => [section.clientId, section]));
+    const orderedSections = (snapshot.sections || []).map((id) => sectionLookup.get(id)).filter(Boolean);
+    questionnaire.sections = orderedSections.length ? orderedSections : questionnaire.sections;
+
+    const rootLookup = new Map(questionnaire.items.map((item) => [item.clientId, item]));
+    const orderedRootItems = (snapshot.rootItems || []).map((id) => rootLookup.get(id)).filter(Boolean);
+    questionnaire.items = orderedRootItems.length ? orderedRootItems : questionnaire.items;
+
+    questionnaire.sections.forEach((section) => {
+      const itemLookup = new Map(section.items.map((item) => [item.clientId, item]));
+      const ordered = (snapshot.sectionItems?.[section.clientId] || []).map((id) => itemLookup.get(id)).filter(Boolean);
+      if (ordered.length) section.items = ordered;
+    });
+  }
+
+  function showReorderUndoToast() {
+    const toast = document.querySelector(selectors.reorderUndo);
+    if (!toast) return;
+    toast.setAttribute('aria-hidden', 'false');
+    if (state.reorderUndoTimer) window.clearTimeout(state.reorderUndoTimer);
+    state.reorderUndoTimer = window.setTimeout(() => {
+      toast.setAttribute('aria-hidden', 'true');
+      state.reorderUndoTimer = null;
+    }, 7000);
+  }
+
+  function hideReorderUndoToast() {
+    const toast = document.querySelector(selectors.reorderUndo);
+    if (toast) toast.setAttribute('aria-hidden', 'true');
+    if (state.reorderUndoTimer) {
+      window.clearTimeout(state.reorderUndoTimer);
+      state.reorderUndoTimer = null;
+    }
+  }
+
+  function undoLastReorder() {
+    if (!state.reorderUndo) return;
+    const questionnaire = state.questionnaires.find((q) => q.clientId === state.reorderUndo.questionnaireClientId);
+    if (!questionnaire) return;
+    applyOrderSnapshot(questionnaire, state.reorderUndo.snapshot);
+    state.reorderUndo = null;
+    hideReorderUndoToast();
+    markDirty();
+    render();
   }
 
   function findItem(questionnaire, sectionClientId, itemClientId) {
@@ -2363,7 +2601,9 @@ const Builder = (() => {
       Sortable.create(sectionContainer, {
         animation: 150,
         handle: '.qb-section-drag-handle',
+        disabled: !state.reorderMode,
         onEnd: () => {
+          rememberReorderUndo(state.activeKey);
           reorderSections();
           markDirty();
         },
@@ -2379,6 +2619,7 @@ const Builder = (() => {
         },
         animation: 150,
         handle: '.qb-item-drag-handle',
+        disabled: !state.reorderMode,
         onAdd: (event) => {
           if (!event?.from || !event?.to || event.from === event.to) return;
           if (event.item && event.to instanceof HTMLElement) {
@@ -2386,6 +2627,7 @@ const Builder = (() => {
           }
         },
         onEnd: () => {
+          rememberReorderUndo(state.activeKey);
           reorderItems();
           markDirty();
         },
