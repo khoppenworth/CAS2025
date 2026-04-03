@@ -1497,6 +1497,10 @@ const Builder = (() => {
               <small>${escapeHtml((QUESTION_TYPE_LABELS[item.type] || item.type) + (itemLink ? ` ${itemLink}` : ''))}</small>
               ${summaryBadges.length ? `<div class="qb-summary-badges">${summaryBadges.join('')}</div>` : ''}
             </div>
+            <div class="qb-item-summary-reorder ${collapsed ? 'is-visible' : ''}">
+              <button type="button" class="md-button md-outline qb-tiny-button" data-role="move-item-up" ${moveItemUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>↑</button>
+              <button type="button" class="md-button md-outline qb-tiny-button" data-role="move-item-down" ${moveItemDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>↓</button>
+            </div>
           </div>
           <div class="qb-item-main-content">
           <div class="qb-item-main-grid">
