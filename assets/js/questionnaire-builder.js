@@ -28,6 +28,7 @@ const Builder = (() => {
     exportButton: '#qb-export-questionnaire',
     previewButton: '#qb-preview-questionnaire',
     focusModeButton: '#qb-focus-mode',
+    reorderModeButton: '#qb-reorder-mode',
     quickJumpSelect: '#qb-quick-jump',
     collapseAllSectionsButton: '#qb-collapse-all-sections',
     collapseAllQuestionsButton: '#qb-collapse-all-questions',
@@ -47,6 +48,8 @@ const Builder = (() => {
     activeQuestionnaireLabel: '#qb-active-questionnaire-label',
     mobileRecommendation: '#qb-mobile-recommendation',
     mobileRecommendationClose: '#qb-mobile-recommendation-close',
+    reorderUndo: '#qb-reorder-undo',
+    undoReorderButton: '#qb-undo-reorder',
     saveStatus: '#qb-save-status',
     floatingSaveLabel: '#qb-save-floating-label',
     metaCsrf: 'meta[name="csrf-token"]',
@@ -86,6 +89,7 @@ const Builder = (() => {
     collapsedSections: 'hrassess:qb:collapsed-sections',
     compactMode: 'hrassess:qb:compact-mode',
     mobileRecommendationDismissed: 'hrassess:qb:mobile-recommendation-dismissed',
+    reorderMode: 'hrassess:qb:reorder-mode',
   };
 
   const STRINGS = window.QB_STRINGS || {
@@ -179,6 +183,9 @@ const Builder = (() => {
     collapsedSections: {},
     compactMode: false,
     viewMode: 'start',
+    reorderMode: false,
+    reorderUndo: null,
+    reorderUndoTimer: null,
   };
 
   let initialActiveId = window.QB_INITIAL_ACTIVE_ID || null;
@@ -361,6 +368,7 @@ const Builder = (() => {
     rememberSet(STORAGE_KEYS.collapsedItems, '{}');
     rememberSet(STORAGE_KEYS.collapsedSections, '{}');
     state.compactMode = rememberGet(STORAGE_KEYS.compactMode) === '1';
+    state.reorderMode = rememberGet(STORAGE_KEYS.reorderMode) === '1';
 
     attachStaticListeners();
     primeFromBootstrap();
@@ -385,6 +393,7 @@ const Builder = (() => {
     const exportBtns = document.querySelectorAll(selectors.exportButton);
     const previewBtn = document.querySelector(selectors.previewButton);
     const focusModeBtn = document.querySelector(selectors.focusModeButton);
+    const reorderModeBtn = document.querySelector(selectors.reorderModeButton);
     const quickJumpSelect = document.querySelector(selectors.quickJumpSelect);
     const collapseAllSectionsBtn = document.querySelector(selectors.collapseAllSectionsButton);
     const collapseAllQuestionsBtn = document.querySelector(selectors.collapseAllQuestionsButton);
@@ -396,6 +405,7 @@ const Builder = (() => {
     const backToStartBtn = document.querySelector(selectors.backToStartButton);
     const openImportWorkspaceBtn = document.querySelector(selectors.openImportWorkspaceButton);
     const mobileRecommendationCloseBtn = document.querySelector(selectors.mobileRecommendationClose);
+    const undoReorderBtn = document.querySelector(selectors.undoReorderButton);
     const selector = document.querySelector(selectors.selector);
     const list = document.querySelector(selectors.list);
     const tabs = document.querySelector(selectors.tabs);
@@ -412,6 +422,7 @@ const Builder = (() => {
     exportBtns.forEach((btn) => btn.addEventListener('click', handleExport));
     previewBtn?.addEventListener('click', openPreview);
     focusModeBtn?.addEventListener('click', toggleFocusMode);
+    reorderModeBtn?.addEventListener('click', toggleReorderMode);
     collapseAllSectionsBtn?.addEventListener('click', toggleCollapseAllSections);
     collapseAllQuestionsBtn?.addEventListener('click', toggleCollapseAllQuestions);
     compactModeBtn?.addEventListener('click', toggleCompactMode);
@@ -441,6 +452,7 @@ const Builder = (() => {
       rememberSet(STORAGE_KEYS.mobileRecommendationDismissed, '1');
       renderMobileRecommendation();
     });
+    undoReorderBtn?.addEventListener('click', undoLastReorder);
     scrollTopBtn?.addEventListener('click', handleScrollToTop);
     quickJumpSelect?.addEventListener('change', (event) => {
       const sectionKey = event.target.value;
@@ -1190,6 +1202,7 @@ const Builder = (() => {
     renderDeleteButton();
     renderDestroyButton();
     renderWorkspaceContext();
+    renderReorderModeButton();
     toggleSaveButtons();
     if (!state.dirty && state.lastSavedAt) {
       updateSaveStatus(STRINGS.saveStatusLastSaved || 'Last saved just now');
@@ -1198,6 +1211,15 @@ const Builder = (() => {
       pendingImportFocus = false;
       focusActiveQuestionnaire();
     }
+  }
+
+  function renderReorderModeButton() {
+    const button = document.querySelector(selectors.reorderModeButton);
+    const layout = document.querySelector(selectors.workspaceState);
+    if (layout) layout.classList.toggle('is-reorder-mode', state.reorderMode);
+    if (!button) return;
+    button.textContent = state.reorderMode ? 'Disable reorder mode' : 'Enable reorder mode';
+    button.setAttribute('aria-pressed', state.reorderMode ? 'true' : 'false');
   }
 
   function renderSelector() {
@@ -1793,6 +1815,12 @@ const Builder = (() => {
     applyCompactMode();
   }
 
+  function toggleReorderMode() {
+    state.reorderMode = !state.reorderMode;
+    rememberSet(STORAGE_KEYS.reorderMode, state.reorderMode ? '1' : '0');
+    render();
+  }
+
   function applyCompactMode() {
     const layout = document.querySelector('.qb-manager-layout');
     const button = document.querySelector(selectors.compactModeButton);
@@ -2195,6 +2223,7 @@ const Builder = (() => {
     if (index === -1) return;
     const targetIndex = index + delta;
     if (targetIndex < 0 || targetIndex >= questionnaire.sections.length) return;
+    rememberReorderUndo(questionnaire.clientId);
     const [section] = questionnaire.sections.splice(index, 1);
     questionnaire.sections.splice(targetIndex, 0, section);
   }
@@ -2240,8 +2269,78 @@ const Builder = (() => {
     if (index === -1) return;
     const targetIndex = index + delta;
     if (targetIndex < 0 || targetIndex >= collection.length) return;
+    rememberReorderUndo(questionnaire.clientId);
     const [item] = collection.splice(index, 1);
     collection.splice(targetIndex, 0, item);
+  }
+
+  function buildOrderSnapshot(questionnaire) {
+    return {
+      sections: questionnaire.sections.map((section) => section.clientId),
+      rootItems: questionnaire.items.map((item) => item.clientId),
+      sectionItems: questionnaire.sections.reduce((acc, section) => {
+        acc[section.clientId] = section.items.map((item) => item.clientId);
+        return acc;
+      }, {}),
+    };
+  }
+
+  function rememberReorderUndo(questionnaireClientId) {
+    const questionnaire = state.questionnaires.find((q) => q.clientId === questionnaireClientId);
+    if (!questionnaire) return;
+    state.reorderUndo = {
+      questionnaireClientId,
+      snapshot: buildOrderSnapshot(questionnaire),
+    };
+    showReorderUndoToast();
+  }
+
+  function applyOrderSnapshot(questionnaire, snapshot) {
+    if (!questionnaire || !snapshot) return;
+    const sectionLookup = new Map(questionnaire.sections.map((section) => [section.clientId, section]));
+    const orderedSections = (snapshot.sections || []).map((id) => sectionLookup.get(id)).filter(Boolean);
+    questionnaire.sections = orderedSections.length ? orderedSections : questionnaire.sections;
+
+    const rootLookup = new Map(questionnaire.items.map((item) => [item.clientId, item]));
+    const orderedRootItems = (snapshot.rootItems || []).map((id) => rootLookup.get(id)).filter(Boolean);
+    questionnaire.items = orderedRootItems.length ? orderedRootItems : questionnaire.items;
+
+    questionnaire.sections.forEach((section) => {
+      const itemLookup = new Map(section.items.map((item) => [item.clientId, item]));
+      const ordered = (snapshot.sectionItems?.[section.clientId] || []).map((id) => itemLookup.get(id)).filter(Boolean);
+      if (ordered.length) section.items = ordered;
+    });
+  }
+
+  function showReorderUndoToast() {
+    const toast = document.querySelector(selectors.reorderUndo);
+    if (!toast) return;
+    toast.setAttribute('aria-hidden', 'false');
+    if (state.reorderUndoTimer) window.clearTimeout(state.reorderUndoTimer);
+    state.reorderUndoTimer = window.setTimeout(() => {
+      toast.setAttribute('aria-hidden', 'true');
+      state.reorderUndoTimer = null;
+    }, 7000);
+  }
+
+  function hideReorderUndoToast() {
+    const toast = document.querySelector(selectors.reorderUndo);
+    if (toast) toast.setAttribute('aria-hidden', 'true');
+    if (state.reorderUndoTimer) {
+      window.clearTimeout(state.reorderUndoTimer);
+      state.reorderUndoTimer = null;
+    }
+  }
+
+  function undoLastReorder() {
+    if (!state.reorderUndo) return;
+    const questionnaire = state.questionnaires.find((q) => q.clientId === state.reorderUndo.questionnaireClientId);
+    if (!questionnaire) return;
+    applyOrderSnapshot(questionnaire, state.reorderUndo.snapshot);
+    state.reorderUndo = null;
+    hideReorderUndoToast();
+    markDirty();
+    render();
   }
 
   function findItem(questionnaire, sectionClientId, itemClientId) {
@@ -2503,7 +2602,9 @@ const Builder = (() => {
       Sortable.create(sectionContainer, {
         animation: 150,
         handle: '.qb-section-drag-handle',
+        disabled: !state.reorderMode,
         onEnd: () => {
+          rememberReorderUndo(state.activeKey);
           reorderSections();
           markDirty();
         },
@@ -2519,6 +2620,7 @@ const Builder = (() => {
         },
         animation: 150,
         handle: '.qb-item-drag-handle',
+        disabled: !state.reorderMode,
         onAdd: (event) => {
           if (!event?.from || !event?.to || event.from === event.to) return;
           if (event.item && event.to instanceof HTMLElement) {
@@ -2526,6 +2628,7 @@ const Builder = (() => {
           }
         },
         onEnd: () => {
+          rememberReorderUndo(state.activeKey);
           reorderItems();
           markDirty();
         },

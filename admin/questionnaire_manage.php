@@ -2509,6 +2509,7 @@ if ($qbJsVersion) {
                 <button class="md-button md-outline md-elev-1" id="qb-collapse-all-questions" type="button"><?=t($t,'qb_collapse_all_questions','Collapse all questions')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-compact-mode" type="button"><?=t($t,'qb_compact_mode_on','Compact mode')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-focus-mode" type="button"><?=t($t,'qb_focus_mode_enter','Focus mode')?></button>
+                <button class="md-button md-outline md-elev-1" id="qb-reorder-mode" type="button"><?=t($t,'qb_reorder_mode_on','Enable reorder mode')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-preview-questionnaire" type="button"><?=t($t,'qb_preview_label','Preview questionnaire')?></button>
                 <button class="md-button md-outline md-elev-1" id="qb-export-questionnaire"><?=t($t,'export_fhir','Export questionnaire')?></button>
               </div>
@@ -2520,6 +2521,10 @@ if ($qbJsVersion) {
         </div>
         <div class="qb-save-status" id="qb-save-status" aria-live="polite"><?=t($t,'qb_unsaved_changes','Unsaved changes')?></div>
         <div id="qb-message" class="qb-message" role="status" aria-live="polite"></div>
+        <div id="qb-reorder-undo" class="qb-reorder-undo" aria-live="polite" aria-hidden="true">
+          <span><?=t($t,'qb_reorder_done','Reorder applied.')?></span>
+          <button type="button" class="md-button md-outline md-elev-1" id="qb-undo-reorder"><?=t($t,'undo','Undo')?></button>
+        </div>
         <div id="qb-list" class="qb-list" aria-live="polite"></div>
       </div>
       <?php if ($showDangerZone): ?>

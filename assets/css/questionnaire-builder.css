@@ -1200,6 +1200,11 @@
   transform: translateY(-1px);
 }
 
+.qb-manager-layout:not(.is-reorder-mode) .qb-section-drag-handle,
+.qb-manager-layout:not(.is-reorder-mode) .qb-item-drag-handle {
+  opacity: 0.35;
+}
+
 .qb-section-collapse-toggle:hover,
 .qb-section-collapse-toggle:focus-visible,
 .qb-item-collapse-toggle:hover,
@@ -1637,6 +1642,22 @@
 .qb-import-inline .md-field {
   min-width: 240px;
   margin: 0;
+}
+
+.qb-reorder-undo {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-top: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.16));
+  border-radius: 8px;
+  background: var(--app-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.qb-reorder-undo[aria-hidden="false"] {
+  display: flex;
 }
 
 .md-import-popup__list {
