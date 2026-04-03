@@ -1315,6 +1315,18 @@
   gap: 0.55rem;
 }
 
+.qb-field--item-text .qb-textarea,
+textarea[data-role="item-text"] {
+  min-height: 3.1rem;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.qb-manager-layout.is-compact-density .qb-field--item-text .qb-textarea,
+.qb-manager-layout.is-compact-density textarea[data-role="item-text"] {
+  min-height: 2.35rem;
+}
+
 .qb-item-config-row {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto;

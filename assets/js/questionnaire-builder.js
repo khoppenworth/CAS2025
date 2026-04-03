@@ -1509,7 +1509,7 @@ const Builder = (() => {
             </div>
             <div class="qb-field qb-field--item-text">
               <label>Question</label>
-              <input type="text" data-role="item-text" data-required-field="1" value="${escapeAttr(item.text)}" placeholder="Question prompt shown to employees">
+              <textarea class="qb-textarea" data-role="item-text" data-required-field="1" rows="2" placeholder="Question prompt shown to employees">${escapeHtml(item.text)}</textarea>
             </div>
           </div>
 
