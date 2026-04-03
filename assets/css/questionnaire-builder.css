@@ -1456,17 +1456,7 @@
   min-width: 0;
 }
 
-@media (max-width: 1200px) {
-  .qb-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .qb-section-main {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 920px) {
+@media (max-width: 1400px) {
   .qb-section-main,
   .qb-item-main-grid,
   .qb-item-config-row,
