@@ -34,11 +34,20 @@
 }
 
 .qb-quick-jump-select {
-  min-width: 200px;
+  min-width: 150px;
 }
 
 .qb-toolbar-actions--secondary .md-button {
-  --md-button-padding-x: 0.8rem;
+  --md-button-padding-x: 0.58rem;
+  --md-button-padding-y: 0.34rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.qb-toolbar-actions--secondary {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
 }
 
 .qb-select-label {
@@ -306,6 +315,7 @@
   width: 100%;
   justify-content: flex-start;
   gap: 0.45rem;
+  --md-button-padding-y: 0.34rem;
 }
 
 .qb-nav-toggle-icon {
@@ -942,8 +952,8 @@
 .qb-section-main {
   flex: 1 1 420px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
-  gap: 0.45rem;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) auto auto;
+  gap: 0.3rem;
   overflow: hidden;
   max-height: 1000px;
   opacity: 1;
@@ -952,6 +962,22 @@
 
 .qb-section-main > * {
   min-width: 0;
+}
+
+.qb-section-main .qb-field > label {
+  font-size: 0.78rem;
+}
+
+.qb-section-main .qb-input,
+.qb-section-main .qb-textarea,
+.qb-section-main .qb-select {
+  padding: 0.32rem 0.48rem;
+}
+
+.qb-section-main .qb-actions .md-button {
+  --md-button-padding-x: 0.5rem;
+  --md-button-padding-y: 0.28rem;
+  font-size: 0.78rem;
 }
 
 .qb-items,
@@ -1502,20 +1528,22 @@
 
 @media (max-width: 1400px) {
   .qb-header {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
   }
 
-  .qb-questionnaire-header,
-  .qb-section-header {
+  .qb-questionnaire-header {
     flex-direction: column;
     align-items: stretch;
   }
 
   .qb-section-main,
   .qb-item-main-grid,
-  .qb-item-config-row,
   .qb-item-condition-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .qb-item-config-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 
   .qb-item-actions {
