@@ -1383,6 +1383,9 @@ const Builder = (() => {
     const sectionActiveLocked = section.hasResponses || publishedLocked;
     const scoringLocked = publishedLocked;
     const removeLocked = section.hasResponses || publishedLocked;
+    const sectionIndex = questionnaire.sections.findIndex((entry) => entry.clientId === section.clientId);
+    const moveSectionUpDisabled = publishedLocked || sectionIndex <= 0;
+    const moveSectionDownDisabled = publishedLocked || sectionIndex === -1 || sectionIndex >= questionnaire.sections.length - 1;
     const items = section.items.map((item) => buildItemRow(questionnaire, section.clientId, item)).join('');
     const collapsed = isSectionCollapsed(questionnaire, section);
     const sectionLabel = section.title?.trim() || 'Untitled section';
@@ -1417,6 +1420,8 @@ const Builder = (() => {
             ${includeInScoringControl}
           </div>
           <div class="qb-actions">
+            <button type="button" class="md-button md-outline" data-role="move-section-up" ${moveSectionUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move up</button>
+            <button type="button" class="md-button md-outline" data-role="move-section-down" ${moveSectionDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(scoringReason) + '"' : ''}>Move down</button>
             <button type="button" class="md-button md-outline" data-role="remove-section" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(removeSectionReason) + '"' : ''}>Remove section</button>
           </div>
           </div>
@@ -1443,6 +1448,12 @@ const Builder = (() => {
     const toggleLocked = publishedLocked;
     const activeLocked = item.hasResponses || publishedLocked;
     const removeLocked = item.hasResponses || publishedLocked;
+    const itemCollection = sectionClientId
+      ? (questionnaire.sections.find((section) => section.clientId === sectionClientId)?.items || [])
+      : questionnaire.items;
+    const itemIndex = itemCollection.findIndex((entry) => entry.clientId === item.clientId);
+    const moveItemUpDisabled = publishedLocked || itemIndex <= 0;
+    const moveItemDownDisabled = publishedLocked || itemIndex === -1 || itemIndex >= itemCollection.length - 1;
     const optionsHtml = ['choice', 'likert'].includes(item.type)
       ? buildOptionsEditor(sectionClientId, item, { publishedLocked, lockReason: publishedReason })
       : '';
@@ -1495,6 +1506,8 @@ const Builder = (() => {
               <label class="qb-chip-toggle" ${activeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}><input type="checkbox" data-role="item-active" ${item.is_active ? 'checked' : ''} ${activeLocked ? 'disabled' : ''}> Active</label>
             </div>
             <div class="qb-actions qb-item-actions">
+              <button type="button" class="md-button md-outline" data-role="move-item-up" ${moveItemUpDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move up</button>
+              <button type="button" class="md-button md-outline" data-role="move-item-down" ${moveItemDownDisabled ? 'disabled' : ''} ${publishedLocked ? 'title="' + escapeAttr(publishedReason) + '"' : ''}>Move down</button>
               <button type="button" class="md-button md-outline" data-role="remove-item" ${removeLocked ? 'disabled' : ''} ${removeLocked ? 'title="' + escapeAttr(itemResponseReason) + '"' : ''}>Remove</button>
             </div>
           </div>
@@ -2006,6 +2019,16 @@ const Builder = (() => {
         removeSection(questionnaire, sectionId);
         break;
       }
+      case 'move-section-up': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, -1);
+        break;
+      }
+      case 'move-section-down': {
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section');
+        moveSection(questionnaire, sectionId, 1);
+        break;
+      }
       case 'add-item': {
         const sectionId = event.target.getAttribute('data-section') || null;
         addItem(questionnaire, sectionId);
@@ -2015,6 +2038,18 @@ const Builder = (() => {
         const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
         const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
         removeItem(questionnaire, sectionId, itemId);
+        break;
+      }
+      case 'move-item-up': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, -1);
+        break;
+      }
+      case 'move-item-down': {
+        const itemId = event.target.closest('[data-item]')?.getAttribute('data-item');
+        const sectionId = event.target.closest('[data-section]')?.getAttribute('data-section') || null;
+        moveItem(questionnaire, sectionId, itemId, 1);
         break;
       }
       case 'add-option': {
@@ -2154,6 +2189,16 @@ const Builder = (() => {
     questionnaire.sections.splice(index, 1);
   }
 
+  function moveSection(questionnaire, sectionClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const index = questionnaire.sections.findIndex((s) => s.clientId === sectionClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= questionnaire.sections.length) return;
+    const [section] = questionnaire.sections.splice(index, 1);
+    questionnaire.sections.splice(targetIndex, 0, section);
+  }
+
   function addItem(questionnaire, sectionClientId) {
     const target = sectionClientId
       ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
@@ -2183,6 +2228,20 @@ const Builder = (() => {
     if (idx === -1) return;
     if (collection[idx].hasResponses) return;
     collection.splice(idx, 1);
+  }
+
+  function moveItem(questionnaire, sectionClientId, itemClientId, delta) {
+    if (!Number.isInteger(delta) || delta === 0) return;
+    const collection = sectionClientId
+      ? questionnaire.sections.find((s) => s.clientId === sectionClientId)?.items
+      : questionnaire.items;
+    if (!collection) return;
+    const index = collection.findIndex((item) => item.clientId === itemClientId);
+    if (index === -1) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= collection.length) return;
+    const [item] = collection.splice(index, 1);
+    collection.splice(targetIndex, 0, item);
   }
 
   function findItem(questionnaire, sectionClientId, itemClientId) {
