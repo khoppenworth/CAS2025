@@ -182,8 +182,8 @@ $summaryRows = [
 if ($averageScore !== null) {
     $summaryRows[] = [t($t, 'average_score', 'Average score (%)'), number_format($averageScore, 1)];
     $summaryRows[] = [
-        t($t, 'proficiency_level', 'Proficiency level'),
-        questionnaire_proficiency_level((float) $averageScore),
+        t($t, 'proficiency_level', 'Competency level'),
+        questionnaire_competency_level((float) $averageScore),
     ];
 }
 if ($nextAssessmentDisplay !== '') {
@@ -256,7 +256,7 @@ if ($rows) {
             (string) ($row['title'] ?? ''),
             (string) ($row['period_label'] ?? ''),
             $scoreValue !== null ? number_format($scoreValue, 0) . '%' : '—',
-            $scoreValue !== null ? questionnaire_proficiency_level($scoreValue) : '—',
+            $scoreValue !== null ? questionnaire_competency_level($scoreValue) : '—',
             t($t, 'status_' . ($row['status'] ?? 'submitted'), ucfirst((string) ($row['status'] ?? 'submitted'))),
         ];
     }
@@ -265,7 +265,7 @@ if ($rows) {
         t($t, 'questionnaire', 'Questionnaire'),
         t($t, 'performance_period', 'Asessment Period'),
         t($t, 'score', 'Score (%)'),
-        t($t, 'proficiency_level', 'Proficiency level'),
+        t($t, 'proficiency_level', 'Competency level'),
         t($t, 'status', 'Status'),
     ], $responseRows, [18, 52, 52, 20, 28, 30]);
 } else {

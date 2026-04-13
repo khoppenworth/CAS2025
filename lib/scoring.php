@@ -213,56 +213,49 @@ function questionnaire_answer_is_correct(array $answerSet, string $correctValue)
 }
 
 /**
- * Resolve a proficiency level label from a score percentage.
+ * Resolve a competency level label from a score percentage.
  */
-function questionnaire_proficiency_level(?float $score): string
+function questionnaire_competency_level(?float $score): string
 {
     if ($score === null) {
         return '';
     }
     if ($score >= 85.0) {
-        return 'Expert';
+        return 'Strategic';
     }
     if ($score >= 70.0) {
-        return 'Strong Proficiency';
-    }
-    if ($score >= 60.0) {
-        return 'Intermediate';
+        return 'Advanced';
     }
     if ($score >= 50.0) {
-        return 'Basic';
+        return 'Essential';
     }
-    return 'Not Proficient';
+    return 'Introductory';
 }
 
 /**
- * Resolve proficiency level and interpretation details for a score percentage.
+ * Resolve competency level and interpretation details for a score percentage.
  *
  * @return array{level:string, interpretation:string}
  */
-function questionnaire_proficiency_details(?float $score): array
+function questionnaire_competency_details(?float $score): array
 {
-    $level = questionnaire_proficiency_level($score);
+    $level = questionnaire_competency_level($score);
     return match ($level) {
-        'Expert' => [
-            'level' => 'Expert',
-            'interpretation' => 'Exceptional mastery; capable of leading complex assignments and mentoring others.',
+        'Strategic' => [
+            'level' => 'Strategic',
+            'interpretation' => 'Shapes direction, drives outcomes, and mentors others in complex scenarios.',
         ],
-        'Strong Proficiency' => [
-            'level' => 'Strong Proficiency',
-            'interpretation' => 'Fully meets expectations; operates independently at the expected level.',
+        'Advanced' => [
+            'level' => 'Advanced',
+            'interpretation' => 'Performs independently and consistently meets role expectations.',
         ],
-        'Intermediate' => [
-            'level' => 'Intermediate',
-            'interpretation' => 'Partial mastery; requires targeted development to reach full proficiency.',
+        'Essential' => [
+            'level' => 'Essential',
+            'interpretation' => 'Demonstrates core capability with some support and targeted development.',
         ],
-        'Basic' => [
-            'level' => 'Basic',
-            'interpretation' => 'Limited understanding; requires close supervision and structured learning.',
-        ],
-        'Not Proficient' => [
-            'level' => 'Not Proficient',
-            'interpretation' => 'Does not meet minimum expectations; needs foundational skill development.',
+        'Introductory' => [
+            'level' => 'Introductory',
+            'interpretation' => 'Building foundational capability and requires structured guidance.',
         ],
         default => [
             'level' => '',
