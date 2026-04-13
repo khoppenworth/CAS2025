@@ -363,7 +363,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         ['Draft', analytics_report_format_number($summary['draft_count'] ?? 0)],
         ['Rejected', analytics_report_format_number($summary['rejected_count'] ?? 0)],
         ['Average score', analytics_report_format_score($summary['avg_score'])],
-        ['Average proficiency', questionnaire_proficiency_level(isset($summary['avg_score']) ? (float)$summary['avg_score'] : null) ?: '—'],
+        ['Average competency', questionnaire_competency_level(isset($summary['avg_score']) ? (float)$summary['avg_score'] : null) ?: '—'],
         ['Latest submission', analytics_report_format_date($summary['latest_at'])],
         ['Unique participants', analytics_report_format_number($snapshot['total_participants'] ?? 0)],
     ];
@@ -382,13 +382,13 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             analytics_report_format_number($row['draft_count'] ?? 0),
             analytics_report_format_number($row['rejected_count'] ?? 0),
             analytics_report_format_score($row['avg_score'] ?? null),
-            questionnaire_proficiency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
+            questionnaire_competency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
         ];
     }
 
     if ($questionnaireRows) {
         $pdf->addTable(
-            ['Questionnaire', 'Total', 'Approved', 'Submitted', 'Draft', 'Rejected', 'Avg', 'Proficiency'],
+            ['Questionnaire', 'Total', 'Approved', 'Submitted', 'Draft', 'Rejected', 'Avg', 'Competency'],
             $questionnaireRows,
             [34, 7, 9, 10, 8, 9, 7, 16]
         );
@@ -404,13 +404,13 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
                 analytics_report_format_number($row['total_responses'] ?? 0),
                 analytics_report_format_number($row['approved_count'] ?? 0),
                 analytics_report_format_score($row['avg_score'] ?? null),
-                questionnaire_proficiency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
+                questionnaire_competency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
             ];
         }
         if ($workRows) {
             $pdf->addSubheading('Performance by work function');
             $pdf->addTable(
-                ['Work function', 'Responses', 'Approved', 'Avg', 'Proficiency'],
+                ['Work function', 'Responses', 'Approved', 'Avg', 'Competency'],
                 $workRows,
                 [30, 12, 12, 10, 14]
             );
@@ -549,11 +549,11 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
                 analytics_report_format_number($row['total_responses'] ?? 0),
                 analytics_report_format_number($row['approved_count'] ?? 0),
                 analytics_report_format_score($row['avg_score'] ?? null),
-                questionnaire_proficiency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
+                questionnaire_competency_level(isset($row['avg_score']) ? (float)$row['avg_score'] : null) ?: '—',
             ];
         }
         $pdf->addTable(
-            ['User', 'Work function', 'Responses', 'Approved', 'Avg score', 'Proficiency'],
+            ['User', 'Work function', 'Responses', 'Approved', 'Avg score', 'Competency'],
             $detailRows,
             [24, 16, 10, 10, 10, 14]
         );
