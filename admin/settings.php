@@ -182,6 +182,36 @@ try {
             $smtp_timeout = 20;
         }
 
+        $ai_enabled = isset($_POST['ai_enabled']) ? 1 : 0;
+        $ai_provider = strtolower(trim((string)($_POST['ai_provider'] ?? 'ollama')));
+        if (!in_array($ai_provider, ['ollama'], true)) {
+            $ai_provider = 'ollama';
+        }
+        $ai_base_url = trim((string)($_POST['ai_base_url'] ?? ''));
+        $ai_api_key_input = trim((string)($_POST['ai_api_key'] ?? ''));
+        $ai_api_key = $ai_api_key_input !== '' ? $ai_api_key_input : (string)($cfg['ai_api_key'] ?? '');
+        $ai_model_chat = trim((string)($_POST['ai_model_chat'] ?? ''));
+        $ai_model_fast = trim((string)($_POST['ai_model_fast'] ?? ''));
+        $ai_model_fallback = trim((string)($_POST['ai_model_fallback'] ?? ''));
+
+        $ai_feature_summary_enabled = isset($_POST['ai_feature_summary_enabled']) ? 1 : 0;
+        $ai_feature_devplan_enabled = isset($_POST['ai_feature_devplan_enabled']) ? 1 : 0;
+        $ai_feature_course_rationale_enabled = isset($_POST['ai_feature_course_rationale_enabled']) ? 1 : 0;
+        $ai_placement_supervisor_review = isset($_POST['ai_placement_supervisor_review']) ? 1 : 0;
+        $ai_placement_admin_analytics = isset($_POST['ai_placement_admin_analytics']) ? 1 : 0;
+
+        $ai_timeout_seconds = max(5, min(120, (int)($_POST['ai_timeout_seconds'] ?? 20)));
+        $ai_max_output_tokens = max(100, min(4000, (int)($_POST['ai_max_output_tokens'] ?? 700)));
+        $ai_temperature = (float)($_POST['ai_temperature'] ?? 0.2);
+        if (!is_finite($ai_temperature)) {
+            $ai_temperature = 0.2;
+        }
+        $ai_temperature = max(0.0, min(1.0, $ai_temperature));
+        $ai_retry_count = max(0, min(2, (int)($_POST['ai_retry_count'] ?? 1)));
+        $ai_require_human_approval = isset($_POST['ai_require_human_approval']) ? 1 : 0;
+        $ai_show_generated_badge = isset($_POST['ai_show_generated_badge']) ? 1 : 0;
+        $ai_pii_redaction_enabled = isset($_POST['ai_pii_redaction_enabled']) ? 1 : 0;
+
         $enabledLocalesInput = $_POST['enabled_locales'] ?? [];
         if (!is_array($enabledLocalesInput)) {
             $enabledLocalesInput = [];
@@ -189,6 +219,25 @@ try {
         $selectedLocales = sanitize_locale_selection($enabledLocalesInput);
         if (!array_intersect($selectedLocales, ['en', 'fr'])) {
             $errors[] = t($t, 'language_required_notice', 'At least English or French must remain enabled.');
+        }
+
+        $aiFeaturesSelected = $ai_feature_summary_enabled === 1
+            || $ai_feature_devplan_enabled === 1
+            || $ai_feature_course_rationale_enabled === 1;
+        if ($ai_enabled === 1) {
+            if ($ai_base_url === '') {
+                $errors[] = t($t, 'ai_base_url_required', 'AI Base URL is required when AI features are enabled.');
+            } else {
+                $scheme = strtolower((string)parse_url($ai_base_url, PHP_URL_SCHEME));
+                if (!in_array($scheme, ['http', 'https'], true)) {
+                    $errors[] = t($t, 'ai_base_url_invalid', 'AI Base URL must start with http:// or https://.');
+                }
+            }
+            if (!$aiFeaturesSelected) {
+                $errors[] = t($t, 'ai_feature_required', 'Enable at least one AI feature when AI is enabled.');
+            }
+        } elseif ($aiFeaturesSelected) {
+            $errors[] = t($t, 'ai_enable_required', 'Enable AI before turning on AI features.');
         }
 
         $emailTemplatesInput = $_POST['email_templates'] ?? [];
@@ -231,6 +280,25 @@ try {
             'review_enabled' => $review_enabled,
             'qb_danger_zone_enabled' => $qb_danger_zone_enabled,
             'email_templates' => encode_email_templates($emailTemplates),
+            'ai_enabled' => $ai_enabled,
+            'ai_provider' => $ai_provider,
+            'ai_base_url' => $ai_base_url !== '' ? $ai_base_url : null,
+            'ai_api_key' => $ai_api_key !== '' ? $ai_api_key : null,
+            'ai_model_chat' => $ai_model_chat !== '' ? $ai_model_chat : null,
+            'ai_model_fast' => $ai_model_fast !== '' ? $ai_model_fast : null,
+            'ai_model_fallback' => $ai_model_fallback !== '' ? $ai_model_fallback : null,
+            'ai_feature_summary_enabled' => $ai_feature_summary_enabled,
+            'ai_feature_devplan_enabled' => $ai_feature_devplan_enabled,
+            'ai_feature_course_rationale_enabled' => $ai_feature_course_rationale_enabled,
+            'ai_placement_supervisor_review' => $ai_placement_supervisor_review,
+            'ai_placement_admin_analytics' => $ai_placement_admin_analytics,
+            'ai_timeout_seconds' => $ai_timeout_seconds,
+            'ai_max_output_tokens' => $ai_max_output_tokens,
+            'ai_temperature' => number_format($ai_temperature, 2, '.', ''),
+            'ai_retry_count' => $ai_retry_count,
+            'ai_require_human_approval' => $ai_require_human_approval,
+            'ai_show_generated_badge' => $ai_show_generated_badge,
+            'ai_pii_redaction_enabled' => $ai_pii_redaction_enabled,
         ];
 
         $siteConfigColumns = site_config_available_columns($pdo);
@@ -458,6 +526,82 @@ $pageHelpKey = 'admin.settings';
       <label class="md-field"><span><?=t($t,'smtp_from_email','From Email')?></span><input name="smtp_from_email" value="<?=htmlspecialchars($cfg['smtp_from_email'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'smtp_from_name','From Name')?></span><input name="smtp_from_name" value="<?=htmlspecialchars($cfg['smtp_from_name'] ?? '')?>"></label>
       <label class="md-field"><span><?=t($t,'smtp_timeout','Connection Timeout (seconds)')?></span><input type="number" name="smtp_timeout" min="5" value="<?=htmlspecialchars((string)($cfg['smtp_timeout'] ?? 20))?>"></label>
+      <h3 class="md-subhead">
+        <?=t($t,'ai_settings_heading','AI Integration')?>
+        <?=render_help_icon(t($t,'ai_settings_hint','Connect an AI provider and control which AI capabilities are available in each part of the platform.'))?>
+      </h3>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_enabled" value="1" <?=((int)($cfg['ai_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_enable_master','Enable AI features')?></span>
+        </label>
+      </div>
+      <label class="md-field"><span><?=t($t,'ai_provider','AI Provider')?></span>
+        <?php $aiProvider = strtolower((string)($cfg['ai_provider'] ?? 'ollama')); ?>
+        <select name="ai_provider">
+          <option value="ollama" <?=$aiProvider==='ollama'?'selected':''?>>Ollama</option>
+        </select>
+      </label>
+      <label class="md-field"><span><?=t($t,'ai_base_url','AI Base URL')?></span><input name="ai_base_url" placeholder="https://ai.example.com" value="<?=htmlspecialchars((string)($cfg['ai_base_url'] ?? ''))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_api_key','AI API Key')?></span><input type="password" name="ai_api_key" placeholder="<?=htmlspecialchars(t($t,'leave_blank_keep_password','Leave blank to keep current password.'), ENT_QUOTES, 'UTF-8')?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_model_chat','Chat Model')?></span><input name="ai_model_chat" placeholder="llama3.1:8b" value="<?=htmlspecialchars((string)($cfg['ai_model_chat'] ?? ''))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_model_fast','Fast Model')?></span><input name="ai_model_fast" placeholder="phi3:mini" value="<?=htmlspecialchars((string)($cfg['ai_model_fast'] ?? ''))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_model_fallback','Fallback Model')?></span><input name="ai_model_fallback" placeholder="llama3.2:3b" value="<?=htmlspecialchars((string)($cfg['ai_model_fallback'] ?? ''))?>"></label>
+      <h4 class="md-subhead"><?=t($t,'ai_features_heading','AI Features')?></h4>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_feature_summary_enabled" value="1" <?=((int)($cfg['ai_feature_summary_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_feature_summary','Assessment response summary')?></span>
+        </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_feature_devplan_enabled" value="1" <?=((int)($cfg['ai_feature_devplan_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_feature_devplan','Draft development plan')?></span>
+        </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_feature_course_rationale_enabled" value="1" <?=((int)($cfg['ai_feature_course_rationale_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_feature_course_rationale','Training recommendation rationale')?></span>
+        </label>
+      </div>
+      <h4 class="md-subhead"><?=t($t,'ai_placements_heading','AI Placements')?></h4>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_placement_supervisor_review" value="1" <?=((int)($cfg['ai_placement_supervisor_review'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_placement_supervisor_review','Supervisor review pages')?></span>
+        </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_placement_admin_analytics" value="1" <?=((int)($cfg['ai_placement_admin_analytics'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_placement_admin_analytics','Admin analytics pages')?></span>
+        </label>
+      </div>
+      <h4 class="md-subhead"><?=t($t,'ai_runtime_heading','AI Runtime & Safety')?></h4>
+      <label class="md-field"><span><?=t($t,'ai_timeout_seconds','Timeout (seconds)')?></span><input type="number" name="ai_timeout_seconds" min="5" max="120" value="<?=htmlspecialchars((string)($cfg['ai_timeout_seconds'] ?? 20))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_max_output_tokens','Max output tokens')?></span><input type="number" name="ai_max_output_tokens" min="100" max="4000" value="<?=htmlspecialchars((string)($cfg['ai_max_output_tokens'] ?? 700))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_temperature','Temperature')?></span><input type="number" name="ai_temperature" min="0" max="1" step="0.01" value="<?=htmlspecialchars((string)($cfg['ai_temperature'] ?? '0.20'))?>"></label>
+      <label class="md-field"><span><?=t($t,'ai_retry_count','Retry count')?></span><input type="number" name="ai_retry_count" min="0" max="2" value="<?=htmlspecialchars((string)($cfg['ai_retry_count'] ?? 1))?>"></label>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_require_human_approval" value="1" <?=((int)($cfg['ai_require_human_approval'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_require_human_approval','Require human approval for AI-generated output')?></span>
+        </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_show_generated_badge" value="1" <?=((int)($cfg['ai_show_generated_badge'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_show_generated_badge','Display "AI-generated" indicator in the UI')?></span>
+        </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="ai_pii_redaction_enabled" value="1" <?=((int)($cfg['ai_pii_redaction_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'ai_pii_redaction_enabled','Enable PII redaction before model requests')?></span>
+        </label>
+      </div>
       <h3 class="md-subhead"><?=t($t,'email_template_settings','Email Templates')?></h3>
       <p class="md-help-note"><?=t($t,'email_template_settings_hint','Customize the subject and HTML content for outgoing notification emails. You can use hyperlinks and the placeholders listed for each template.')?></p>
       <?php foreach ($emailTemplateDefinitions as $key => $meta): ?>
