@@ -546,7 +546,26 @@ function ensure_site_config_schema(PDO $pdo): void {
         'upgrade_repo' => 'ALTER TABLE site_config ADD COLUMN upgrade_repo VARCHAR(255) NULL',
         'review_enabled' => 'ALTER TABLE site_config ADD COLUMN review_enabled TINYINT(1) NOT NULL DEFAULT 1',
         'qb_danger_zone_enabled' => 'ALTER TABLE site_config ADD COLUMN qb_danger_zone_enabled TINYINT(1) NOT NULL DEFAULT 1',
-        'email_templates' => 'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL'
+        'email_templates' => 'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL',
+        'ai_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_enabled TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_provider' => "ALTER TABLE site_config ADD COLUMN ai_provider VARCHAR(50) NOT NULL DEFAULT 'ollama'",
+        'ai_base_url' => 'ALTER TABLE site_config ADD COLUMN ai_base_url VARCHAR(255) NULL',
+        'ai_api_key' => 'ALTER TABLE site_config ADD COLUMN ai_api_key VARCHAR(255) NULL',
+        'ai_model_chat' => 'ALTER TABLE site_config ADD COLUMN ai_model_chat VARCHAR(128) NULL',
+        'ai_model_fast' => 'ALTER TABLE site_config ADD COLUMN ai_model_fast VARCHAR(128) NULL',
+        'ai_model_fallback' => 'ALTER TABLE site_config ADD COLUMN ai_model_fallback VARCHAR(128) NULL',
+        'ai_feature_summary_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_feature_summary_enabled TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_feature_devplan_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_feature_devplan_enabled TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_feature_course_rationale_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_feature_course_rationale_enabled TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_placement_supervisor_review' => 'ALTER TABLE site_config ADD COLUMN ai_placement_supervisor_review TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_placement_admin_analytics' => 'ALTER TABLE site_config ADD COLUMN ai_placement_admin_analytics TINYINT(1) NOT NULL DEFAULT 0',
+        'ai_timeout_seconds' => 'ALTER TABLE site_config ADD COLUMN ai_timeout_seconds INT NOT NULL DEFAULT 20',
+        'ai_max_output_tokens' => 'ALTER TABLE site_config ADD COLUMN ai_max_output_tokens INT NOT NULL DEFAULT 700',
+        'ai_temperature' => 'ALTER TABLE site_config ADD COLUMN ai_temperature DECIMAL(3,2) NOT NULL DEFAULT 0.20',
+        'ai_retry_count' => 'ALTER TABLE site_config ADD COLUMN ai_retry_count INT NOT NULL DEFAULT 1',
+        'ai_require_human_approval' => 'ALTER TABLE site_config ADD COLUMN ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1',
+        'ai_show_generated_badge' => 'ALTER TABLE site_config ADD COLUMN ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1',
+        'ai_pii_redaction_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1'
     ];
 
     foreach ($schema as $field => $sql) {
@@ -736,6 +755,25 @@ function site_config_defaults(): array
         'review_enabled' => 1,
         'qb_danger_zone_enabled' => 1,
         'email_templates' => default_email_templates(),
+        'ai_enabled' => 0,
+        'ai_provider' => 'ollama',
+        'ai_base_url' => null,
+        'ai_api_key' => null,
+        'ai_model_chat' => null,
+        'ai_model_fast' => null,
+        'ai_model_fallback' => null,
+        'ai_feature_summary_enabled' => 0,
+        'ai_feature_devplan_enabled' => 0,
+        'ai_feature_course_rationale_enabled' => 0,
+        'ai_placement_supervisor_review' => 0,
+        'ai_placement_admin_analytics' => 0,
+        'ai_timeout_seconds' => 20,
+        'ai_max_output_tokens' => 700,
+        'ai_temperature' => '0.20',
+        'ai_retry_count' => 1,
+        'ai_require_human_approval' => 1,
+        'ai_show_generated_badge' => 1,
+        'ai_pii_redaction_enabled' => 1,
     ];
 }
 
