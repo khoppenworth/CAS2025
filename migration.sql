@@ -1387,3 +1387,103 @@ SET @qi_condition_value_sql = IF(
 PREPARE stmt FROM @qi_condition_value_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+SET @users_business_role_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'business_role'
+);
+SET @users_business_role_sql = IF(
+  @users_business_role_exists = 0,
+  'ALTER TABLE users ADD COLUMN business_role VARCHAR(100) NULL AFTER profile_role_other',
+  'DO 1'
+);
+PREPARE stmt FROM @users_business_role_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_directorate_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'directorate'
+);
+SET @users_directorate_sql = IF(
+  @users_directorate_exists = 0,
+  'ALTER TABLE users ADD COLUMN directorate VARCHAR(150) NULL AFTER department',
+  'DO 1'
+);
+PREPARE stmt FROM @users_directorate_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS competency_level_band (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  min_pct DECIMAL(5,2) NOT NULL,
+  max_pct DECIMAL(5,2) NOT NULL,
+  rank_order INT NOT NULL DEFAULT 0,
+  is_system_default TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_competency_level_band_name (name),
+  UNIQUE KEY uniq_competency_level_band_rank (rank_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS competency_benchmark_policy (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  scope_type ENUM('organization','department','business_role','work_function','competency') NOT NULL DEFAULT 'organization',
+  scope_id VARCHAR(150) NULL,
+  required_pct DECIMAL(5,2) NOT NULL DEFAULT 80.00,
+  effective_from DATE NULL,
+  effective_to DATE NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_benchmark_scope (scope_type, scope_id),
+  KEY idx_benchmark_effective (effective_from, effective_to)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
+SELECT 'Not Proficient', 0.00, 49.99, 1, 1
+WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Not Proficient');
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
+SELECT 'Basic Proficiency', 50.00, 64.99, 2, 1
+WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Basic Proficiency');
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
+SELECT 'Intermediate Proficiency', 65.00, 79.99, 3, 1
+WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Intermediate Proficiency');
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
+SELECT 'Advanced Proficiency', 80.00, 89.99, 4, 1
+WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Advanced Proficiency');
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
+SELECT 'Expert', 90.00, 100.00, 5, 1
+WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Expert');
+
+INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by)
+SELECT 'organization', NULL, 80.00, NULL, NULL, NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM competency_benchmark_policy
+  WHERE scope_type = 'organization'
+    AND (scope_id IS NULL OR scope_id = '')
+);
+
+CREATE TABLE IF NOT EXISTS analytics_report_snapshot_v2 (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  questionnaire_id INT NULL,
+  generated_by INT NULL,
+  status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+  locked TINYINT(1) NOT NULL DEFAULT 0,
+  summary_json LONGTEXT NOT NULL,
+  details_json LONGTEXT NOT NULL,
+  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finalized_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_snapshot_status (status),
+  KEY idx_snapshot_questionnaire (questionnaire_id),
+  KEY idx_snapshot_generated_at (generated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

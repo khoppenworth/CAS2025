@@ -72,10 +72,12 @@ CREATE TABLE users (
   date_of_birth DATE NULL,
   phone VARCHAR(50) NULL,
   department VARCHAR(150) NULL,
+  directorate VARCHAR(150) NULL,
   cadre VARCHAR(150) NULL,
   work_function VARCHAR(100) DEFAULT NULL,
   profile_role VARCHAR(100) NULL,
   profile_role_other VARCHAR(200) NULL,
+  business_role VARCHAR(100) NULL,
   job_grade VARCHAR(50) NULL,
   education_level VARCHAR(50) NULL,
   highest_degree_subject VARCHAR(200) NULL,
@@ -218,6 +220,50 @@ CREATE TABLE questionnaire_work_function (
   FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE competency_level_band (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  min_pct DECIMAL(5,2) NOT NULL,
+  max_pct DECIMAL(5,2) NOT NULL,
+  rank_order INT NOT NULL DEFAULT 0,
+  is_system_default TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_competency_level_band_name (name),
+  UNIQUE KEY uniq_competency_level_band_rank (rank_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE competency_benchmark_policy (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  scope_type ENUM('organization','department','business_role','work_function','competency') NOT NULL DEFAULT 'organization',
+  scope_id VARCHAR(150) NULL,
+  required_pct DECIMAL(5,2) NOT NULL DEFAULT 80.00,
+  effective_from DATE NULL,
+  effective_to DATE NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_benchmark_scope (scope_type, scope_id),
+  KEY idx_benchmark_effective (effective_from, effective_to)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE analytics_report_snapshot_v2 (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  questionnaire_id INT NULL,
+  generated_by INT NULL,
+  status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+  locked TINYINT(1) NOT NULL DEFAULT 0,
+  summary_json LONGTEXT NOT NULL,
+  details_json LONGTEXT NOT NULL,
+  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finalized_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_snapshot_status (status),
+  KEY idx_snapshot_questionnaire (questionnaire_id),
+  KEY idx_snapshot_generated_at (generated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE work_function_catalog (
   slug VARCHAR(100) NOT NULL PRIMARY KEY,
   label VARCHAR(255) NOT NULL,
@@ -245,6 +291,16 @@ INSERT INTO work_function_catalog (slug, label, sort_order) VALUES
   ('security_driver', 'Security & Driver Management', 16),
   ('tmd', 'Training & Mentorship Development', 17),
   ('wim', 'Warehouse & Inventory Management', 18);
+
+INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default) VALUES
+  ('Not Proficient', 0.00, 49.99, 1, 1),
+  ('Basic Proficiency', 50.00, 64.99, 2, 1),
+  ('Intermediate Proficiency', 65.00, 79.99, 3, 1),
+  ('Advanced Proficiency', 80.00, 89.99, 4, 1),
+  ('Expert', 90.00, 100.00, 5, 1);
+
+INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by)
+VALUES ('organization', NULL, 80.00, NULL, NULL, NULL);
 
 CREATE TABLE questionnaire_assignment (
   staff_id INT NOT NULL,

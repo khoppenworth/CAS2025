@@ -1474,6 +1474,11 @@ $pageHelpKey = 'team.analytics';
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'analytics_download_reports', 'Download default reports')?></h2>
     <p><?=t($t, 'analytics_download_reports_hint', 'Quickly download PDF snapshots for offline sharing.')?></p>
+    <p>
+      <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_snapshot_v2.php'), ENT_QUOTES, 'UTF-8')?>">
+        <?=t($t, 'analytics_snapshot_v2_open', 'Open snapshot workspace')?>
+      </a>
+    </p>
     <div class="md-download-grid">
       <?php foreach ($defaultReportDownloads as $download): ?>
         <div class="md-download-card">

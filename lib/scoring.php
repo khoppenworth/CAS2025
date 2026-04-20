@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/competency_framework.php';
 /**
  * Helper functions for questionnaire scoring calculations.
  */
@@ -217,19 +219,7 @@ function questionnaire_answer_is_correct(array $answerSet, string $correctValue)
  */
 function questionnaire_competency_level(?float $score): string
 {
-    if ($score === null) {
-        return '';
-    }
-    if ($score >= 85.0) {
-        return 'Strategic';
-    }
-    if ($score >= 70.0) {
-        return 'Advanced';
-    }
-    if ($score >= 50.0) {
-        return 'Essential';
-    }
-    return 'Introductory';
+    return competency_level_from_bands($score, competency_default_level_bands());
 }
 
 /**
@@ -241,25 +231,39 @@ function questionnaire_competency_details(?float $score): array
 {
     $level = questionnaire_competency_level($score);
     return match ($level) {
-        'Strategic' => [
-            'level' => 'Strategic',
-            'interpretation' => 'Shapes direction, drives outcomes, and mentors others in complex scenarios.',
+        'Expert' => [
+            'level' => 'Expert',
+            'interpretation' => 'Consistently demonstrates mastery and can guide others.',
         ],
-        'Advanced' => [
-            'level' => 'Advanced',
-            'interpretation' => 'Performs independently and consistently meets role expectations.',
+        'Advanced Proficiency' => [
+            'level' => 'Advanced Proficiency',
+            'interpretation' => 'Performs independently and consistently exceeds most role expectations.',
         ],
-        'Essential' => [
-            'level' => 'Essential',
-            'interpretation' => 'Demonstrates core capability with some support and targeted development.',
+        'Intermediate Proficiency' => [
+            'level' => 'Intermediate Proficiency',
+            'interpretation' => 'Shows reliable capability with periodic coaching in complex tasks.',
         ],
-        'Introductory' => [
-            'level' => 'Introductory',
-            'interpretation' => 'Building foundational capability and requires structured guidance.',
+        'Basic Proficiency' => [
+            'level' => 'Basic Proficiency',
+            'interpretation' => 'Has foundational capability and benefits from targeted support.',
+        ],
+        'Not Proficient' => [
+            'level' => 'Not Proficient',
+            'interpretation' => 'Requires substantial development support and structured learning.',
         ],
         default => [
             'level' => '',
             'interpretation' => '',
         ],
     };
+}
+
+function questionnaire_competency_gap(?float $score, ?float $benchmark = null): ?float
+{
+    return competency_gap($score, $benchmark);
+}
+
+function questionnaire_competency_recommendation(?float $score): string
+{
+    return competency_recommendation($score);
 }
