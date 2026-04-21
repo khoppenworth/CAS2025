@@ -5,6 +5,9 @@ require_once __DIR__ . '/../lib/analytics_snapshot_v2.php';
 auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
+$viewer = current_user();
+$viewerRole = (string)($viewer['role'] ?? ($_SESSION['user']['role'] ?? ''));
+$viewerId = (int)($viewer['id'] ?? ($_SESSION['user']['id'] ?? 0));
 
 $locale = ensure_locale();
 $t = load_lang($locale);
@@ -18,10 +21,17 @@ if (isset($_SESSION['analytics_snapshot_v2_flash']) && is_array($_SESSION['analy
 }
 
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;
-$selectedBusinessRole = isset($_GET['business_role']) ? trim((string)$_GET['business_role']) : '';
-$selectedDirectorate = isset($_GET['directorate']) ? trim((string)$_GET['directorate']) : '';
-$selectedWorkFunction = isset($_GET['work_function']) ? trim((string)$_GET['work_function']) : '';
-$selectedUserId = isset($_GET['user_id']) ? max(0, (int)$_GET['user_id']) : 0;
+$requestedFilters = analytics_snapshot_v2_normalize_filters([
+    'business_role' => $_GET['business_role'] ?? '',
+    'directorate' => $_GET['directorate'] ?? '',
+    'work_function' => $_GET['work_function'] ?? '',
+    'user_id' => $_GET['user_id'] ?? 0,
+]);
+$effectiveFilters = analytics_snapshot_v2_apply_viewer_scope($viewer, $requestedFilters);
+$selectedBusinessRole = $effectiveFilters['business_role'];
+$selectedDirectorate = $effectiveFilters['directorate'];
+$selectedWorkFunction = $effectiveFilters['work_function'];
+$selectedUserId = $effectiveFilters['user_id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf'] ?? '')) {
@@ -35,12 +45,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $qid = isset($_POST['questionnaire_id']) ? (int)$_POST['questionnaire_id'] : 0;
             $qid = $qid > 0 ? $qid : null;
             $generatedBy = isset($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : null;
-            $filters = [
+            $requestedPostFilters = [
                 'business_role' => trim((string)($_POST['business_role'] ?? '')),
                 'directorate' => trim((string)($_POST['directorate'] ?? '')),
                 'work_function' => trim((string)($_POST['work_function'] ?? '')),
                 'user_id' => max(0, (int)($_POST['user_id'] ?? 0)),
             ];
+            $filters = analytics_snapshot_v2_apply_viewer_scope($viewer, $requestedPostFilters);
             $snapshot = analytics_snapshot_v2_generate($pdo, $qid, $generatedBy, $filters);
             $_SESSION['analytics_snapshot_v2_flash'] = [
                 'ok' => t($t, 'analytics_snapshot_v2_generated', 'Snapshot generated successfully.')
@@ -112,6 +123,9 @@ $userStmt = $pdo->query("SELECT id, COALESCE(NULLIF(full_name,''), username) AS 
 if ($userStmt) {
     $userOptions = $userStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
+if ($viewerRole === 'supervisor' && $selectedDirectorate !== '') {
+    $directorateOptions = [$selectedDirectorate];
+}
 
 $snapshots = [];
 if (analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
@@ -125,7 +139,19 @@ if (analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
     $sql .= 'ORDER BY generated_at DESC, id DESC LIMIT 50';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $snapshots = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $snapshotRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($snapshotRows as $row) {
+        if ($viewerRole !== 'supervisor') {
+            $snapshots[] = $row;
+            continue;
+        }
+        $filters = json_decode((string)($row['filters_json'] ?? '{}'), true);
+        $rowDirectorate = trim((string)($filters['directorate'] ?? ''));
+        $generatedBy = (int)($row['generated_by'] ?? 0);
+        if ($generatedBy === $viewerId || ($selectedDirectorate !== '' && $rowDirectorate === $selectedDirectorate)) {
+            $snapshots[] = $row;
+        }
+    }
 }
 
 $questionnaireMap = [];

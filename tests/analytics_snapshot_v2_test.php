@@ -35,6 +35,15 @@ $pdo->exec("INSERT INTO questionnaire_response (id, user_id, questionnaire_id, s
 $pdo->exec("INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct) VALUES
     ('organization', NULL, 80.0)");
 
+$supervisorScoped = analytics_snapshot_v2_apply_viewer_scope(
+    ['role' => 'supervisor', 'directorate' => 'Operations'],
+    ['directorate' => 'Finance', 'business_role' => 'staff', 'work_function' => '', 'user_id' => 0]
+);
+if (($supervisorScoped['directorate'] ?? '') !== 'Operations') {
+    fwrite(STDERR, "Supervisor scope should enforce own directorate.\n");
+    exit(1);
+}
+
 $snapshot = analytics_snapshot_v2_generate($pdo, 1, 99, ['business_role' => 'staff']);
 
 if (empty($snapshot['snapshot_id']) || (int)$snapshot['snapshot_id'] <= 0) {

@@ -52,6 +52,48 @@ function analytics_snapshot_v2_column_exists(PDO $pdo, string $table, string $co
     }
 }
 
+/**
+ * @param array<string, mixed> $filters
+ * @return array{business_role:string,directorate:string,user_id:int,work_function:string}
+ */
+function analytics_snapshot_v2_normalize_filters(array $filters): array
+{
+    return [
+        'business_role' => trim((string)($filters['business_role'] ?? '')),
+        'directorate' => trim((string)($filters['directorate'] ?? '')),
+        'user_id' => isset($filters['user_id']) ? max(0, (int)$filters['user_id']) : 0,
+        'work_function' => trim((string)($filters['work_function'] ?? '')),
+    ];
+}
+
+/**
+ * Apply row-level guardrails based on the viewer role.
+ *
+ * Supervisors are restricted to their own directorate (or department fallback).
+ *
+ * @param array<string, mixed> $viewer
+ * @param array<string, mixed> $filters
+ * @return array{business_role:string,directorate:string,user_id:int,work_function:string}
+ */
+function analytics_snapshot_v2_apply_viewer_scope(array $viewer, array $filters): array
+{
+    $normalized = analytics_snapshot_v2_normalize_filters($filters);
+    $role = trim((string)($viewer['role'] ?? ''));
+    if ($role !== 'supervisor') {
+        return $normalized;
+    }
+
+    $viewerDirectorate = trim((string)($viewer['directorate'] ?? ''));
+    if ($viewerDirectorate === '') {
+        $viewerDirectorate = trim((string)($viewer['department'] ?? ''));
+    }
+    if ($viewerDirectorate !== '') {
+        $normalized['directorate'] = $viewerDirectorate;
+    }
+
+    return $normalized;
+}
+
 function analytics_snapshot_v2_required_benchmark(PDO $pdo): float
 {
     if (!analytics_snapshot_v2_table_exists($pdo, 'competency_benchmark_policy')) {
@@ -152,12 +194,7 @@ function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, 
         $whereClauses[] = 'qr.questionnaire_id = ?';
         $params[] = $questionnaireId;
     }
-    $normalizedFilters = [
-        'business_role' => trim((string)($filters['business_role'] ?? '')),
-        'directorate' => trim((string)($filters['directorate'] ?? '')),
-        'user_id' => isset($filters['user_id']) ? max(0, (int)$filters['user_id']) : 0,
-        'work_function' => trim((string)($filters['work_function'] ?? '')),
-    ];
+    $normalizedFilters = analytics_snapshot_v2_normalize_filters($filters);
     if ($normalizedFilters['business_role'] !== '') {
         $whereClauses[] = 'COALESCE(NULLIF(u.business_role, \'\'), NULLIF(u.profile_role, \'\'), \'Unspecified\') = ?';
         $params[] = $normalizedFilters['business_role'];
