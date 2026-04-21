@@ -253,6 +253,7 @@ CREATE TABLE analytics_report_snapshot_v2 (
   generated_by INT NULL,
   status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
   locked TINYINT(1) NOT NULL DEFAULT 0,
+  filters_json LONGTEXT NULL,
   summary_json LONGTEXT NOT NULL,
   details_json LONGTEXT NOT NULL,
   generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

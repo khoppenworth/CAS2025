@@ -26,6 +26,32 @@ function analytics_snapshot_v2_table_exists(PDO $pdo, string $table): bool
     }
 }
 
+function analytics_snapshot_v2_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    try {
+        $driver = (string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            $stmt = $pdo->query('PRAGMA table_info(' . $table . ')');
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($rows as $row) {
+                if (strcasecmp((string)($row['name'] ?? ''), $column) === 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+        );
+        $stmt->execute([$table, $column]);
+        return ((int)$stmt->fetchColumn()) > 0;
+    } catch (Throwable $e) {
+        error_log('analytics_snapshot_v2_column_exists failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function analytics_snapshot_v2_required_benchmark(PDO $pdo): float
 {
     if (!analytics_snapshot_v2_table_exists($pdo, 'competency_benchmark_policy')) {
@@ -118,20 +144,43 @@ function analytics_snapshot_v2_build_critical_gaps(array $departmentRows, array 
 /**
  * @return array<string, mixed>
  */
-function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, ?int $generatedBy = null): array
+function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, ?int $generatedBy = null, array $filters = []): array
 {
     $params = [];
-    $where = '';
+    $whereClauses = ["qr.status IN ('submitted','approved','approved_late')"];
     if ($questionnaireId !== null && $questionnaireId > 0) {
-        $where = ' WHERE qr.questionnaire_id = ? ';
+        $whereClauses[] = 'qr.questionnaire_id = ?';
         $params[] = $questionnaireId;
     }
+    $normalizedFilters = [
+        'business_role' => trim((string)($filters['business_role'] ?? '')),
+        'directorate' => trim((string)($filters['directorate'] ?? '')),
+        'user_id' => isset($filters['user_id']) ? max(0, (int)$filters['user_id']) : 0,
+        'work_function' => trim((string)($filters['work_function'] ?? '')),
+    ];
+    if ($normalizedFilters['business_role'] !== '') {
+        $whereClauses[] = 'COALESCE(NULLIF(u.business_role, \'\'), NULLIF(u.profile_role, \'\'), \'Unspecified\') = ?';
+        $params[] = $normalizedFilters['business_role'];
+    }
+    if ($normalizedFilters['directorate'] !== '') {
+        $whereClauses[] = 'COALESCE(NULLIF(u.directorate, \'\'), \'Unknown\') = ?';
+        $params[] = $normalizedFilters['directorate'];
+    }
+    if ($normalizedFilters['user_id'] > 0) {
+        $whereClauses[] = 'u.id = ?';
+        $params[] = $normalizedFilters['user_id'];
+    }
+    if ($normalizedFilters['work_function'] !== '') {
+        $whereClauses[] = 'COALESCE(NULLIF(u.work_function, \'\'), \'Unspecified\') = ?';
+        $params[] = $normalizedFilters['work_function'];
+    }
+    $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
 
     $summaryStmt = $pdo->prepare(
         'SELECT COUNT(*) AS total_responses, COUNT(DISTINCT qr.user_id) AS total_participants, AVG(qr.score) AS average_score '
         . 'FROM questionnaire_response qr '
-        . "WHERE qr.status IN ('submitted','approved','approved_late')"
-        . ($where !== '' ? ' AND qr.questionnaire_id = ?' : '')
+        . 'JOIN users u ON u.id = qr.user_id '
+        . $whereSql
     );
     $summaryStmt->execute($params);
     $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -140,8 +189,7 @@ function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, 
         'SELECT COALESCE(NULLIF(u.department, \'\'), \'Unknown\') AS department, COUNT(*) AS total_responses, AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
-        . "WHERE qr.status IN ('submitted','approved','approved_late')"
-        . ($where !== '' ? ' AND qr.questionnaire_id = ? ' : ' ')
+        . $whereSql . ' '
         . 'GROUP BY COALESCE(NULLIF(u.department, \'\'), \'Unknown\') '
         . 'ORDER BY avg_score DESC'
     );
@@ -153,8 +201,7 @@ function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, 
         . 'COUNT(*) AS total_responses, AVG(qr.score) AS avg_score '
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
-        . "WHERE qr.status IN ('submitted','approved','approved_late')"
-        . ($where !== '' ? ' AND qr.questionnaire_id = ? ' : ' ')
+        . $whereSql . ' '
         . 'GROUP BY COALESCE(NULLIF(u.business_role, \'\'), NULLIF(u.profile_role, \'\'), \'Unspecified\') '
         . 'ORDER BY avg_score DESC'
     );
@@ -183,6 +230,7 @@ function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, 
 
     $snapshot = [
         'questionnaire_id' => $questionnaireId,
+        'filters' => $normalizedFilters,
         'summary' => $summaryPayload,
         'department_analysis' => $departmentRows,
         'role_analysis' => $roleRows,
@@ -193,25 +241,49 @@ function analytics_snapshot_v2_generate(PDO $pdo, ?int $questionnaireId = null, 
     ];
 
     if (analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
-        $insert = $pdo->prepare(
-            'INSERT INTO analytics_report_snapshot_v2 (questionnaire_id, generated_by, status, locked, summary_json, details_json, generated_at) '
-            . 'VALUES (:questionnaire_id, :generated_by, :status, :locked, :summary_json, :details_json, :generated_at)'
-        );
-        $insert->execute([
-            ':questionnaire_id' => $questionnaireId,
-            ':generated_by' => $generatedBy,
-            ':status' => 'draft',
-            ':locked' => 0,
-            ':summary_json' => json_encode($summaryPayload),
-            ':details_json' => json_encode([
-                'department_analysis' => $departmentRows,
-                'role_analysis' => $roleRows,
-                'critical_gaps' => $criticalGaps,
-                'top_strengths' => $topStrengths,
-                'top_gaps' => $topGaps,
-            ]),
-            ':generated_at' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
-        ]);
+        $hasFiltersColumn = analytics_snapshot_v2_column_exists($pdo, 'analytics_report_snapshot_v2', 'filters_json');
+        if ($hasFiltersColumn) {
+            $insert = $pdo->prepare(
+                'INSERT INTO analytics_report_snapshot_v2 (questionnaire_id, generated_by, status, locked, filters_json, summary_json, details_json, generated_at) '
+                . 'VALUES (:questionnaire_id, :generated_by, :status, :locked, :filters_json, :summary_json, :details_json, :generated_at)'
+            );
+            $insert->execute([
+                ':questionnaire_id' => $questionnaireId,
+                ':generated_by' => $generatedBy,
+                ':status' => 'draft',
+                ':locked' => 0,
+                ':filters_json' => json_encode($normalizedFilters),
+                ':summary_json' => json_encode($summaryPayload),
+                ':details_json' => json_encode([
+                    'department_analysis' => $departmentRows,
+                    'role_analysis' => $roleRows,
+                    'critical_gaps' => $criticalGaps,
+                    'top_strengths' => $topStrengths,
+                    'top_gaps' => $topGaps,
+                ]),
+                ':generated_at' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            ]);
+        } else {
+            $insert = $pdo->prepare(
+                'INSERT INTO analytics_report_snapshot_v2 (questionnaire_id, generated_by, status, locked, summary_json, details_json, generated_at) '
+                . 'VALUES (:questionnaire_id, :generated_by, :status, :locked, :summary_json, :details_json, :generated_at)'
+            );
+            $insert->execute([
+                ':questionnaire_id' => $questionnaireId,
+                ':generated_by' => $generatedBy,
+                ':status' => 'draft',
+                ':locked' => 0,
+                ':summary_json' => json_encode($summaryPayload),
+                ':details_json' => json_encode([
+                    'department_analysis' => $departmentRows,
+                    'role_analysis' => $roleRows,
+                    'critical_gaps' => $criticalGaps,
+                    'top_strengths' => $topStrengths,
+                    'top_gaps' => $topGaps,
+                ]),
+                ':generated_at' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            ]);
+        }
         $snapshot['snapshot_id'] = (int)$pdo->lastInsertId();
     }
 

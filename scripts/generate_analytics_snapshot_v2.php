@@ -21,7 +21,14 @@ if (isset($argv[2]) && is_numeric($argv[2])) {
     }
 }
 
-$snapshot = analytics_snapshot_v2_generate($pdo, $questionnaireId, $generatedBy);
+$filters = [
+    'business_role' => isset($argv[3]) ? trim((string)$argv[3]) : '',
+    'directorate' => isset($argv[4]) ? trim((string)$argv[4]) : '',
+    'work_function' => isset($argv[5]) ? trim((string)$argv[5]) : '',
+    'user_id' => isset($argv[6]) && is_numeric($argv[6]) ? max(0, (int)$argv[6]) : 0,
+];
+
+$snapshot = analytics_snapshot_v2_generate($pdo, $questionnaireId, $generatedBy, $filters);
 $snapshotId = isset($snapshot['snapshot_id']) ? (int)$snapshot['snapshot_id'] : 0;
 
 echo "Generated analytics snapshot v2.\n";

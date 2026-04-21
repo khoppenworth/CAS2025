@@ -1128,6 +1128,7 @@ function ensure_competency_reporting_schema(PDO $pdo): void
             generated_by INT NULL,
             status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
             locked TINYINT(1) NOT NULL DEFAULT 0,
+            filters_json LONGTEXT NULL,
             summary_json LONGTEXT NOT NULL,
             details_json LONGTEXT NOT NULL,
             generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1138,6 +1139,16 @@ function ensure_competency_reporting_schema(PDO $pdo): void
             KEY idx_snapshot_questionnaire (questionnaire_id),
             KEY idx_snapshot_generated_at (generated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $snapshotColumnsStmt = $pdo->query('SHOW COLUMNS FROM analytics_report_snapshot_v2');
+        $snapshotColumns = [];
+        if ($snapshotColumnsStmt) {
+            foreach ($snapshotColumnsStmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $snapshotColumns[] = (string)($column['Field'] ?? '');
+            }
+        }
+        if (!in_array('filters_json', $snapshotColumns, true)) {
+            $pdo->exec('ALTER TABLE analytics_report_snapshot_v2 ADD COLUMN filters_json LONGTEXT NULL AFTER locked');
+        }
 
         $seedBands = [
             ['Not Proficient', 0.00, 49.99, 1],

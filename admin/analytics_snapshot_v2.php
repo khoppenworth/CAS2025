@@ -18,6 +18,11 @@ if (isset($_SESSION['analytics_snapshot_v2_flash']) && is_array($_SESSION['analy
 }
 
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;
+$selectedBusinessRole = isset($_GET['business_role']) ? trim((string)$_GET['business_role']) : '';
+$selectedDirectorate = isset($_GET['directorate']) ? trim((string)$_GET['directorate']) : '';
+$selectedWorkFunction = isset($_GET['work_function']) ? trim((string)$_GET['work_function']) : '';
+$selectedUserId = isset($_GET['user_id']) ? max(0, (int)$_GET['user_id']) : 0;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf'] ?? '')) {
         http_response_code(400);
@@ -30,7 +35,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $qid = isset($_POST['questionnaire_id']) ? (int)$_POST['questionnaire_id'] : 0;
             $qid = $qid > 0 ? $qid : null;
             $generatedBy = isset($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : null;
-            $snapshot = analytics_snapshot_v2_generate($pdo, $qid, $generatedBy);
+            $filters = [
+                'business_role' => trim((string)($_POST['business_role'] ?? '')),
+                'directorate' => trim((string)($_POST['directorate'] ?? '')),
+                'work_function' => trim((string)($_POST['work_function'] ?? '')),
+                'user_id' => max(0, (int)($_POST['user_id'] ?? 0)),
+            ];
+            $snapshot = analytics_snapshot_v2_generate($pdo, $qid, $generatedBy, $filters);
             $_SESSION['analytics_snapshot_v2_flash'] = [
                 'ok' => t($t, 'analytics_snapshot_v2_generated', 'Snapshot generated successfully.')
                     . (!empty($snapshot['snapshot_id']) ? ' #' . (int)$snapshot['snapshot_id'] : ''),
@@ -65,9 +76,46 @@ if ($qStmt) {
     $questionnaires = $qStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+$businessRoleOptions = [];
+$directorateOptions = [];
+$workFunctionOptions = [];
+$userOptions = [];
+
+$roleStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(business_role, ''), NULLIF(profile_role, ''), 'Unspecified') AS role_label FROM users ORDER BY role_label ASC");
+if ($roleStmt) {
+    foreach ($roleStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $value = trim((string)($row['role_label'] ?? ''));
+        if ($value !== '') {
+            $businessRoleOptions[] = $value;
+        }
+    }
+}
+$directorateStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(directorate, ''), 'Unknown') AS directorate_label FROM users ORDER BY directorate_label ASC");
+if ($directorateStmt) {
+    foreach ($directorateStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $value = trim((string)($row['directorate_label'] ?? ''));
+        if ($value !== '') {
+            $directorateOptions[] = $value;
+        }
+    }
+}
+$workFunctionStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(work_function, ''), 'Unspecified') AS wf_label FROM users ORDER BY wf_label ASC");
+if ($workFunctionStmt) {
+    foreach ($workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $value = trim((string)($row['wf_label'] ?? ''));
+        if ($value !== '') {
+            $workFunctionOptions[] = $value;
+        }
+    }
+}
+$userStmt = $pdo->query("SELECT id, COALESCE(NULLIF(full_name,''), username) AS display_name FROM users ORDER BY display_name ASC LIMIT 500");
+if ($userStmt) {
+    $userOptions = $userStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
 $snapshots = [];
 if (analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
-    $sql = 'SELECT id, questionnaire_id, generated_by, status, locked, summary_json, generated_at, finalized_at '
+    $sql = 'SELECT id, questionnaire_id, generated_by, status, locked, filters_json, summary_json, generated_at, finalized_at '
         . 'FROM analytics_report_snapshot_v2 ';
     $params = [];
     if ($questionnaireId > 0) {
@@ -86,8 +134,24 @@ foreach ($questionnaires as $q) {
 }
 
 $csvHref = url_for('admin/analytics_snapshot_v2_export.php');
+$csvParams = [];
 if ($questionnaireId > 0) {
-    $csvHref .= '?questionnaire_id=' . $questionnaireId;
+    $csvParams[] = 'questionnaire_id=' . $questionnaireId;
+}
+if ($selectedBusinessRole !== '') {
+    $csvParams[] = 'business_role=' . rawurlencode($selectedBusinessRole);
+}
+if ($selectedDirectorate !== '') {
+    $csvParams[] = 'directorate=' . rawurlencode($selectedDirectorate);
+}
+if ($selectedWorkFunction !== '') {
+    $csvParams[] = 'work_function=' . rawurlencode($selectedWorkFunction);
+}
+if ($selectedUserId > 0) {
+    $csvParams[] = 'user_id=' . $selectedUserId;
+}
+if ($csvParams) {
+    $csvHref .= '?' . implode('&', $csvParams);
 }
 ?>
 <!doctype html>
@@ -125,6 +189,43 @@ if ($questionnaireId > 0) {
           <?php endforeach; ?>
         </select>
       </label>
+      <label class="md-field">
+        <span><?=t($t, 'role', 'Role')?></span>
+        <select name="business_role">
+          <option value=""><?=t($t, 'all_roles', 'All roles')?></option>
+          <?php foreach ($businessRoleOptions as $value): ?>
+            <option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$selectedBusinessRole === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label class="md-field">
+        <span><?=t($t, 'directorate', 'Directorate')?></span>
+        <select name="directorate">
+          <option value=""><?=t($t, 'all_directorates', 'All directorates')?></option>
+          <?php foreach ($directorateOptions as $value): ?>
+            <option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$selectedDirectorate === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label class="md-field">
+        <span><?=t($t, 'work_function', 'Work Role')?></span>
+        <select name="work_function">
+          <option value=""><?=t($t, 'all_work_roles', 'All work roles')?></option>
+          <?php foreach ($workFunctionOptions as $value): ?>
+            <option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$selectedWorkFunction === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label class="md-field">
+        <span><?=t($t, 'individual', 'Individual')?></span>
+        <select name="user_id">
+          <option value="0"><?=t($t, 'all_individuals', 'All individuals')?></option>
+          <?php foreach ($userOptions as $u): ?>
+            <?php $uid = (int)($u['id'] ?? 0); ?>
+            <option value="<?=$uid?>" <?=$selectedUserId === $uid ? 'selected' : ''?>><?=htmlspecialchars((string)($u['display_name'] ?? ('#' . $uid)), ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
       <button class="md-button md-primary md-elev-2"><?=t($t, 'generate_snapshot', 'Generate snapshot')?></button>
       <a class="md-button" href="<?=htmlspecialchars($csvHref, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'export_csv', 'Export CSV')?></a>
     </form>
@@ -145,6 +246,7 @@ if ($questionnaireId > 0) {
               <th><?=t($t, 'average_score', 'Average score (%)')?></th>
               <th><?=t($t, 'competency_level', 'Competency level')?></th>
               <th><?=t($t, 'generated_at', 'Generated at')?></th>
+              <th><?=t($t, 'filters', 'Filters')?></th>
               <th><?=t($t, 'actions', 'Actions')?></th>
             </tr>
           </thead>
@@ -152,9 +254,15 @@ if ($questionnaireId > 0) {
             <?php foreach ($snapshots as $row): ?>
               <?php
                 $summary = json_decode((string)($row['summary_json'] ?? '{}'), true);
+                $filters = json_decode((string)($row['filters_json'] ?? '{}'), true);
                 $avg = isset($summary['average_score']) ? round((float)$summary['average_score'], 1) : null;
                 $level = (string)($summary['competency_level'] ?? '—');
                 $qid = (int)($row['questionnaire_id'] ?? 0);
+                $filterParts = [];
+                if (!empty($filters['business_role'])) { $filterParts[] = 'Role: ' . (string)$filters['business_role']; }
+                if (!empty($filters['directorate'])) { $filterParts[] = 'Directorate: ' . (string)$filters['directorate']; }
+                if (!empty($filters['work_function'])) { $filterParts[] = 'Work role: ' . (string)$filters['work_function']; }
+                if (!empty($filters['user_id'])) { $filterParts[] = 'User ID: ' . (int)$filters['user_id']; }
               ?>
               <tr>
                 <td><?= (int)($row['id'] ?? 0) ?></td>
@@ -163,6 +271,7 @@ if ($questionnaireId > 0) {
                 <td><?= $avg === null ? '—' : htmlspecialchars((string)$avg, ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?=htmlspecialchars($level !== '' ? $level : '—', ENT_QUOTES, 'UTF-8')?></td>
                 <td><?=htmlspecialchars((string)($row['generated_at'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
+                <td><?=htmlspecialchars($filterParts ? implode(' · ', $filterParts) : t($t, 'all', 'All'), ENT_QUOTES, 'UTF-8')?></td>
                 <td>
                   <?php if (empty($row['locked'])): ?>
                     <form method="post" style="display:inline;">

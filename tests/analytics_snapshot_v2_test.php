@@ -15,6 +15,7 @@ $pdo->exec('CREATE TABLE analytics_report_snapshot_v2 (
     generated_by INT NULL,
     status TEXT NOT NULL DEFAULT "draft",
     locked INT NOT NULL DEFAULT 0,
+    filters_json TEXT NULL,
     summary_json TEXT NOT NULL,
     details_json TEXT NOT NULL,
     generated_at TEXT NOT NULL,
@@ -34,7 +35,7 @@ $pdo->exec("INSERT INTO questionnaire_response (id, user_id, questionnaire_id, s
 $pdo->exec("INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct) VALUES
     ('organization', NULL, 80.0)");
 
-$snapshot = analytics_snapshot_v2_generate($pdo, 1, 99);
+$snapshot = analytics_snapshot_v2_generate($pdo, 1, 99, ['business_role' => 'staff']);
 
 if (empty($snapshot['snapshot_id']) || (int)$snapshot['snapshot_id'] <= 0) {
     fwrite(STDERR, "Snapshot ID should be generated and persisted.\n");
@@ -60,6 +61,12 @@ if ($finalized !== true) {
 $locked = $pdo->query('SELECT locked, status FROM analytics_report_snapshot_v2 WHERE id = ' . (int)$snapshot['snapshot_id'])->fetch(PDO::FETCH_ASSOC);
 if ((int)($locked['locked'] ?? 0) !== 1 || (string)($locked['status'] ?? '') !== 'finalized') {
     fwrite(STDERR, "Finalized snapshot should be locked and marked finalized.\n");
+    exit(1);
+}
+$persistedFilters = $pdo->query('SELECT filters_json FROM analytics_report_snapshot_v2 WHERE id = ' . (int)$snapshot['snapshot_id'])->fetchColumn();
+$decodedFilters = json_decode((string)$persistedFilters, true);
+if (($decodedFilters['business_role'] ?? '') !== 'staff') {
+    fwrite(STDERR, "Expected persisted business_role filter.\n");
     exit(1);
 }
 
