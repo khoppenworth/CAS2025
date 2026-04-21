@@ -1470,3 +1470,37 @@ WHERE NOT EXISTS (
   WHERE scope_type = 'organization'
     AND (scope_id IS NULL OR scope_id = '')
 );
+
+CREATE TABLE IF NOT EXISTS analytics_report_snapshot_v2 (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  questionnaire_id INT NULL,
+  generated_by INT NULL,
+  status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+  locked TINYINT(1) NOT NULL DEFAULT 0,
+  filters_json LONGTEXT NULL,
+  summary_json LONGTEXT NOT NULL,
+  details_json LONGTEXT NOT NULL,
+  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finalized_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_snapshot_status (status),
+  KEY idx_snapshot_questionnaire (questionnaire_id),
+  KEY idx_snapshot_generated_at (generated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @snapshot_filters_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'analytics_report_snapshot_v2'
+    AND COLUMN_NAME = 'filters_json'
+);
+SET @snapshot_filters_sql = IF(
+  @snapshot_filters_exists = 0,
+  'ALTER TABLE analytics_report_snapshot_v2 ADD COLUMN filters_json LONGTEXT NULL AFTER locked',
+  'DO 1'
+);
+PREPARE stmt FROM @snapshot_filters_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

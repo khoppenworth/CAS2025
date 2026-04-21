@@ -247,6 +247,24 @@ CREATE TABLE competency_benchmark_policy (
   KEY idx_benchmark_effective (effective_from, effective_to)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE analytics_report_snapshot_v2 (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  questionnaire_id INT NULL,
+  generated_by INT NULL,
+  status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+  locked TINYINT(1) NOT NULL DEFAULT 0,
+  filters_json LONGTEXT NULL,
+  summary_json LONGTEXT NOT NULL,
+  details_json LONGTEXT NOT NULL,
+  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finalized_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_snapshot_status (status),
+  KEY idx_snapshot_questionnaire (questionnaire_id),
+  KEY idx_snapshot_generated_at (generated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE work_function_catalog (
   slug VARCHAR(100) NOT NULL PRIMARY KEY,
   label VARCHAR(255) NOT NULL,

@@ -1122,6 +1122,34 @@ function ensure_competency_reporting_schema(PDO $pdo): void
             KEY idx_benchmark_effective (effective_from, effective_to)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+        $pdo->exec("CREATE TABLE IF NOT EXISTS analytics_report_snapshot_v2 (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            questionnaire_id INT NULL,
+            generated_by INT NULL,
+            status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+            locked TINYINT(1) NOT NULL DEFAULT 0,
+            filters_json LONGTEXT NULL,
+            summary_json LONGTEXT NOT NULL,
+            details_json LONGTEXT NOT NULL,
+            generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finalized_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_snapshot_status (status),
+            KEY idx_snapshot_questionnaire (questionnaire_id),
+            KEY idx_snapshot_generated_at (generated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $snapshotColumnsStmt = $pdo->query('SHOW COLUMNS FROM analytics_report_snapshot_v2');
+        $snapshotColumns = [];
+        if ($snapshotColumnsStmt) {
+            foreach ($snapshotColumnsStmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $snapshotColumns[] = (string)($column['Field'] ?? '');
+            }
+        }
+        if (!in_array('filters_json', $snapshotColumns, true)) {
+            $pdo->exec('ALTER TABLE analytics_report_snapshot_v2 ADD COLUMN filters_json LONGTEXT NULL AFTER locked');
+        }
+
         $seedBands = [
             ['Not Proficient', 0.00, 49.99, 1],
             ['Basic Proficiency', 50.00, 64.99, 2],
