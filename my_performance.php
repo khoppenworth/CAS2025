@@ -235,7 +235,7 @@ $pageHelpKey = 'workspace.my_performance';
   <?php if ($flashMessage): ?><div class="md-alert success"><?=htmlspecialchars($flashMessage, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
   <div class="md-card md-elev-2">
     <div class="md-card-title-row">
-      <h2 class="md-card-title"><?=t($t,'performance_overview','Performance Overview')?></h2>
+      <h2 class="md-card-title"><?=t($t,'performance_overview','My Overview')?></h2>
       <a
         class="md-button md-outline md-card-action"
         href="<?=htmlspecialchars($performanceDownloadUrl, ENT_QUOTES, 'UTF-8')?>"
@@ -342,7 +342,7 @@ $pageHelpKey = 'workspace.my_performance';
     <?php endif; ?>
   </div>
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t,'recommended_courses','Recommended Courses')?></h2>
+    <h2 class="md-card-title"><?=t($t,'recommended_courses','Personal Improvement Plan (PIP)')?></h2>
     <?php if ($recommendedCourses): ?>
       <table class="md-table">
         <thead><tr><th><?=t($t,'course','Course')?></th><th><?=t($t,'link','Link')?></th><th><?=t($t,'score_band','Score Band')?></th></tr></thead>
