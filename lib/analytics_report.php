@@ -61,6 +61,43 @@ function analytics_report_parse_recipients(string $input): array
     return array_values($emails);
 }
 
+function analytics_report_table_has_column(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+    $key = strtolower($table . '.' . $column);
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $driver = (string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    try {
+        if ($driver === 'sqlite') {
+            $stmt = $pdo->query("PRAGMA table_info($table)");
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($rows as $row) {
+                if (strcasecmp((string)($row['name'] ?? ''), $column) === 0) {
+                    $cache[$key] = true;
+                    return true;
+                }
+            }
+        } else {
+            $stmt = $pdo->query('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`');
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($rows as $row) {
+                if (strcasecmp((string)($row['Field'] ?? ''), $column) === 0) {
+                    $cache[$key] = true;
+                    return true;
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('analytics_report schema lookup failed: ' . $e->getMessage());
+    }
+
+    $cache[$key] = false;
+    return false;
+}
+
 function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool $includeDetails = false): array
 {
     $translations = [];
@@ -276,6 +313,42 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
     $periodSeries = analytics_report_collect_period_series($pdo, null);
     $selectedPeriodSeries = $selectedId ? analytics_report_collect_period_series($pdo, $selectedId) : [];
 
+    $departmentAnalysis = [];
+    if (analytics_report_table_has_column($pdo, 'users', 'department')) {
+        $departmentStmt = $pdo->query(
+            "SELECT COALESCE(NULLIF(u.department, ''), 'Unknown') AS department, COUNT(*) AS total_responses, AVG(qr.score) AS avg_score "
+            . "FROM questionnaire_response qr "
+            . "JOIN users u ON u.id = qr.user_id "
+            . "GROUP BY COALESCE(NULLIF(u.department, ''), 'Unknown') "
+            . "ORDER BY avg_score DESC, total_responses DESC"
+        );
+        $departmentAnalysis = $departmentStmt ? ($departmentStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
+    $roleOverview = [];
+    if (analytics_report_table_has_column($pdo, 'users', 'cadre')) {
+        $roleStmt = $pdo->query(
+            "SELECT COALESCE(NULLIF(u.cadre, ''), 'Unspecified') AS role_label, COUNT(DISTINCT qr.user_id) AS total_participants, AVG(qr.score) AS avg_score "
+            . "FROM questionnaire_response qr "
+            . "JOIN users u ON u.id = qr.user_id "
+            . "GROUP BY COALESCE(NULLIF(u.cadre, ''), 'Unspecified') "
+            . "ORDER BY total_participants DESC, role_label ASC"
+        );
+        $roleOverview = $roleStmt ? ($roleStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
+    $genderDistribution = [];
+    if (analytics_report_table_has_column($pdo, 'users', 'gender')) {
+        $genderStmt = $pdo->query(
+            "SELECT COALESCE(NULLIF(u.gender, ''), 'Unspecified') AS gender_label, COUNT(DISTINCT qr.user_id) AS total_participants "
+            . "FROM questionnaire_response qr "
+            . "JOIN users u ON u.id = qr.user_id "
+            . "GROUP BY COALESCE(NULLIF(u.gender, ''), 'Unspecified') "
+            . "ORDER BY total_participants DESC, gender_label ASC"
+        );
+        $genderDistribution = $genderStmt ? ($genderStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
     return [
         'summary' => $summary,
         'total_participants' => $totalParticipants,
@@ -289,6 +362,9 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
         'work_function_chart' => $workFunctionChart,
         'period_chart' => $periodSeries,
         'period_chart_selected' => $selectedPeriodSeries,
+        'department_analysis' => $departmentAnalysis,
+        'role_overview' => $roleOverview,
+        'gender_distribution' => $genderDistribution,
         'include_details' => $includeDetails,
         'generated_at' => new DateTimeImmutable('now'),
     ];
@@ -356,20 +432,70 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addParagraph('Generated on ' . $generatedAt->format('Y-m-d H:i'));
 
     $summary = $snapshot['summary'];
-    $summaryRows = [
-        ['Total responses', analytics_report_format_number($summary['total_responses'] ?? 0)],
-        ['Approved', analytics_report_format_number($summary['approved_count'] ?? 0)],
-        ['Submitted', analytics_report_format_number($summary['submitted_count'] ?? 0)],
-        ['Draft', analytics_report_format_number($summary['draft_count'] ?? 0)],
-        ['Rejected', analytics_report_format_number($summary['rejected_count'] ?? 0)],
-        ['Average score', analytics_report_format_score($summary['avg_score'])],
-        ['Average competency', questionnaire_competency_level(isset($summary['avg_score']) ? (float)$summary['avg_score'] : null) ?: '—'],
-        ['Latest submission', analytics_report_format_date($summary['latest_at'])],
-        ['Unique participants', analytics_report_format_number($snapshot['total_participants'] ?? 0)],
-    ];
+    $isFullCompetencyReport = !empty($snapshot['include_details']);
+    $avgScore = isset($summary['avg_score']) ? (float)$summary['avg_score'] : null;
+    $competencyLevel = questionnaire_competency_level($avgScore) ?: '—';
 
-    $pdf->addSubheading('Overall summary');
-    $pdf->addTable(['Metric', 'Value'], $summaryRows, [32, 18]);
+    $assessmentPeriod = 'All available periods';
+    if (!empty($snapshot['period_chart'])) {
+        $firstPeriod = (string)($snapshot['period_chart'][0]['label'] ?? '');
+        $lastPeriod = (string)($snapshot['period_chart'][count($snapshot['period_chart']) - 1]['label'] ?? '');
+        if ($firstPeriod !== '' && $lastPeriod !== '') {
+            $assessmentPeriod = $firstPeriod === $lastPeriod ? $firstPeriod : ($firstPeriod . ' → ' . $lastPeriod);
+        }
+    }
+
+    $departmentsCovered = count($snapshot['department_analysis'] ?? []);
+    $pdf->addSubheading('1. Executive Summary');
+    $pdf->addParagraph('Assessment Period: ' . $assessmentPeriod);
+    $pdf->addParagraph('Total Participants: ' . analytics_report_format_number($snapshot['total_participants'] ?? 0));
+    $pdf->addParagraph('Departments Covered: ' . analytics_report_format_number($departmentsCovered));
+    $pdf->addParagraph('Assessment Date: ' . $generatedAt->format('Y-m-d'));
+    $pdf->addParagraph('Overall Organizational Competency Score: ' . analytics_report_format_score($avgScore));
+    $pdf->addParagraph('Competency Level Classification: ' . $competencyLevel);
+    $pdf->addBulletList([
+        'Not Proficient',
+        'Basic Proficiency',
+        'Intermediate Proficiency',
+        'Advanced Proficiency',
+        'Expert Level',
+    ]);
+
+    $topStrengths = [];
+    $topGaps = [];
+    foreach ($snapshot['questionnaires'] as $row) {
+        if (!isset($row['avg_score']) || $row['avg_score'] === null) {
+            continue;
+        }
+        $topStrengths[] = [
+            'name' => (string)($row['title'] ?? 'Questionnaire'),
+            'score' => (float)$row['avg_score'],
+        ];
+    }
+    usort($topStrengths, static fn(array $a, array $b): int => ($b['score'] <=> $a['score']));
+    $topGaps = array_reverse($topStrengths);
+    $topStrengths = array_slice($topStrengths, 0, 3);
+    $topGaps = array_slice($topGaps, 0, 3);
+
+    $highestDepartment = 'N/A';
+    $lowestDepartment = 'N/A';
+    if (!empty($snapshot['department_analysis'])) {
+        $departmentRows = array_values(array_filter($snapshot['department_analysis'], static function (array $row): bool {
+            return isset($row['avg_score']) && $row['avg_score'] !== null;
+        }));
+        if ($departmentRows) {
+            usort($departmentRows, static fn(array $a, array $b): int => ((float)$b['avg_score'] <=> (float)$a['avg_score']));
+            $highestDepartment = (string)($departmentRows[0]['department'] ?? 'N/A');
+            $lowestDepartment = (string)($departmentRows[count($departmentRows) - 1]['department'] ?? 'N/A');
+        }
+    }
+
+    $pdf->addParagraph('Key Findings:');
+    $pdf->addBulletList([
+        'Top 3 strongest competencies: ' . ($topStrengths ? implode(', ', array_map(static fn(array $row): string => $row['name'] . ' (' . number_format($row['score'], 1) . '%)', $topStrengths)) : 'N/A'),
+        'Top 3 critical competency gaps: ' . ($topGaps ? implode(', ', array_map(static fn(array $row): string => $row['name'] . ' (' . number_format(100 - $row['score'], 1) . '% gap)', $topGaps)) : 'N/A'),
+        'Departments with highest and lowest performance: ' . $highestDepartment . ' / ' . $lowestDepartment,
+    ]);
 
     $pdf->addSubheading('Questionnaire performance');
     $questionnaireRows = [];
@@ -534,9 +660,117 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
     }
 
-    if (!empty($snapshot['include_details']) && !empty($snapshot['user_breakdown'])) {
+    if ($isFullCompetencyReport) {
+        $pdf->addSubheading('3. Participant Overview Auto-Generated');
+        $roleRows = $snapshot['role_overview'] ?? [];
+        $directorCount = 0;
+        $managerCount = 0;
+        $leaderCount = 0;
+        $staffCount = 0;
+        foreach ($roleRows as $roleRow) {
+            $label = strtolower(trim((string)($roleRow['role_label'] ?? '')));
+            $count = (int)($roleRow['total_participants'] ?? 0);
+            if (str_contains($label, 'director')) {
+                $directorCount += $count;
+            } elseif (str_contains($label, 'manager')) {
+                $managerCount += $count;
+            } elseif (str_contains($label, 'leader')) {
+                $leaderCount += $count;
+            } else {
+                $staffCount += $count;
+            }
+        }
+        $pdf->addParagraph('By Role:');
+        $pdf->addBulletList([
+            'Directors: ' . analytics_report_format_number($directorCount),
+            'Managers: ' . analytics_report_format_number($managerCount),
+            'Team Leaders: ' . analytics_report_format_number($leaderCount),
+            'Staff: ' . analytics_report_format_number($staffCount),
+        ]);
+
+        $pdf->addParagraph('By Department:');
+        $departmentLines = [];
+        foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 6) as $deptRow) {
+            $departmentLines[] = (string)($deptRow['department'] ?? 'Department') . ' – ' . analytics_report_format_number($deptRow['total_responses'] ?? 0) . ' participants';
+        }
+        $pdf->addBulletList($departmentLines ?: ['No department data available']);
+
+        $pdf->addParagraph('Gender Distribution (Auto-populated from registration data)');
+        $genderLines = [];
+        foreach ($snapshot['gender_distribution'] ?? [] as $genderRow) {
+            $genderLines[] = (string)($genderRow['gender_label'] ?? 'Unspecified') . ': ' . analytics_report_format_number($genderRow['total_participants'] ?? 0);
+        }
+        $pdf->addBulletList($genderLines ?: ['No gender data available']);
+
+        $pdf->addSubheading('4. Overall Competency Results Dashboard');
+        $orgRows = [];
+        foreach (array_slice($snapshot['questionnaires'] ?? [], 0, 6) as $row) {
+            if (!isset($row['avg_score']) || $row['avg_score'] === null) {
+                continue;
+            }
+            $score = (float)$row['avg_score'];
+            $orgRows[] = [
+                (string)($row['title'] ?? 'Competency Area'),
+                number_format($score, 1) . '%',
+                questionnaire_competency_level($score) ?: '—',
+                number_format(max(0, 100 - $score), 1) . '%',
+            ];
+        }
+        if ($orgRows) {
+            $pdf->addTable(['Competency Area', 'Average Score (%)', 'Competency Level', 'Gap (%)'], $orgRows, [22, 14, 14, 10]);
+        } else {
+            $pdf->addParagraph('No organization-level competency rows are available yet.');
+        }
+        $pdf->addParagraph('(Gap % = 100% – actual score OR based on required benchmark level)');
+
+        $pdf->addSubheading('5. Department-Level Analysis');
+        $deptRows = [];
+        foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 10) as $row) {
+            $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
+            $deptRows[] = [
+                (string)($row['department'] ?? 'Unknown'),
+                analytics_report_format_score($score),
+                questionnaire_competency_level($score) ?: '—',
+                $score !== null ? number_format(max(0, 100 - $score), 1) . '%' : '—',
+            ];
+        }
+        if ($deptRows) {
+            $pdf->addTable(['Department', 'Average Score', 'Level', 'Key Gap'], $deptRows, [24, 12, 12, 12]);
+        } else {
+            $pdf->addParagraph('No department-level records are available yet.');
+        }
+        $pdf->addBulletList([
+            'Heatmap visualization',
+            'Bar chart comparison across departments',
+        ]);
+
+        $pdf->addSubheading('6. Role-Based Analysis');
+        $roleTable = [];
+        foreach (array_slice($roleRows, 0, 10) as $row) {
+            $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
+            $roleTable[] = [
+                (string)($row['role_label'] ?? 'Role'),
+                analytics_report_format_score($score),
+                $score !== null ? number_format(max(0, 100 - $score), 1) . '%' : '—',
+            ];
+        }
+        if ($roleTable) {
+            $pdf->addTable(['Role', 'Average Score', 'Primary Gap'], $roleTable, [26, 14, 20]);
+        } else {
+            $pdf->addParagraph('No role-based records are available yet.');
+        }
+        $pdf->addParagraph('This section allows filtering by:');
+        $pdf->addBulletList([
+            'Role',
+            'Work Role',
+            'Directorate',
+            'Individual',
+        ]);
+    }
+
+    if ($isFullCompetencyReport && !empty($snapshot['user_breakdown'])) {
         $selectedTitle = trim((string)($snapshot['selected_questionnaire_title'] ?? ''));
-        $pdf->addSubheading('Top contributors' . ($selectedTitle !== '' ? ': ' . $selectedTitle : ''));
+        $pdf->addSubheading('Full Competency Report Contributors' . ($selectedTitle !== '' ? ': ' . $selectedTitle : ''));
         $detailRows = [];
         foreach ($snapshot['user_breakdown'] as $row) {
             $display = trim((string)($row['full_name'] ?? ''));

@@ -316,137 +316,6 @@ if (isset($_SESSION['analytics_report_flash']) && is_array($_SESSION['analytics_
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_check();
-    $action = $_POST['action'] ?? '';
-    if ($action === 'send-report') {
-        $recipientInput = trim((string)($_POST['report_recipients'] ?? ''));
-        $selectedQuestionnaire = (int)($_POST['report_questionnaire_id'] ?? 0);
-        $includeDetails = !empty($_POST['report_include_details']);
-        $recipients = analytics_report_parse_recipients($recipientInput);
-        if (!$recipients) {
-            $reportError = t($t, 'analytics_report_recipients_required', 'Please provide at least one valid email address.');
-        } else {
-            $targetQuestionnaire = $selectedQuestionnaire > 0 ? $selectedQuestionnaire : null;
-            try {
-                $snapshot = analytics_report_snapshot($pdo, $targetQuestionnaire, $includeDetails);
-                $pdfData = analytics_report_render_pdf($snapshot, $cfg);
-                /** @var DateTimeImmutable $generatedAt */
-                $generatedAt = $snapshot['generated_at'];
-                $filename = analytics_report_filename($snapshot['selected_questionnaire_id'], $generatedAt);
-                $siteName = trim((string)($cfg['site_name'] ?? 'HR Assessment'));
-                $subject = ($siteName !== '' ? $siteName : 'HR Assessment') . ' analytics report - ' . $generatedAt->format('Y-m-d');
-                $bodyLines = [
-                    'Hello,',
-                    '',
-                    'Please find the attached analytics report generated on ' . $generatedAt->format('Y-m-d H:i') . '.',
-                ];
-                if ($includeDetails && !empty($snapshot['selected_questionnaire_title'])) {
-                    $bodyLines[] = 'Questionnaire focus: ' . $snapshot['selected_questionnaire_title'];
-                }
-                $bodyLines[] = '';
-                $bodyLines[] = 'Regards,';
-                $bodyLines[] = $siteName !== '' ? $siteName : 'HR Assessment';
-                $attachments = [[
-                    'filename' => $filename,
-                    'content' => $pdfData,
-                    'content_type' => 'application/pdf',
-                ]];
-                if (send_notification_email($cfg, $recipients, $subject, implode("\n", $bodyLines), $attachments)) {
-                    $reportMessage = t($t, 'analytics_report_sent', 'Analytics report emailed successfully.');
-                } else {
-                    $reportError = t($t, 'analytics_report_send_failed', 'Unable to send the analytics report email.');
-                }
-            } catch (Throwable $e) {
-                error_log('analytics report send failed: ' . $e->getMessage());
-                $reportError = t($t, 'analytics_report_send_failed', 'Unable to send the analytics report email.');
-            }
-        }
-    } elseif ($action === 'create-schedule') {
-        $recipientInput = trim((string)($_POST['schedule_recipients'] ?? ''));
-        $frequency = strtolower(trim((string)($_POST['schedule_frequency'] ?? 'weekly')));
-        if (!in_array($frequency, analytics_report_allowed_frequencies(), true)) {
-            $frequency = 'weekly';
-        }
-        $includeDetails = !empty($_POST['schedule_include_details']);
-        $questionnaireSelection = (int)($_POST['schedule_questionnaire_id'] ?? 0);
-        $recipients = analytics_report_parse_recipients($recipientInput);
-        if (!$recipients) {
-            $reportError = t($t, 'analytics_report_recipients_required', 'Please provide at least one valid email address.');
-        } else {
-            $startInput = trim((string)($_POST['schedule_start_at'] ?? ''));
-            if ($startInput === '') {
-                $startAt = new DateTimeImmutable('now');
-            } else {
-                $startAt = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $startInput) ?: null;
-            }
-            if (!$startAt) {
-                $reportError = t($t, 'analytics_schedule_start_invalid', 'Please provide a valid start date and time.');
-            } else {
-                $targetQuestionnaire = $questionnaireSelection > 0 ? $questionnaireSelection : null;
-                $recipientsStored = implode(', ', $recipients);
-                $createdBy = $_SESSION['user']['id'] ?? null;
-                try {
-                    $stmt = $pdo->prepare(
-                        'INSERT INTO analytics_report_schedule (recipients, frequency, next_run_at, last_run_at, created_by, questionnaire_id, include_details, active, created_at, updated_at) '
-                        . 'VALUES (?, ?, ?, NULL, ?, ?, ?, 1, NOW(), NOW())'
-                    );
-                    $stmt->execute([
-                        $recipientsStored,
-                        $frequency,
-                        $startAt->format('Y-m-d H:i:s'),
-                        $createdBy,
-                        $targetQuestionnaire,
-                        $includeDetails ? 1 : 0,
-                    ]);
-                    $reportMessage = t($t, 'analytics_schedule_created', 'Report schedule created successfully.');
-                } catch (PDOException $e) {
-                    error_log('analytics schedule create failed: ' . $e->getMessage());
-                    $reportError = t($t, 'analytics_schedule_create_failed', 'Unable to save the schedule. Please try again.');
-                }
-            }
-        }
-    } elseif ($action === 'toggle-schedule') {
-        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
-        if ($scheduleId > 0) {
-            try {
-                $rowStmt = $pdo->prepare('SELECT active FROM analytics_report_schedule WHERE id = ?');
-                $rowStmt->execute([$scheduleId]);
-                $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
-                if ($row) {
-                    $newStatus = ((int)($row['active'] ?? 0) === 1) ? 0 : 1;
-                    $update = $pdo->prepare('UPDATE analytics_report_schedule SET active = ?, updated_at = NOW() WHERE id = ?');
-                    $update->execute([$newStatus, $scheduleId]);
-                    $reportMessage = $newStatus
-                        ? t($t, 'analytics_schedule_enabled', 'Schedule enabled.')
-                        : t($t, 'analytics_schedule_paused', 'Schedule paused.');
-                } else {
-                    $reportError = t($t, 'analytics_schedule_missing', 'Schedule not found.');
-                }
-            } catch (PDOException $e) {
-                error_log('analytics schedule toggle failed: ' . $e->getMessage());
-                $reportError = t($t, 'analytics_schedule_update_failed', 'Unable to update the schedule.');
-            }
-        } else {
-            $reportError = t($t, 'analytics_schedule_missing', 'Schedule not found.');
-        }
-    } elseif ($action === 'delete-schedule') {
-        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
-        if ($scheduleId > 0) {
-            try {
-                $stmt = $pdo->prepare('DELETE FROM analytics_report_schedule WHERE id = ?');
-                $stmt->execute([$scheduleId]);
-                $reportMessage = t($t, 'analytics_schedule_deleted', 'Schedule removed.');
-            } catch (PDOException $e) {
-                error_log('analytics schedule delete failed: ' . $e->getMessage());
-                $reportError = t($t, 'analytics_schedule_update_failed', 'Unable to update the schedule.');
-            }
-        } else {
-            $reportError = t($t, 'analytics_schedule_missing', 'Schedule not found.');
-        }
-    }
-}
-
 $summary = [];
 $totalParticipants = 0;
 $questionnaires = [];
@@ -638,66 +507,15 @@ $downloadUrlFor = static function (array $params = []) use ($pdo, $userId): stri
     }
 };
 
-$lookerStudioQuery = <<<'SQL'
-SELECT
-  qr.id AS response_id,
-  qr.created_at AS response_created_at,
-  qr.status AS response_status,
-  qr.score AS response_score,
-  qr.reviewed_at,
-  qr.review_comment,
-  pp.label AS performance_period,
-  q.id AS questionnaire_id,
-  COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key,
-  q.title AS questionnaire_title,
-  u.id AS user_id,
-  u.username,
-  u.full_name,
-  u.email,
-  u.department,
-  u.cadre,
-  u.work_function,
-  u.gender,
-  u.account_status,
-  u.created_at AS user_created_at,
-  reviewer.full_name AS reviewer_name,
-  reviewer.email AS reviewer_email,
-  qi.id AS item_id,
-  qi.linkId AS item_link_id,
-  qi.text AS item_text,
-  qi.type AS item_type,
-  qs.title AS section_title,
-  qri.answer AS item_answer,
-  tr.recommended_courses,
-  tr.recommendation_reasons
-FROM questionnaire_response qr
-JOIN users u ON u.id = qr.user_id
-JOIN questionnaire q ON q.id = qr.questionnaire_id
-LEFT JOIN users reviewer ON reviewer.id = qr.reviewed_by
-LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id
-LEFT JOIN questionnaire_response_item qri ON qri.response_id = qr.id
-LEFT JOIN questionnaire_item qi ON qi.linkId = qri.linkId AND qi.questionnaire_id = qr.questionnaire_id
-LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id
-LEFT JOIN (
-  SELECT
-    tr.questionnaire_response_id,
-    GROUP_CONCAT(cc.title ORDER BY cc.title SEPARATOR '; ') AS recommended_courses,
-    GROUP_CONCAT(tr.recommendation_reason ORDER BY cc.title SEPARATOR '; ') AS recommendation_reasons
-  FROM training_recommendation tr
-  JOIN course_catalogue cc ON cc.id = tr.course_id
-  GROUP BY tr.questionnaire_response_id
-) tr ON tr.questionnaire_response_id = qr.id;
-SQL;
-
 $defaultReportDownloads = [
     [
-        'title' => t($t, 'analytics_download_summary', 'Overall summary report'),
-        'description' => t($t, 'analytics_download_summary_hint', 'Includes total responses, averages, and questionnaire performance.'),
+        'title' => t($t, 'analytics_download_summary', 'Executive Summary'),
+        'description' => t($t, 'analytics_download_summary_hint', 'High-level competency health summary for leadership review.'),
         'url' => $downloadUrlFor([]),
     ],
     [
-        'title' => t($t, 'analytics_download_summary_details', 'Summary with top contributors'),
-        'description' => t($t, 'analytics_download_summary_details_hint', 'Adds the leading contributors for the busiest questionnaire.'),
+        'title' => t($t, 'analytics_download_summary_details', 'Full Competency Report'),
+        'description' => t($t, 'analytics_download_summary_details_hint', 'Expanded participant, competency, department, and role-based analysis.'),
         'url' => $downloadUrlFor(['include_details' => 1]),
     ],
 ];
@@ -1048,20 +866,6 @@ usort($workFunctionChartData, static function ($a, $b) {
 });
 if (count($workFunctionChartData) > 12) {
     $workFunctionChartData = array_slice($workFunctionChartData, 0, 12);
-}
-
-try {
-    $scheduleStmt = $pdo->query(
-        'SELECT s.*, q.title AS questionnaire_title, u.full_name AS creator_name '
-        . 'FROM analytics_report_schedule s '
-        . 'LEFT JOIN questionnaire q ON q.id = s.questionnaire_id '
-        . 'LEFT JOIN users u ON u.id = s.created_by '
-        . 'ORDER BY s.next_run_at ASC'
-    );
-    $reportSchedules = $scheduleStmt ? $scheduleStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-} catch (PDOException $e) {
-    error_log('analytics schedule fetch failed: ' . $e->getMessage());
-    $reportSchedules = [];
 }
 
 $chartJsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
@@ -1492,146 +1296,16 @@ $pageHelpKey = 'team.analytics';
   </div>
 
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_looker_resources', 'Analytics guide & Looker Studio query')?></h2>
-    <p><?=t($t, 'analytics_looker_resources_hint', 'Share the PDF guide and copy the SQL query into Google Looker Studio to build custom dashboards.')?></p>
-    <div class="md-analytics-guide">
-      <div class="md-guide-actions">
-        <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(asset_url('assets/analytics-guide.pdf'), ENT_QUOTES, 'UTF-8')?>" target="_blank" rel="noopener noreferrer">
-          <?=t($t, 'analytics_download_guide', 'Download analytics guide (PDF)')?>
-        </a>
-      </div>
-      <div class="md-query-card">
-        <div class="md-query-header">
-          <h3><?=t($t, 'analytics_looker_query_title', 'Google Looker Studio query')?></h3>
-          <button class="md-button md-outline" type="button" data-copy-target="looker-query" data-copy-default="<?=htmlspecialchars(t($t, 'copy_query', 'Copy query'), ENT_QUOTES, 'UTF-8')?>" data-copy-success="<?=htmlspecialchars(t($t, 'copy_query_success', 'Copied!'), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'copy_query', 'Copy query')?></button>
-        </div>
-        <pre class="md-query-pre" id="looker-query"><code><?=htmlspecialchars($lookerStudioQuery, ENT_QUOTES, 'UTF-8')?></code></pre>
-      </div>
-    </div>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_email_report', 'Email analytics report')?></h2>
-    <form method="post" class="md-form-grid md-report-grid" action="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>">
-      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-      <input type="hidden" name="action" value="send-report">
-      <label class="md-field">
-        <span><?=t($t, 'recipients', 'Recipients')?></span>
-        <textarea name="report_recipients" placeholder="name@example.com, other@example.com" required></textarea>
-      </label>
-      <label class="md-field">
-        <span><?=t($t, 'questionnaire', 'Questionnaire')?></span>
-        <select name="report_questionnaire_id">
-          <option value="0"><?=t($t, 'all_questionnaires', 'All questionnaires')?></option>
-          <?php foreach ($questionnaires as $row): ?>
-            <option value="<?=$row['id']?>"><?=htmlspecialchars($row['title'] ?? t($t, 'questionnaire', 'Questionnaire'), ENT_QUOTES, 'UTF-8')?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label class="md-checkbox">
-        <input type="checkbox" name="report_include_details" value="1">
-        <span><?=t($t, 'include_detailed_breakdown', 'Include detailed questionnaire breakdown')?></span>
-      </label>
-      <div class="md-inline-actions">
-        <button class="md-button md-primary" type="submit"><?=t($t, 'send_report_now', 'Send report')?></button>
-      </div>
-    </form>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_schedules', 'Scheduled analytics reports')?></h2>
-    <form method="post" class="md-form-grid md-report-grid" action="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>">
-      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-      <input type="hidden" name="action" value="create-schedule">
-      <label class="md-field">
-        <span><?=t($t, 'recipients', 'Recipients')?></span>
-        <textarea name="schedule_recipients" placeholder="name@example.com, other@example.com" required></textarea>
-      </label>
-      <label class="md-field">
-        <span><?=t($t, 'frequency', 'Frequency')?></span>
-        <select name="schedule_frequency">
-          <?php foreach (analytics_report_allowed_frequencies() as $freq): ?>
-            <option value="<?=$freq?>"><?=htmlspecialchars(t($t, 'frequency_' . $freq, analytics_report_frequency_label($freq)), ENT_QUOTES, 'UTF-8')?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label class="md-field">
-        <span><?=t($t, 'start_time', 'First delivery (local time)')?></span>
-        <input type="datetime-local" name="schedule_start_at">
-      </label>
-      <label class="md-field">
-        <span><?=t($t, 'questionnaire', 'Questionnaire')?></span>
-        <select name="schedule_questionnaire_id">
-          <option value="0"><?=t($t, 'all_questionnaires', 'All questionnaires')?></option>
-          <?php foreach ($questionnaires as $row): ?>
-            <option value="<?=$row['id']?>"><?=htmlspecialchars($row['title'] ?? t($t, 'questionnaire', 'Questionnaire'), ENT_QUOTES, 'UTF-8')?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label class="md-checkbox">
-        <input type="checkbox" name="schedule_include_details" value="1">
-        <span><?=t($t, 'include_detailed_breakdown', 'Include detailed questionnaire breakdown')?></span>
-      </label>
-      <div class="md-inline-actions">
-        <button class="md-button md-primary" type="submit"><?=t($t, 'create_schedule', 'Create schedule')?></button>
-      </div>
-    </form>
-
-    <?php if ($reportSchedules): ?>
-      <div class="md-table-responsive">
-        <table class="md-table">
-          <thead>
-            <tr>
-              <th><?=t($t, 'recipients', 'Recipients')?></th>
-              <th><?=t($t, 'frequency', 'Frequency')?></th>
-              <th><?=t($t, 'questionnaire', 'Questionnaire')?></th>
-              <th><?=t($t, 'include_detailed_breakdown', 'Detailed breakdown?')?></th>
-              <th><?=t($t, 'next_run', 'Next send')?></th>
-              <th><?=t($t, 'last_run', 'Last sent')?></th>
-              <th><?=t($t, 'status', 'Status')?></th>
-              <th><?=t($t, 'action', 'Action')?></th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($reportSchedules as $schedule): ?>
-              <?php
-                $isActive = (int)($schedule['active'] ?? 0) === 1;
-                $frequencyKey = (string)($schedule['frequency'] ?? '');
-                $frequencyLabel = t($t, 'frequency_' . $frequencyKey, analytics_report_frequency_label($frequencyKey));
-                $questionnaireLabel = $schedule['questionnaire_id'] ? ($schedule['questionnaire_title'] ?? t($t, 'questionnaire', 'Questionnaire')) : t($t, 'all_questionnaires', 'All questionnaires');
-              ?>
-              <tr>
-                <td><?=htmlspecialchars($schedule['recipients'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
-                <td><?=htmlspecialchars($frequencyLabel, ENT_QUOTES, 'UTF-8')?></td>
-                <td><?=htmlspecialchars($questionnaireLabel, ENT_QUOTES, 'UTF-8')?></td>
-                <td><?=!empty($schedule['include_details']) ? t($t, 'yes', 'Yes') : t($t, 'no', 'No')?></td>
-                <td><?=htmlspecialchars($schedule['next_run_at'] ?? '-', ENT_QUOTES, 'UTF-8')?></td>
-                <td><?=htmlspecialchars($schedule['last_run_at'] ?? '-', ENT_QUOTES, 'UTF-8')?></td>
-                <td><?= $isActive ? t($t, 'status_active', 'Active') : t($t, 'status_disabled', 'Disabled') ?></td>
-                <td>
-                  <div class="md-schedule-actions">
-                    <form method="post" action="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" class="md-inline-form">
-                      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                      <input type="hidden" name="action" value="toggle-schedule">
-                      <input type="hidden" name="schedule_id" value="<?= (int)$schedule['id'] ?>">
-                      <button class="md-button" type="submit"><?= $isActive ? t($t, 'pause', 'Pause') : t($t, 'resume', 'Resume') ?></button>
-                    </form>
-                    <form method="post" action="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" class="md-inline-form" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_schedule', 'Remove this schedule?'), ENT_QUOTES, 'UTF-8')?>');">
-                      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                      <input type="hidden" name="action" value="delete-schedule">
-                      <input type="hidden" name="schedule_id" value="<?= (int)$schedule['id'] ?>">
-                      <button class="md-button md-danger" type="submit"><?=t($t, 'delete', 'Delete')?></button>
-                    </form>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    <?php else: ?>
-      <p class="md-upgrade-meta"><?=t($t, 'no_schedules_configured', 'No report schedules have been configured yet.')?></p>
-    <?php endif; ?>
+    <h2 class="md-card-title"><?=t($t, 'analytics_tools', 'Analytics tools')?></h2>
+    <p><?=t($t, 'analytics_tools_hint', 'Manage automation and external BI resources from dedicated workspaces.')?></p>
+    <p>
+      <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(url_for('admin/analytics_automation.php'), ENT_QUOTES, 'UTF-8')?>">
+        <?=t($t, 'analytics_open_automation', 'Open automation workspace')?>
+      </a>
+      <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics_looker.php'), ENT_QUOTES, 'UTF-8')?>">
+        <?=t($t, 'analytics_open_looker_resources', 'Open Looker resources')?>
+      </a>
+    </p>
   </div>
 
   <div class="md-card md-elev-2">
