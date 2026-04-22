@@ -94,6 +94,115 @@ if (!function_exists('settings_apply_sql_file')) {
     }
 }
 
+if (!function_exists('settings_ai_test_connection')) {
+    /**
+     * @return array{ok:bool,message:string,response:string}
+     */
+    function settings_ai_test_connection(string $baseUrl, string $apiKey, string $model, int $timeoutSeconds = 20): array
+    {
+        $baseUrl = trim($baseUrl);
+        $model = trim($model);
+        if ($baseUrl === '') {
+            return ['ok' => false, 'message' => 'AI Base URL is required for connection testing.', 'response' => ''];
+        }
+        if ($model === '') {
+            return ['ok' => false, 'message' => 'Chat model is required for connection testing.', 'response' => ''];
+        }
+
+        $normalizedBase = rtrim($baseUrl, '/');
+        $basePath = strtolower(rtrim((string)parse_url($normalizedBase, PHP_URL_PATH), '/'));
+        $endpoint = ($basePath !== '' && str_ends_with($basePath, '/api'))
+            ? $normalizedBase . '/generate'
+            : $normalizedBase . '/api/generate';
+
+        $payload = json_encode([
+            'model' => $model,
+            'prompt' => 'Reply with: OK',
+            'stream' => false,
+            'options' => ['temperature' => 0],
+        ]);
+        if ($payload === false) {
+            return ['ok' => false, 'message' => 'Unable to encode AI test payload.', 'response' => ''];
+        }
+
+        $headers = [
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ];
+        if ($apiKey !== '') {
+            $headers[] = 'Authorization: Bearer ' . $apiKey;
+            $headers[] = 'X-API-Key: ' . $apiKey;
+        }
+
+        $responseBody = '';
+        $statusCode = 0;
+        $errorMessage = '';
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($endpoint);
+            if ($ch === false) {
+                return ['ok' => false, 'message' => 'Unable to initialize cURL for AI test.', 'response' => ''];
+            }
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, max(3, min(60, $timeoutSeconds)));
+            curl_setopt($ch, CURLOPT_TIMEOUT, max(5, min(120, $timeoutSeconds)));
+            $raw = curl_exec($ch);
+            if ($raw === false) {
+                $errorMessage = (string)curl_error($ch);
+            } else {
+                $responseBody = (string)$raw;
+            }
+            $statusCode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+        } else {
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'POST',
+                    'header' => implode("\r\n", $headers),
+                    'content' => $payload,
+                    'ignore_errors' => true,
+                    'timeout' => max(5, min(120, $timeoutSeconds)),
+                ],
+            ]);
+            $raw = @file_get_contents($endpoint, false, $context);
+            if ($raw === false) {
+                $errorMessage = 'Unable to reach AI endpoint.';
+            } else {
+                $responseBody = (string)$raw;
+            }
+            if (isset($http_response_header) && is_array($http_response_header)) {
+                foreach ($http_response_header as $headerLine) {
+                    if (preg_match('/^HTTP\/\S+\s+(\d{3})/i', $headerLine, $matches)) {
+                        $statusCode = (int)$matches[1];
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($errorMessage !== '') {
+            return ['ok' => false, 'message' => 'AI test failed: ' . $errorMessage, 'response' => ''];
+        }
+
+        $decoded = json_decode($responseBody, true);
+        $modelReply = '';
+        if (is_array($decoded)) {
+            $modelReply = trim((string)($decoded['response'] ?? $decoded['message']['content'] ?? ''));
+        }
+        $preview = $modelReply !== '' ? $modelReply : substr(trim($responseBody), 0, 240);
+
+        if ($statusCode >= 200 && $statusCode < 300 && $preview !== '') {
+            return ['ok' => true, 'message' => 'AI connection test succeeded.', 'response' => $preview];
+        }
+
+        $statusText = $statusCode > 0 ? ('HTTP ' . $statusCode) : 'no HTTP status';
+        return ['ok' => false, 'message' => 'AI test failed (' . $statusText . ').', 'response' => $preview];
+    }
+}
+
 try {
     require_once __DIR__ . '/../config.php';
     auth_required(['admin']);
@@ -130,6 +239,7 @@ try {
         csrf_check();
 
         $demoDatasetAction = trim((string)($_POST['demo_dataset_action'] ?? ''));
+        $aiConnectionAction = trim((string)($_POST['ai_connection_action'] ?? ''));
         if (in_array($demoDatasetAction, ['enable', 'disable'], true)) {
             try {
                 $pdo->beginTransaction();
@@ -224,20 +334,22 @@ try {
         $aiFeaturesSelected = $ai_feature_summary_enabled === 1
             || $ai_feature_devplan_enabled === 1
             || $ai_feature_course_rationale_enabled === 1;
-        if ($ai_enabled === 1) {
-            if ($ai_base_url === '') {
-                $errors[] = t($t, 'ai_base_url_required', 'AI Base URL is required when AI features are enabled.');
-            } else {
-                $scheme = strtolower((string)parse_url($ai_base_url, PHP_URL_SCHEME));
-                if (!in_array($scheme, ['http', 'https'], true)) {
-                    $errors[] = t($t, 'ai_base_url_invalid', 'AI Base URL must start with http:// or https://.');
+        if ($aiConnectionAction !== 'test') {
+            if ($ai_enabled === 1) {
+                if ($ai_base_url === '') {
+                    $errors[] = t($t, 'ai_base_url_required', 'AI Base URL is required when AI features are enabled.');
+                } else {
+                    $scheme = strtolower((string)parse_url($ai_base_url, PHP_URL_SCHEME));
+                    if (!in_array($scheme, ['http', 'https'], true)) {
+                        $errors[] = t($t, 'ai_base_url_invalid', 'AI Base URL must start with http:// or https://.');
+                    }
                 }
+                if (!$aiFeaturesSelected) {
+                    $errors[] = t($t, 'ai_feature_required', 'Enable at least one AI feature when AI is enabled.');
+                }
+            } elseif ($aiFeaturesSelected) {
+                $errors[] = t($t, 'ai_enable_required', 'Enable AI before turning on AI features.');
             }
-            if (!$aiFeaturesSelected) {
-                $errors[] = t($t, 'ai_feature_required', 'Enable at least one AI feature when AI is enabled.');
-            }
-        } elseif ($aiFeaturesSelected) {
-            $errors[] = t($t, 'ai_enable_required', 'Enable AI before turning on AI features.');
         }
 
         $emailTemplatesInput = $_POST['email_templates'] ?? [];
@@ -301,64 +413,75 @@ try {
             'ai_pii_redaction_enabled' => $ai_pii_redaction_enabled,
         ];
 
-        $siteConfigColumns = site_config_available_columns($pdo);
-        $reviewColumnAvailable = isset($siteConfigColumns['review_enabled']);
-        if (!$reviewColumnAvailable) {
+        if ($aiConnectionAction === 'test') {
+            $testResult = settings_ai_test_connection($ai_base_url, $ai_api_key, $ai_model_chat, $ai_timeout_seconds);
+            if ($testResult['ok']) {
+                $msg = t($t, 'ai_connection_test_success', 'AI connection test succeeded.') . ' ' . sprintf(
+                    t($t, 'ai_connection_test_response', 'Sample response: %s'),
+                    $testResult['response']
+                );
+            } else {
+                $errors[] = $testResult['message'] . ($testResult['response'] !== '' ? ' ' . $testResult['response'] : '');
+            }
+            $cfg = array_merge($cfg, $fields);
+            $enabledLocales = enforce_locale_requirements($selectedLocales);
+            $emailTemplates = normalize_email_templates($emailTemplates);
+        } else {
             ensure_site_config_schema($pdo);
             $siteConfigColumns = site_config_available_columns($pdo, true);
             $reviewColumnAvailable = isset($siteConfigColumns['review_enabled']);
-        }
 
-        foreach (array_keys($fields) as $column) {
-            if (!isset($siteConfigColumns[$column])) {
-                if ($column === 'review_enabled') {
-                    $errors[] = t($t, 'review_column_missing_notice', 'The review workflow setting could not be saved because the database is missing the required column. Please run the latest upgrade script and try again.');
-                }
-                unset($fields[$column]);
-            }
-        }
-
-        if ($fields === []) {
-            $errors[] = t($t, 'settings_missing_columns_notice', 'Settings could not be saved because the configuration table is missing required columns.');
-        }
-
-        if ($errors === []) {
-            $enabledLocales = enforce_locale_requirements($selectedLocales);
-            $fields['enabled_locales'] = encode_enabled_locales($enabledLocales);
-
-            $values = [];
-            foreach ($fields as $column => $value) {
-                $values[] = ($value !== '') ? $value : null;
-            }
-
-            $columns = array_keys($fields);
-            $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-            $updates = [];
-            foreach ($columns as $column) {
-                $updates[] = "$column=VALUES($column)";
-            }
-
-            $sql = 'INSERT INTO site_config (id, ' . implode(', ', $columns) . ') VALUES (1, ' . $placeholders . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
-            $stm = $pdo->prepare($sql);
-            $stm->execute($values);
-            $autoApproveNotice = '';
-            if ($reviewColumnAvailable && $previousReviewEnabled && $review_enabled === 0) {
-                try {
-                    $autoApproved = $pdo->exec("UPDATE questionnaire_response SET status='approved', reviewed_by=NULL, reviewed_at=NOW(), review_comment=NULL WHERE status='submitted'");
-                    if (is_int($autoApproved) && $autoApproved > 0) {
-                        $autoApproveNotice = ' ' . t($t, 'auto_approve_notice', 'Pending submissions were automatically approved.');
+            foreach (array_keys($fields) as $column) {
+                if (!isset($siteConfigColumns[$column])) {
+                    if ($column === 'review_enabled') {
+                        $errors[] = t($t, 'review_column_missing_notice', 'The review workflow setting could not be saved because the database is missing the required column. Please run the latest upgrade script and try again.');
                     }
-                } catch (PDOException $e) {
-                    error_log('auto-approve pending submissions failed: ' . $e->getMessage());
-                    $errors[] = t($t, 'auto_approve_failed', 'Settings saved, but pending submissions could not be finalized automatically.');
+                    unset($fields[$column]);
                 }
             }
-            if ($errors === []) {
-                $msg = t($t, 'settings_updated', 'Settings updated successfully.') . $autoApproveNotice;
+
+            if ($fields === []) {
+                $errors[] = t($t, 'settings_missing_columns_notice', 'Settings could not be saved because the configuration table is missing required columns.');
             }
-            $cfg = get_site_config($pdo);
-            $enabledLocales = site_enabled_locales($cfg);
-            $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+
+            if ($errors === []) {
+                $enabledLocales = enforce_locale_requirements($selectedLocales);
+                $fields['enabled_locales'] = encode_enabled_locales($enabledLocales);
+
+                $values = [];
+                foreach ($fields as $column => $value) {
+                    $values[] = ($value !== '') ? $value : null;
+                }
+
+                $columns = array_keys($fields);
+                $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+                $updates = [];
+                foreach ($columns as $column) {
+                    $updates[] = "$column=VALUES($column)";
+                }
+
+                $sql = 'INSERT INTO site_config (id, ' . implode(', ', $columns) . ') VALUES (1, ' . $placeholders . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
+                $stm = $pdo->prepare($sql);
+                $stm->execute($values);
+                $autoApproveNotice = '';
+                if ($reviewColumnAvailable && $previousReviewEnabled && $review_enabled === 0) {
+                    try {
+                        $autoApproved = $pdo->exec("UPDATE questionnaire_response SET status='approved', reviewed_by=NULL, reviewed_at=NOW(), review_comment=NULL WHERE status='submitted'");
+                        if (is_int($autoApproved) && $autoApproved > 0) {
+                            $autoApproveNotice = ' ' . t($t, 'auto_approve_notice', 'Pending submissions were automatically approved.');
+                        }
+                    } catch (PDOException $e) {
+                        error_log('auto-approve pending submissions failed: ' . $e->getMessage());
+                        $errors[] = t($t, 'auto_approve_failed', 'Settings saved, but pending submissions could not be finalized automatically.');
+                    }
+                }
+                if ($errors === []) {
+                    $msg = t($t, 'settings_updated', 'Settings updated successfully.') . $autoApproveNotice;
+                }
+                $cfg = get_site_config($pdo);
+                $enabledLocales = site_enabled_locales($cfg);
+                $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+            }
         }
         if ($errors !== []) {
             $enabledLocales = $selectedLocales;
@@ -601,6 +724,9 @@ $pageHelpKey = 'admin.settings';
           <input type="checkbox" name="ai_pii_redaction_enabled" value="1" <?=((int)($cfg['ai_pii_redaction_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
           <span><?=t($t,'ai_pii_redaction_enabled','Enable PII redaction before model requests')?></span>
         </label>
+      </div>
+      <div class="md-form-actions" style="justify-content:flex-start;">
+        <button class="md-button md-secondary" type="submit" name="ai_connection_action" value="test"><?=t($t,'ai_test_connection','Test AI Connection')?></button>
       </div>
       <h3 class="md-subhead"><?=t($t,'email_template_settings','Email Templates')?></h3>
       <p class="md-help-note"><?=t($t,'email_template_settings_hint','Customize the subject and HTML content for outgoing notification emails. You can use hyperlinks and the placeholders listed for each template.')?></p>
