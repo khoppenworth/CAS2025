@@ -670,7 +670,7 @@ $pageHelpKey = 'admin.dashboard';
           <form method="post">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="check_upgrade">
-            <button type="submit" class="md-button md-elev-2 md-upgrade-action-button"><?=t($t,'check_for_upgrade','Check for Upgrade')?></button>
+            <button type="submit" class="md-button md-primary md-elev-2 md-upgrade-action-button"><?=t($t,'check_for_upgrade','Check for Upgrade')?></button>
           </form>
           <form method="post" data-upgrade-progress-trigger data-upgrade-progress-message="<?=htmlspecialchars(t($t, 'upgrade_progress_install', 'Installing update. Please keep this page open until the process completes.'), ENT_QUOTES, 'UTF-8')?>">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">

@@ -627,6 +627,7 @@ function initialize_database_schema(PDO $pdo): void
     ensure_questionnaire_assignment_schema($pdo);
     ensure_annual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
+    ensure_competency_reporting_schema($pdo);
 
     $schemaInitialized = true;
 }
@@ -1076,6 +1077,8 @@ function ensure_users_schema(PDO $pdo): void
         'work_experience_profile' => 'ALTER TABLE users ADD COLUMN work_experience_profile VARCHAR(255) NULL AFTER highest_degree_subject',
         'total_work_experience_band' => 'ALTER TABLE users ADD COLUMN total_work_experience_band VARCHAR(50) NULL AFTER work_experience_profile',
         'epss_work_experience_band' => 'ALTER TABLE users ADD COLUMN epss_work_experience_band VARCHAR(50) NULL AFTER total_work_experience_band',
+        'business_role' => 'ALTER TABLE users ADD COLUMN business_role VARCHAR(100) NULL AFTER profile_role_other',
+        'directorate' => 'ALTER TABLE users ADD COLUMN directorate VARCHAR(150) NULL AFTER department',
     ];
 
     foreach ($changes as $field => $sql) {
@@ -1086,6 +1089,92 @@ function ensure_users_schema(PDO $pdo): void
                 error_log(sprintf('ensure_users_schema add column %s failed: %s', $field, $e->getMessage()));
             }
         }
+    }
+}
+
+function ensure_competency_reporting_schema(PDO $pdo): void
+{
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS competency_level_band (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            min_pct DECIMAL(5,2) NOT NULL,
+            max_pct DECIMAL(5,2) NOT NULL,
+            rank_order INT NOT NULL DEFAULT 0,
+            is_system_default TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_competency_level_band_name (name),
+            UNIQUE KEY uniq_competency_level_band_rank (rank_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS competency_benchmark_policy (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            scope_type ENUM('organization','department','business_role','work_function','competency') NOT NULL DEFAULT 'organization',
+            scope_id VARCHAR(150) NULL,
+            required_pct DECIMAL(5,2) NOT NULL DEFAULT 80.00,
+            effective_from DATE NULL,
+            effective_to DATE NULL,
+            created_by INT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_benchmark_scope (scope_type, scope_id),
+            KEY idx_benchmark_effective (effective_from, effective_to)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS analytics_report_snapshot_v2 (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            questionnaire_id INT NULL,
+            generated_by INT NULL,
+            status ENUM('draft','finalized') NOT NULL DEFAULT 'draft',
+            locked TINYINT(1) NOT NULL DEFAULT 0,
+            filters_json LONGTEXT NULL,
+            summary_json LONGTEXT NOT NULL,
+            details_json LONGTEXT NOT NULL,
+            generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finalized_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_snapshot_status (status),
+            KEY idx_snapshot_questionnaire (questionnaire_id),
+            KEY idx_snapshot_generated_at (generated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $snapshotColumnsStmt = $pdo->query('SHOW COLUMNS FROM analytics_report_snapshot_v2');
+        $snapshotColumns = [];
+        if ($snapshotColumnsStmt) {
+            foreach ($snapshotColumnsStmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $snapshotColumns[] = (string)($column['Field'] ?? '');
+            }
+        }
+        if (!in_array('filters_json', $snapshotColumns, true)) {
+            $pdo->exec('ALTER TABLE analytics_report_snapshot_v2 ADD COLUMN filters_json LONGTEXT NULL AFTER locked');
+        }
+
+        $seedBands = [
+            ['Not Proficient', 0.00, 49.99, 1],
+            ['Basic Proficiency', 50.00, 64.99, 2],
+            ['Intermediate Proficiency', 65.00, 79.99, 3],
+            ['Advanced Proficiency', 80.00, 89.99, 4],
+            ['Expert', 90.00, 100.00, 5],
+        ];
+        $bandStmt = $pdo->prepare(
+            'INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default) '
+            . 'VALUES (?, ?, ?, ?, 1) '
+            . 'ON DUPLICATE KEY UPDATE min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order)'
+        );
+        foreach ($seedBands as $band) {
+            $bandStmt->execute($band);
+        }
+
+        $orgBenchmark = $pdo->query("SELECT id FROM competency_benchmark_policy WHERE scope_type='organization' AND (scope_id IS NULL OR scope_id='') LIMIT 1");
+        if (!$orgBenchmark || !$orgBenchmark->fetch(PDO::FETCH_ASSOC)) {
+            $insertBenchmark = $pdo->prepare(
+                "INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by) VALUES ('organization', NULL, 80.00, NULL, NULL, NULL)"
+            );
+            $insertBenchmark->execute();
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_competency_reporting_schema: ' . $e->getMessage());
     }
 }
 
