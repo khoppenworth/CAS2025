@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
         } elseif ($action === 'finalize') {
             $snapshotId = isset($_POST['snapshot_id']) ? (int)$_POST['snapshot_id'] : 0;
-            if ($snapshotId <= 0 || !analytics_snapshot_v2_finalize($pdo, $snapshotId)) {
+            if ($snapshotId <= 0 || !analytics_snapshot_v2_finalize_for_viewer($pdo, $snapshotId, $viewer)) {
                 throw new RuntimeException(t($t, 'analytics_snapshot_v2_finalize_failed', 'Unable to finalize snapshot.'));
             }
             $_SESSION['analytics_snapshot_v2_flash'] = [
@@ -145,10 +145,7 @@ if (analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
             $snapshots[] = $row;
             continue;
         }
-        $filters = json_decode((string)($row['filters_json'] ?? '{}'), true);
-        $rowDirectorate = trim((string)($filters['directorate'] ?? ''));
-        $generatedBy = (int)($row['generated_by'] ?? 0);
-        if ($generatedBy === $viewerId || ($selectedDirectorate !== '' && $rowDirectorate === $selectedDirectorate)) {
+        if (analytics_snapshot_v2_viewer_can_access_snapshot($viewer, $row)) {
             $snapshots[] = $row;
         }
     }
