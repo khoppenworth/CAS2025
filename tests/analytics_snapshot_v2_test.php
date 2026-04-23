@@ -79,4 +79,34 @@ if (($decodedFilters['business_role'] ?? '') !== 'staff') {
     exit(1);
 }
 
+$insertScoped = $pdo->prepare(
+    'INSERT INTO analytics_report_snapshot_v2 (questionnaire_id, generated_by, status, locked, filters_json, summary_json, details_json, generated_at) '
+    . 'VALUES (1, 777, "draft", 0, :filters_json, "{}", "{}", CURRENT_TIMESTAMP)'
+);
+$insertScoped->execute([':filters_json' => json_encode(['directorate' => 'Finance'])]);
+$forgedSnapshotId = (int)$pdo->lastInsertId();
+
+$supervisorViewer = ['id' => 500, 'role' => 'supervisor', 'directorate' => 'Operations'];
+if (analytics_snapshot_v2_finalize_for_viewer($pdo, $forgedSnapshotId, $supervisorViewer)) {
+    fwrite(STDERR, "Supervisor should not finalize snapshot outside their directorate.\n");
+    exit(1);
+}
+
+$forgedStatus = $pdo->query('SELECT locked, status FROM analytics_report_snapshot_v2 WHERE id = ' . $forgedSnapshotId)->fetch(PDO::FETCH_ASSOC);
+if ((int)($forgedStatus['locked'] ?? 0) !== 0 || (string)($forgedStatus['status'] ?? '') !== 'draft') {
+    fwrite(STDERR, "Out-of-scope snapshot should remain draft and unlocked.\n");
+    exit(1);
+}
+
+$insertOwn = $pdo->prepare(
+    'INSERT INTO analytics_report_snapshot_v2 (questionnaire_id, generated_by, status, locked, filters_json, summary_json, details_json, generated_at) '
+    . 'VALUES (1, 500, "draft", 0, :filters_json, "{}", "{}", CURRENT_TIMESTAMP)'
+);
+$insertOwn->execute([':filters_json' => json_encode(['directorate' => 'Finance'])]);
+$ownSnapshotId = (int)$pdo->lastInsertId();
+if (!analytics_snapshot_v2_finalize_for_viewer($pdo, $ownSnapshotId, $supervisorViewer)) {
+    fwrite(STDERR, "Supervisor should finalize their own snapshot.\n");
+    exit(1);
+}
+
 echo "Analytics snapshot v2 tests passed.\n";

@@ -338,3 +338,55 @@ function analytics_snapshot_v2_finalize(PDO $pdo, int $snapshotId): bool
     $stmt->execute([$snapshotId]);
     return $stmt->rowCount() > 0;
 }
+
+/**
+ * @param array<string, mixed> $viewer
+ * @param array<string, mixed> $snapshotRow
+ */
+function analytics_snapshot_v2_viewer_can_access_snapshot(array $viewer, array $snapshotRow): bool
+{
+    $viewerRole = trim((string)($viewer['role'] ?? ''));
+    if ($viewerRole !== 'supervisor') {
+        return true;
+    }
+
+    $viewerId = (int)($viewer['id'] ?? 0);
+    $generatedBy = (int)($snapshotRow['generated_by'] ?? 0);
+    if ($viewerId > 0 && $generatedBy === $viewerId) {
+        return true;
+    }
+
+    $viewerDirectorate = trim((string)($viewer['directorate'] ?? ''));
+    if ($viewerDirectorate === '') {
+        $viewerDirectorate = trim((string)($viewer['department'] ?? ''));
+    }
+    if ($viewerDirectorate === '') {
+        return false;
+    }
+
+    $filters = json_decode((string)($snapshotRow['filters_json'] ?? '{}'), true);
+    if (!is_array($filters)) {
+        return false;
+    }
+    $rowDirectorate = trim((string)($filters['directorate'] ?? ''));
+    return $rowDirectorate !== '' && hash_equals($viewerDirectorate, $rowDirectorate);
+}
+
+/**
+ * @param array<string, mixed> $viewer
+ */
+function analytics_snapshot_v2_finalize_for_viewer(PDO $pdo, int $snapshotId, array $viewer): bool
+{
+    if ($snapshotId <= 0 || !analytics_snapshot_v2_table_exists($pdo, 'analytics_report_snapshot_v2')) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('SELECT id, generated_by, filters_json FROM analytics_report_snapshot_v2 WHERE id = ? LIMIT 1');
+    $stmt->execute([$snapshotId]);
+    $snapshotRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!is_array($snapshotRow) || !analytics_snapshot_v2_viewer_can_access_snapshot($viewer, $snapshotRow)) {
+        return false;
+    }
+
+    return analytics_snapshot_v2_finalize($pdo, $snapshotId);
+}
