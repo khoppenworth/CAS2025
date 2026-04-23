@@ -219,7 +219,7 @@ function questionnaire_answer_is_correct(array $answerSet, string $correctValue)
  */
 function questionnaire_competency_level(?float $score): string
 {
-    return competency_level_from_bands($score, competency_default_level_bands());
+    return competency_level_from_bands($score, competency_level_bands());
 }
 
 /**
