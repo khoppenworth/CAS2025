@@ -19,6 +19,81 @@ function competency_default_level_bands(): array
 }
 
 /**
+ * Resolve competency level bands from runtime configuration when available.
+ *
+ * Falls back to default level bands if no database connection or overrides exist.
+ *
+ * @return array<int, array{name:string,min_pct:float,max_pct:float,rank_order:int}>
+ */
+function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): array
+{
+    static $cache = [];
+
+    if ($pdo === null && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO) {
+        $pdo = $GLOBALS['pdo'];
+    }
+
+    if (!$pdo instanceof PDO) {
+        return competency_default_level_bands();
+    }
+
+    $cacheKey = spl_object_id($pdo);
+    if (!$forceRefresh && isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
+    }
+
+    try {
+        $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
+        if ($driver === 'sqlite') {
+            $existsStmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = 'competency_level_band' LIMIT 1");
+            $existsStmt->execute();
+            if (!$existsStmt->fetch(PDO::FETCH_ASSOC)) {
+                return $cache[$cacheKey] = competency_default_level_bands();
+            }
+        } else {
+            $existsStmt = $pdo->prepare(
+                'SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+            );
+            $existsStmt->execute(['competency_level_band']);
+            if ((int)$existsStmt->fetchColumn() <= 0) {
+                return $cache[$cacheKey] = competency_default_level_bands();
+            }
+        }
+
+        $stmt = $pdo->query(
+            'SELECT name, min_pct, max_pct, rank_order FROM competency_level_band ORDER BY rank_order ASC, id ASC'
+        );
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        if (!is_array($rows) || $rows === []) {
+            return $cache[$cacheKey] = competency_default_level_bands();
+        }
+
+        $bands = [];
+        foreach ($rows as $row) {
+            $name = trim((string)($row['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $bands[] = [
+                'name' => $name,
+                'min_pct' => isset($row['min_pct']) ? (float)$row['min_pct'] : 0.0,
+                'max_pct' => isset($row['max_pct']) ? (float)$row['max_pct'] : 0.0,
+                'rank_order' => isset($row['rank_order']) ? (int)$row['rank_order'] : (count($bands) + 1),
+            ];
+        }
+
+        if ($bands === []) {
+            return $cache[$cacheKey] = competency_default_level_bands();
+        }
+
+        return $cache[$cacheKey] = $bands;
+    } catch (Throwable $e) {
+        error_log('competency_level_bands failed: ' . $e->getMessage());
+        return competency_default_level_bands();
+    }
+}
+
+/**
  * Evaluate a competency level label for a percentage score.
  *
  * @param array<int, array{name:string,min_pct:float,max_pct:float}> $bands

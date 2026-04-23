@@ -27,6 +27,31 @@ foreach ($cases as $case) {
     }
 }
 
+$pdo = new PDO('sqlite::memory:');
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo->exec(
+    'CREATE TABLE competency_level_band ('
+    . 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+    . 'name TEXT NOT NULL, '
+    . 'min_pct REAL NOT NULL, '
+    . 'max_pct REAL NOT NULL, '
+    . 'rank_order INTEGER NOT NULL)'
+);
+$pdo->exec("INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order) VALUES ('Starter', 0.0, 74.99, 1)");
+$pdo->exec("INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order) VALUES ('Skilled', 75.0, 100.0, 2)");
+$GLOBALS['pdo'] = $pdo;
+competency_level_bands($pdo, true);
+
+if (questionnaire_competency_level(70.0) !== 'Starter') {
+    fwrite(STDERR, "Expected DB-configured level band Starter for score 70.0.\n");
+    exit(1);
+}
+
+if (questionnaire_competency_level(90.0) !== 'Skilled') {
+    fwrite(STDERR, "Expected DB-configured level band Skilled for score 90.0.\n");
+    exit(1);
+}
+
 if (questionnaire_competency_gap(72.0, null) !== 28.0) {
     fwrite(STDERR, "Expected 100-based gap to equal 28.0.\n");
     exit(1);
