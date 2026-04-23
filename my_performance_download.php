@@ -141,7 +141,12 @@ $siteName = (string) ($cfg['site_name'] ?? 'My Performance');
 
 $pdf = new SimplePdfDocument();
 $logoSpec = analytics_report_header_logo_spec($pdf, $cfg);
-$pdf->setHeader($siteName, t($t, 'my_performance_pdf_subtitle', 'Personal performance summary'), $logoSpec);
+$pdf->setHeader(
+    $siteName,
+    t($t, 'my_performance_pdf_subtitle', 'Personal performance summary'),
+    $logoSpec,
+    analytics_report_header_style($cfg)
+);
 $userDetails = [];
 $nameLine = trim((string) ($user['full_name'] ?? ''));
 if ($nameLine === '') {

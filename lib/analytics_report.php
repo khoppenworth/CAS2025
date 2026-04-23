@@ -422,7 +422,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $headerTitle = $siteName !== '' ? $siteName : 'HR Assessment';
     $headerSubtitle = analytics_report_header_tagline($cfg);
     $logoSpec = analytics_report_header_logo_spec($pdf, $cfg);
-    $pdf->setHeader($headerTitle, $headerSubtitle, $logoSpec);
+    $pdf->setHeader($headerTitle, $headerSubtitle, $logoSpec, analytics_report_header_style($cfg));
 
     $title = $headerTitle . ' Analytics Report';
     $pdf->addHeading($title);
@@ -855,8 +855,8 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
 
     $marginLeft = 150;
     $marginRight = 80;
-    $marginTop = 90;
-    $marginBottom = 160;
+    $marginTop = 120;
+    $marginBottom = 190;
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -925,15 +925,18 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
         imageline($image, $x1, $y1, $x2, $y1, $barHighlight);
 
         $valueLabel = number_format($point['value'], $precision) . $valueSuffix;
-        analytics_report_draw_text($image, $valueLabel, $textColor, 18, (int)round($centerX), $y1 - 12, [
+        $valueLabelY = max(24, $y1 - 14);
+        analytics_report_draw_text($image, $valueLabel, $textColor, 16, (int)round($centerX), $valueLabelY, [
             'align' => 'center',
             'baseline' => 'top',
         ]);
 
-        $labelY = $baseline + 16;
-        analytics_report_draw_text($image, $point['label'], $textColor, 18, (int)round($centerX), $labelY, [
+        $labelY = $baseline + 16 + (($index % 2) * 18);
+        analytics_report_draw_wrapped_text($image, $point['label'], $textColor, 14, (int)round($centerX), $labelY, 140, [
             'align' => 'center',
             'baseline' => 'top',
+            'line_gap' => 5,
+            'max_lines' => 2,
         ]);
     }
 
@@ -997,8 +1000,8 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
 
     $marginLeft = 140;
     $marginRight = 80;
-    $marginTop = 90;
-    $marginBottom = 160;
+    $marginTop = 100;
+    $marginBottom = 190;
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -1096,7 +1099,8 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
         imagesetthickness($image, 1);
     }
 
-    foreach ($points as [$x, $y, $meta]) {
+    $lastLabelRightEdge = null;
+    foreach ($points as $pointIndex => [$x, $y, $meta]) {
         $radius = 8;
         imagefilledellipse($image, (int)round($x), (int)round($y), $radius, $radius, $pointColor);
         imageellipse($image, (int)round($x), (int)round($y), $radius + 2, $radius + 2, $lineColor);
@@ -1107,10 +1111,17 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
             'baseline' => 'bottom',
         ]);
 
-        analytics_report_draw_text($image, $meta['label'], $textColor, 18, (int)round($x), $baseline + 16, [
+        $labelY = $baseline + 16 + (($pointIndex % 2) * 18);
+        if ($lastLabelRightEdge !== null && $count > 1 && $segment > 0 && ($x - $lastLabelRightEdge) < 40) {
+            $labelY += 16;
+        }
+        analytics_report_draw_wrapped_text($image, $meta['label'], $textColor, 14, (int)round($x), (int)round($labelY), 150, [
             'align' => 'center',
             'baseline' => 'top',
+            'line_gap' => 4,
+            'max_lines' => 2,
         ]);
+        $lastLabelRightEdge = $x + 75;
     }
 
     $result = analytics_report_export_gd_image($image);
@@ -1271,8 +1282,8 @@ function analytics_report_generate_radar_chart(array $sections, array $palette, 
         imageellipse($image, $pointXInt, $pointYInt, 18, 18, $strokeColor);
 
         $valueLabel = number_format($section['value'], (int)($options['decimal_places'] ?? 1)) . $valueSuffix;
-        $valueLabelX = $centerX + cos($angle) * $radius * max(0.1, $ratio) * 0.85;
-        $valueLabelY = $centerY + sin($angle) * $radius * max(0.1, $ratio) * 0.85;
+        $valueLabelX = $centerX + cos($angle) * $radius * min(1.0, max(0.2, $ratio + 0.12));
+        $valueLabelY = $centerY + sin($angle) * $radius * min(1.0, max(0.2, $ratio + 0.12));
         analytics_report_draw_text($image, $valueLabel, $textColor, 18, (int)round($valueLabelX), (int)round($valueLabelY), [
             'align' => 'center',
             'baseline' => 'middle',
@@ -1294,9 +1305,11 @@ function analytics_report_generate_radar_chart(array $sections, array $palette, 
         } elseif ($labelAngleSin < -0.4) {
             $baseline = 'bottom';
         }
-        analytics_report_draw_text($image, $section['label'], $textColor, 20, (int)round($labelX), (int)round($labelY), [
+        analytics_report_draw_wrapped_text($image, $section['label'], $textColor, 16, (int)round($labelX), (int)round($labelY), 160, [
             'align' => $align,
             'baseline' => $baseline,
+            'line_gap' => 4,
+            'max_lines' => 2,
         ]);
     }
 
@@ -1370,6 +1383,77 @@ function analytics_report_draw_text($image, string $text, int $color, float $fon
     imagestring($image, $font, $drawX, $drawY, $text, $color);
 }
 
+function analytics_report_draw_wrapped_text($image, string $text, int $color, float $fontSize, int $x, int $y, int $maxWidth, array $options = []): void
+{
+    $lines = analytics_report_wrap_text_lines($text, $fontSize, $maxWidth, (int)($options['max_lines'] ?? 2));
+    $baseline = (string)($options['baseline'] ?? 'top');
+    $lineGap = max(0, (int)($options['line_gap'] ?? 4));
+    $lineHeight = (int)round($fontSize + $lineGap);
+
+    if ($baseline === 'middle') {
+        $startY = (int)round($y - (($lineHeight * max(1, count($lines))) / 2));
+    } elseif ($baseline === 'bottom') {
+        $startY = (int)round($y - ($lineHeight * max(1, count($lines))));
+    } else {
+        $startY = $y;
+    }
+
+    foreach ($lines as $lineIndex => $line) {
+        analytics_report_draw_text($image, $line, $color, $fontSize, $x, $startY + ($lineIndex * $lineHeight), [
+            'align' => $options['align'] ?? 'left',
+            'baseline' => 'top',
+        ]);
+    }
+}
+
+function analytics_report_wrap_text_lines(string $text, float $fontSize, int $maxWidth, int $maxLines = 2): array
+{
+    $source = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+    if ($source === '') {
+        return [''];
+    }
+
+    $words = preg_split('/\s+/u', $source) ?: [$source];
+    $lines = [];
+    $line = '';
+    foreach ($words as $word) {
+        $candidate = $line === '' ? $word : ($line . ' ' . $word);
+        if (analytics_report_measure_text_width($candidate, $fontSize) <= $maxWidth) {
+            $line = $candidate;
+            continue;
+        }
+
+        if ($line !== '') {
+            $lines[] = $line;
+            $line = $word;
+        } else {
+            $lines[] = analytics_report_truncate_label($word, 14);
+            $line = '';
+        }
+
+        if (count($lines) >= max(1, $maxLines)) {
+            return $lines;
+        }
+    }
+
+    if ($line !== '' && count($lines) < max(1, $maxLines)) {
+        $lines[] = $line;
+    }
+
+    if (count($lines) > $maxLines) {
+        $lines = array_slice($lines, 0, $maxLines);
+    }
+
+    if (count($lines) === $maxLines) {
+        $last = $lines[$maxLines - 1];
+        if (analytics_report_measure_text_width($last, $fontSize) > $maxWidth) {
+            $lines[$maxLines - 1] = analytics_report_truncate_label($last, 16);
+        }
+    }
+
+    return $lines ?: [''];
+}
+
 function analytics_report_truncate_label(string $label, int $limit = 22): string
 {
     $trimmed = trim($label);
@@ -1403,6 +1487,18 @@ function analytics_report_header_logo_spec(SimplePdfDocument $pdf, array $cfg): 
         'name' => $imageName,
         'width' => $dimensions['width'],
         'height' => $dimensions['height'],
+    ];
+}
+
+function analytics_report_header_style(array $cfg): array
+{
+    $palette = analytics_report_palette_colors($cfg);
+    $barHex = (string)($palette['primary'] ?? '#2073bf');
+    $textHex = analytics_report_contrast_for_color($barHex);
+
+    return [
+        'bar_color' => analytics_report_color_to_rgb($barHex),
+        'text_color' => analytics_report_color_to_rgb($textHex),
     ];
 }
 
@@ -1761,6 +1857,12 @@ function analytics_report_contrast_for_color(string $hex): string
 function analytics_report_default_font_path(): ?string
 {
     $candidates = [
+        '/usr/share/fonts/truetype/msttcorefonts/calibri.ttf',
+        '/usr/share/fonts/truetype/msttcorefonts/Calibri.ttf',
+        '/usr/share/fonts/truetype/calibri/Calibri.ttf',
+        '/usr/share/fonts/truetype/carlito/Carlito-Regular.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
     ];
@@ -1772,6 +1874,19 @@ function analytics_report_default_font_path(): ?string
     }
 
     return null;
+}
+
+function analytics_report_measure_text_width(string $text, float $fontSize): float
+{
+    $fontPath = analytics_report_default_font_path();
+    if ($fontPath && function_exists('imagettfbbox')) {
+        $box = imagettfbbox($fontSize, 0, $fontPath, $text);
+        if (is_array($box)) {
+            return analytics_report_ttf_box_width($box);
+        }
+    }
+
+    return strlen($text) * max(6.0, $fontSize * 0.55);
 }
 
 function analytics_report_ttf_box_width(array $box): float
