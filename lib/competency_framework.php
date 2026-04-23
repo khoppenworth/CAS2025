@@ -27,7 +27,11 @@ function competency_default_level_bands(): array
  */
 function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): array
 {
-    static $cache = [];
+    static $cache = null;
+
+    if ($cache === null && class_exists('WeakMap')) {
+        $cache = new WeakMap();
+    }
 
     if ($pdo === null && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO) {
         $pdo = $GLOBALS['pdo'];
@@ -37,9 +41,8 @@ function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): a
         return competency_default_level_bands();
     }
 
-    $cacheKey = spl_object_id($pdo);
-    if (!$forceRefresh && isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
+    if ($cache instanceof WeakMap && !$forceRefresh && isset($cache[$pdo])) {
+        return $cache[$pdo];
     }
 
     try {
@@ -48,7 +51,11 @@ function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): a
             $existsStmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = 'competency_level_band' LIMIT 1");
             $existsStmt->execute();
             if (!$existsStmt->fetch(PDO::FETCH_ASSOC)) {
-                return $cache[$cacheKey] = competency_default_level_bands();
+                $defaults = competency_default_level_bands();
+                if ($cache instanceof WeakMap) {
+                    $cache[$pdo] = $defaults;
+                }
+                return $defaults;
             }
         } else {
             $existsStmt = $pdo->prepare(
@@ -56,7 +63,11 @@ function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): a
             );
             $existsStmt->execute(['competency_level_band']);
             if ((int)$existsStmt->fetchColumn() <= 0) {
-                return $cache[$cacheKey] = competency_default_level_bands();
+                $defaults = competency_default_level_bands();
+                if ($cache instanceof WeakMap) {
+                    $cache[$pdo] = $defaults;
+                }
+                return $defaults;
             }
         }
 
@@ -65,7 +76,11 @@ function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): a
         );
         $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
         if (!is_array($rows) || $rows === []) {
-            return $cache[$cacheKey] = competency_default_level_bands();
+            $defaults = competency_default_level_bands();
+            if ($cache instanceof WeakMap) {
+                $cache[$pdo] = $defaults;
+            }
+            return $defaults;
         }
 
         $bands = [];
@@ -83,10 +98,17 @@ function competency_level_bands(?PDO $pdo = null, bool $forceRefresh = false): a
         }
 
         if ($bands === []) {
-            return $cache[$cacheKey] = competency_default_level_bands();
+            $defaults = competency_default_level_bands();
+            if ($cache instanceof WeakMap) {
+                $cache[$pdo] = $defaults;
+            }
+            return $defaults;
         }
 
-        return $cache[$cacheKey] = $bands;
+        if ($cache instanceof WeakMap) {
+            $cache[$pdo] = $bands;
+        }
+        return $bands;
     } catch (Throwable $e) {
         error_log('competency_level_bands failed: ' . $e->getMessage());
         return competency_default_level_bands();

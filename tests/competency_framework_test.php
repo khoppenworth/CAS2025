@@ -52,6 +52,42 @@ if (questionnaire_competency_level(90.0) !== 'Skilled') {
     exit(1);
 }
 
+unset($GLOBALS['pdo']);
+$pdo = null;
+
+$pdoA = new PDO('sqlite::memory:');
+$pdoA->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdoA->exec(
+    'CREATE TABLE competency_level_band ('
+    . 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+    . 'name TEXT NOT NULL, '
+    . 'min_pct REAL NOT NULL, '
+    . 'max_pct REAL NOT NULL, '
+    . 'rank_order INTEGER NOT NULL)'
+);
+$pdoA->exec("INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order) VALUES ('Alpha', 0.0, 100.0, 1)");
+if (competency_level_from_bands(60.0, competency_level_bands($pdoA, true)) !== 'Alpha') {
+    fwrite(STDERR, "Expected Alpha level from first PDO connection.\n");
+    exit(1);
+}
+unset($pdoA);
+
+$pdoB = new PDO('sqlite::memory:');
+$pdoB->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdoB->exec(
+    'CREATE TABLE competency_level_band ('
+    . 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+    . 'name TEXT NOT NULL, '
+    . 'min_pct REAL NOT NULL, '
+    . 'max_pct REAL NOT NULL, '
+    . 'rank_order INTEGER NOT NULL)'
+);
+$pdoB->exec("INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order) VALUES ('Beta', 0.0, 100.0, 1)");
+if (competency_level_from_bands(60.0, competency_level_bands($pdoB, true)) !== 'Beta') {
+    fwrite(STDERR, "Expected Beta level from second PDO connection after destroying first.\n");
+    exit(1);
+}
+
 if (questionnaire_competency_gap(72.0, null) !== 28.0) {
     fwrite(STDERR, "Expected 100-based gap to equal 28.0.\n");
     exit(1);
