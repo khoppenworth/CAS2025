@@ -42,6 +42,15 @@ function analytics_data_viewer_apply_scope(array $viewer, array $filters): array
     return $normalized;
 }
 
+function analytics_data_viewer_csv_safe_cell(string $value): string
+{
+    if ($value !== '' && preg_match('/^[=+\-@]/', $value) === 1) {
+        return "'" . $value;
+    }
+
+    return $value;
+}
+
 /**
  * @param array<string, mixed> $viewer
  * @param array<string, mixed> $filters
@@ -50,6 +59,9 @@ function analytics_data_viewer_apply_scope(array $viewer, array $filters): array
 function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, int $questionnaireId = 0, string $statusFilter = '', string $dateFrom = '', string $dateTo = ''): array
 {
     $scopeFilters = analytics_data_viewer_apply_scope($viewer, $filters);
+    $isSupervisorDepartmentFallback = trim((string)($viewer['role'] ?? '')) === 'supervisor'
+        && trim((string)($viewer['directorate'] ?? '')) === ''
+        && trim((string)($viewer['department'] ?? '')) !== '';
 
     $sql = 'SELECT qr.id AS response_id, qr.questionnaire_id, q.title AS questionnaire_title, '
         . 'u.id AS user_id, u.username, u.full_name, u.department, u.directorate, u.work_function, '
@@ -70,7 +82,11 @@ function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, in
         $params[] = $scopeFilters['business_role'];
     }
     if ($scopeFilters['directorate'] !== '') {
-        $where[] = 'COALESCE(NULLIF(u.directorate, \'\'), \'Unknown\') = ?';
+        if ($isSupervisorDepartmentFallback) {
+            $where[] = 'COALESCE(NULLIF(u.directorate, \'\'), NULLIF(u.department, \'\'), \'Unknown\') = ?';
+        } else {
+            $where[] = 'COALESCE(NULLIF(u.directorate, \'\'), \'Unknown\') = ?';
+        }
         $params[] = $scopeFilters['directorate'];
     }
     if ($scopeFilters['work_function'] !== '') {
