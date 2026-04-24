@@ -1513,7 +1513,7 @@ function analytics_report_header_style(array $cfg): array
 {
     $palette = analytics_report_palette_colors($cfg);
     $barHex = (string)($palette['primary'] ?? '#2073bf');
-    $textHex = analytics_report_contrast_for_color($barHex);
+    $textHex = '#0f172a';
 
     return [
         'bar_color' => analytics_report_color_to_rgb($barHex),
@@ -1875,6 +1875,12 @@ function analytics_report_contrast_for_color(string $hex): string
 
 function analytics_report_default_font_path(): ?string
 {
+    static $resolved = null;
+    static $checked = false;
+    if ($checked) {
+        return $resolved;
+    }
+
     $candidates = [
         '/usr/share/fonts/truetype/msttcorefonts/calibri.ttf',
         '/usr/share/fonts/truetype/msttcorefonts/Calibri.ttf',
@@ -1888,11 +1894,28 @@ function analytics_report_default_font_path(): ?string
 
     foreach ($candidates as $candidate) {
         if (is_string($candidate) && is_file($candidate)) {
-            return $candidate;
+            $resolved = $candidate;
+            $checked = true;
+            return $resolved;
         }
     }
 
-    return null;
+    $checked = true;
+    $resolved = null;
+    return $resolved;
+}
+
+function analytics_report_measure_text_width(string $text, float $fontSize): float
+{
+    $fontPath = analytics_report_default_font_path();
+    if ($fontPath && function_exists('imagettfbbox')) {
+        $box = imagettfbbox($fontSize, 0, $fontPath, $text);
+        if (is_array($box)) {
+            return analytics_report_ttf_box_width($box);
+        }
+    }
+
+    return strlen($text) * max(6.0, $fontSize * 0.55);
 }
 
 function analytics_report_measure_text_width(string $text, float $fontSize): float

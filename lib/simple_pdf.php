@@ -231,19 +231,67 @@ class SimplePdfDocument
     public function addTable(array $headers, array $rows, array $columnWidths, float $fontSize = 10.0): void
     {
         $this->ensurePage();
-        $resolvedWidths = $this->resolveTableColumnWidths($columnWidths, $fontSize);
-        $lineHeight = $this->lineHeight($fontSize, 1.35);
-        $formattedHeader = $this->formatTableRow($headers, $resolvedWidths);
-        $this->writeMonospaceLine($formattedHeader, $fontSize);
-        $this->cursorY -= $lineHeight;
-        $this->ensureSpace($lineHeight);
-        $separator = $this->formatTableSeparator($resolvedWidths);
-        $this->writeMonospaceLine($separator, $fontSize);
-        $this->cursorY -= $lineHeight;
-        foreach ($rows as $row) {
-            $this->ensureSpace($lineHeight);
-            $this->writeMonospaceLine($this->formatTableRow($row, $resolvedWidths), $fontSize);
-            $this->cursorY -= $lineHeight;
+        $resolvedWidths = $this->resolveTableColumnWidthsInPoints($columnWidths);
+        $lineHeight = $this->lineHeight($fontSize, 1.3);
+        $cellPaddingX = 6.0;
+        $cellPaddingY = 4.0;
+        $headerFill = [237, 242, 247];
+        $rowFill = [250, 252, 255];
+        $borderColor = [203, 213, 225];
+
+        $renderRow = function (array $row, bool $isHeader, bool $alternate = false) use (
+            $resolvedWidths,
+            $fontSize,
+            $lineHeight,
+            $cellPaddingX,
+            $cellPaddingY,
+            $headerFill,
+            $rowFill,
+            $borderColor
+        ): void {
+            $cellLines = [];
+            $maxLines = 1;
+            foreach ($resolvedWidths as $index => $width) {
+                $value = trim((string)($row[$index] ?? ''));
+                $availableTextWidth = max(20.0, $width - ($cellPaddingX * 2));
+                $wrapped = $this->wrapTextToWidth($value, $fontSize, $availableTextWidth);
+                if ($wrapped === []) {
+                    $wrapped = [''];
+                }
+                $cellLines[$index] = $wrapped;
+                $maxLines = max($maxLines, count($wrapped));
+            }
+
+            $rowHeight = ($maxLines * $lineHeight) + ($cellPaddingY * 2);
+            $this->ensureSpace($rowHeight + 2.0);
+
+            $x = $this->marginLeft;
+            $rowTopY = $this->cursorY;
+            $rowBottomY = $rowTopY - $rowHeight;
+            foreach ($resolvedWidths as $index => $width) {
+                if ($isHeader) {
+                    $this->drawFilledRect($x, $rowBottomY, $width, $rowHeight, $headerFill);
+                } elseif ($alternate) {
+                    $this->drawFilledRect($x, $rowBottomY, $width, $rowHeight, $rowFill);
+                }
+                $this->drawRectOutline($x, $rowBottomY, $width, $rowHeight, $borderColor, 0.5);
+
+                $textY = $rowTopY - $cellPaddingY - $fontSize;
+                foreach ($cellLines[$index] as $line) {
+                    $font = $isHeader ? 'F2' : 'F1';
+                    $this->drawText($line, $font, $fontSize, $x + $cellPaddingX, $textY);
+                    $textY -= $lineHeight;
+                }
+
+                $x += $width;
+            }
+
+            $this->cursorY = $rowBottomY;
+        };
+
+        $renderRow($headers, true);
+        foreach (array_values($rows) as $rowIndex => $row) {
+            $renderRow((array)$row, false, ($rowIndex % 2) === 1);
         }
         $this->addSpacer(6.0);
     }
@@ -567,6 +615,25 @@ class SimplePdfDocument
         );
     }
 
+    private function drawLineWithColor(float $startX, float $startY, float $endX, float $endY, array $rgb, float $lineWidth = 1.0): void
+    {
+        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
+        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
+        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
+
+        $this->currentOps[] = sprintf(
+            'q %s %s %s RG %s w %s %s m %s %s l S Q',
+            $r,
+            $g,
+            $b,
+            $this->formatFloat($lineWidth),
+            $this->formatFloat($startX),
+            $this->formatFloat($startY),
+            $this->formatFloat($endX),
+            $this->formatFloat($endY)
+        );
+    }
+
     private function drawFilledRect(float $x, float $y, float $width, float $height, array $rgb): void
     {
         if ($width <= 0.0 || $height <= 0.0) {
@@ -581,6 +648,27 @@ class SimplePdfDocument
             $r,
             $g,
             $b,
+            $this->formatFloat($x),
+            $this->formatFloat($y),
+            $this->formatFloat($width),
+            $this->formatFloat($height)
+        );
+    }
+
+    private function drawRectOutline(float $x, float $y, float $width, float $height, array $rgb, float $lineWidth = 0.5): void
+    {
+        if ($width <= 0.0 || $height <= 0.0) {
+            return;
+        }
+        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
+        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
+        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
+        $this->currentOps[] = sprintf(
+            'q %s %s %s RG %s w %s %s %s %s re S Q',
+            $r,
+            $g,
+            $b,
+            $this->formatFloat($lineWidth),
             $this->formatFloat($x),
             $this->formatFloat($y),
             $this->formatFloat($width),
@@ -627,22 +715,43 @@ class SimplePdfDocument
 
         $this->setFillColor($textColor);
 
+        $availableTextWidth = max(80.0, ($this->width - $this->marginRight) - $textX);
         $currentTop = $contentTopY;
         if ($config['title'] !== null) {
-            $currentTop -= $config['title_font_size'];
-            $titleX = $this->width - $this->marginRight;
-            $titleWidth = $this->estimateTextWidth($config['title'], (float)$config['title_font_size']);
-            $titleX = max($textX, $titleX - $titleWidth);
-            $this->drawText($config['title'], 'F2', $config['title_font_size'], $titleX, $currentTop);
+            $titleLines = $this->wrapTextToWidth((string)$config['title'], (float)$config['title_font_size'], $availableTextWidth);
+            if (count($titleLines) > 2) {
+                $titleLines = array_slice($titleLines, 0, 2);
+                $titleLines[1] = rtrim($titleLines[1]) . '…';
+            }
+            foreach ($titleLines as $lineIndex => $titleLine) {
+                $currentTop -= $config['title_font_size'];
+                $titleX = $this->width - $this->marginRight;
+                $titleWidth = $this->estimateTextWidth($titleLine, (float)$config['title_font_size']);
+                $titleX = max($textX, $titleX - $titleWidth);
+                $this->drawText($titleLine, 'F2', $config['title_font_size'], $titleX, $currentTop);
+                if ($lineIndex < count($titleLines) - 1) {
+                    $currentTop -= max(2.0, $config['line_gap'] * 0.5);
+                }
+            }
             $currentTop -= $config['line_gap'];
         }
 
         if ($config['subtitle'] !== null) {
-            $currentTop -= $config['subtitle_font_size'];
-            $subtitleX = $this->width - $this->marginRight;
-            $subtitleWidth = $this->estimateTextWidth($config['subtitle'], (float)$config['subtitle_font_size']);
-            $subtitleX = max($textX, $subtitleX - $subtitleWidth);
-            $this->drawText($config['subtitle'], 'F1', $config['subtitle_font_size'], $subtitleX, $currentTop);
+            $subtitleLines = $this->wrapTextToWidth((string)$config['subtitle'], (float)$config['subtitle_font_size'], $availableTextWidth);
+            if (count($subtitleLines) > 2) {
+                $subtitleLines = array_slice($subtitleLines, 0, 2);
+                $subtitleLines[1] = rtrim($subtitleLines[1]) . '…';
+            }
+            foreach ($subtitleLines as $lineIndex => $subtitleLine) {
+                $currentTop -= $config['subtitle_font_size'];
+                $subtitleX = $this->width - $this->marginRight;
+                $subtitleWidth = $this->estimateTextWidth($subtitleLine, (float)$config['subtitle_font_size']);
+                $subtitleX = max($textX, $subtitleX - $subtitleWidth);
+                $this->drawText($subtitleLine, 'F1', $config['subtitle_font_size'], $subtitleX, $currentTop);
+                if ($lineIndex < count($subtitleLines) - 1) {
+                    $currentTop -= max(2.0, $config['line_gap'] * 0.4);
+                }
+            }
         }
         $this->resetFillColor();
 
@@ -651,15 +760,14 @@ class SimplePdfDocument
         $headerContentHeight = max($imageHeight, $textContentHeight);
         $headerContentBottomY = $contentTopY - $headerContentHeight;
         $ruleY = $headerContentBottomY - (float)$config['bottom_padding'] - $ruleGap;
-        if ($imageHeight > 0.0 || $config['title'] !== null || $config['subtitle'] !== null) {
-            $this->drawLine(
-                $this->marginLeft,
-                $ruleY,
-                $this->width - $this->marginRight,
-                $ruleY,
-                0.6
-            );
-        }
+        $this->drawLineWithColor(
+            $this->marginLeft,
+            $ruleY,
+            $this->width - $this->marginRight,
+            $ruleY,
+            $barColor,
+            0.8
+        );
 
         $this->cursorY = $topY - $this->headerSpacing + $contentGap;
     }
@@ -984,6 +1092,36 @@ class SimplePdfDocument
         ksort($assignments);
 
         return array_values($assignments);
+    }
+
+    private function resolveTableColumnWidthsInPoints(array $columnWidths): array
+    {
+        $count = count($columnWidths);
+        if ($count === 0) {
+            return [];
+        }
+
+        $availableWidth = max(0.0, $this->width - $this->marginLeft - $this->marginRight);
+        if ($availableWidth <= 0.0) {
+            return array_fill(0, $count, 1.0);
+        }
+
+        $weights = [];
+        foreach ($columnWidths as $width) {
+            $weights[] = max(1.0, (float)$width);
+        }
+
+        $total = array_sum($weights);
+        if ($total <= 0.0) {
+            return array_fill(0, $count, $availableWidth / $count);
+        }
+
+        $result = [];
+        foreach ($weights as $weight) {
+            $result[] = $availableWidth * ($weight / $total);
+        }
+
+        return $result;
     }
 
     private function monospaceCharacterWidth(float $fontSize): float
