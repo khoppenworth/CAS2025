@@ -1918,6 +1918,19 @@ function analytics_report_measure_text_width(string $text, float $fontSize): flo
     return strlen($text) * max(6.0, $fontSize * 0.55);
 }
 
+function analytics_report_measure_text_width(string $text, float $fontSize): float
+{
+    $fontPath = analytics_report_default_font_path();
+    if ($fontPath && function_exists('imagettfbbox')) {
+        $box = imagettfbbox($fontSize, 0, $fontPath, $text);
+        if (is_array($box)) {
+            return analytics_report_ttf_box_width($box);
+        }
+    }
+
+    return strlen($text) * max(6.0, $fontSize * 0.55);
+}
+
 function analytics_report_ttf_box_width(array $box): float
 {
     $xs = [$box[0], $box[2], $box[4], $box[6]];
