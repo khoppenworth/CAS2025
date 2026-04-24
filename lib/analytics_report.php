@@ -853,10 +853,19 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
     $barShadow = imagecolorallocate($image, $barShadowRgb[0], $barShadowRgb[1], $barShadowRgb[2]);
     $barHighlight = imagecolorallocate($image, $barHighlightRgb[0], $barHighlightRgb[1], $barHighlightRgb[2]);
 
+    $maxLabelChars = 0;
+    foreach ($normalized as $point) {
+        $labelLength = function_exists('mb_strlen')
+            ? (int)mb_strlen((string)$point['label'], 'UTF-8')
+            : strlen((string)$point['label']);
+        $maxLabelChars = max($maxLabelChars, $labelLength);
+    }
+    $estimatedLabelLines = $maxLabelChars > 16 ? 2 : 1;
+
     $marginLeft = 150;
     $marginRight = 80;
     $marginTop = 120;
-    $marginBottom = 190;
+    $marginBottom = 150 + ($estimatedLabelLines * 28);
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -998,10 +1007,20 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
     $fillColor = imagecolorallocate($image, $fillRgb[0], $fillRgb[1], $fillRgb[2]);
     $pointColor = imagecolorallocate($image, $pointRgb[0], $pointRgb[1], $pointRgb[2]);
 
+    $maxLabelChars = 0;
+    foreach ($normalized as $point) {
+        $labelLength = function_exists('mb_strlen')
+            ? (int)mb_strlen((string)$point['label'], 'UTF-8')
+            : strlen((string)$point['label']);
+        $maxLabelChars = max($maxLabelChars, $labelLength);
+    }
+    $estimatedLabelLines = $maxLabelChars > 16 ? 2 : 1;
+    $seriesDensityPadding = count($normalized) > 8 ? 24 : 0;
+
     $marginLeft = 140;
     $marginRight = 80;
     $marginTop = 100;
-    $marginBottom = 190;
+    $marginBottom = 150 + ($estimatedLabelLines * 28) + $seriesDensityPadding;
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -1121,7 +1140,7 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
             'line_gap' => 4,
             'max_lines' => 2,
         ]);
-        $lastLabelRightEdge = $x + 75;
+        $lastLabelRightEdge = $x + 65;
     }
 
     $result = analytics_report_export_gd_image($image);
