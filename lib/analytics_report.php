@@ -424,9 +424,6 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $logoSpec = analytics_report_header_logo_spec($pdf, $cfg);
     $pdf->setHeader($headerTitle, $headerSubtitle, $logoSpec, analytics_report_header_style($cfg));
 
-    $title = $headerTitle . ' Analytics Report';
-    $pdf->addHeading($title);
-
     /** @var DateTimeImmutable $generatedAt */
     $generatedAt = $snapshot['generated_at'];
     $pdf->addParagraph('Generated on ' . $generatedAt->format('Y-m-d H:i'));
