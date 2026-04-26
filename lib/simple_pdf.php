@@ -488,7 +488,7 @@ class SimplePdfDocument
 
         $objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
         $objects[2] = $pagesObject;
-        $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+        $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Calibri >>';
         $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
         $objects[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
 
@@ -779,6 +779,9 @@ class SimplePdfDocument
         if ($this->pageNumber <= 0) {
             return;
         }
+        $barWidth = $this->width - $this->marginLeft - $this->marginRight;
+        $barY = $this->marginBottom - 8.0;
+        $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
 
         $barColor = (
             $this->headerConfig !== null
