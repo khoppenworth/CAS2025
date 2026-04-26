@@ -861,11 +861,15 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
         $maxLabelChars = max($maxLabelChars, $labelLength);
     }
     $estimatedLabelLines = $maxLabelChars > 16 ? 2 : 1;
+    $count = count($normalized);
+    $showEvery = max(1, (int)ceil($count / 8));
+    $labelLineCount = $showEvery > 1 ? 1 : $estimatedLabelLines;
+    $showValueLabels = $count <= 10;
 
     $marginLeft = 150;
     $marginRight = 80;
     $marginTop = 120;
-    $marginBottom = 150 + ($estimatedLabelLines * 28);
+    $marginBottom = 150 + ($labelLineCount * 28) + ($showEvery > 1 ? 18 : 0);
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -913,7 +917,6 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
     imageline($image, $marginLeft, $marginTop + $chartHeight, $marginLeft + $chartWidth, $marginTop + $chartHeight, $axisColor);
     imageline($image, $marginLeft, $marginTop, $marginLeft, $marginTop + $chartHeight, $axisColor);
 
-    $count = count($normalized);
     $segment = $chartWidth / max($count, 1);
     $barWidth = max(24, min(80, $segment * 0.6));
     $baseline = $marginTop + $chartHeight;
@@ -933,20 +936,24 @@ function analytics_report_generate_bar_chart(array $points, array $palette, arra
         imageline($image, $x1, $y2, $x2, $y2, $barShadow);
         imageline($image, $x1, $y1, $x2, $y1, $barHighlight);
 
-        $valueLabel = number_format($point['value'], $precision) . $valueSuffix;
-        $valueLabelY = max(24, $y1 - 14);
-        analytics_report_draw_text($image, $valueLabel, $textColor, 16, (int)round($centerX), $valueLabelY, [
-            'align' => 'center',
-            'baseline' => 'top',
-        ]);
+        if ($showValueLabels) {
+            $valueLabel = number_format($point['value'], $precision) . $valueSuffix;
+            $valueLabelY = max(24, $y1 - 14);
+            analytics_report_draw_text($image, $valueLabel, $textColor, 16, (int)round($centerX), $valueLabelY, [
+                'align' => 'center',
+                'baseline' => 'top',
+            ]);
+        }
 
-        $labelY = $baseline + 16 + (($index % 2) * 18);
-        analytics_report_draw_wrapped_text($image, $point['label'], $textColor, 14, (int)round($centerX), $labelY, 140, [
-            'align' => 'center',
-            'baseline' => 'top',
-            'line_gap' => 5,
-            'max_lines' => 2,
-        ]);
+        if (($index % $showEvery) === 0) {
+            $labelY = $baseline + 16 + (($index % 2) * 18);
+            analytics_report_draw_wrapped_text($image, $point['label'], $textColor, 14, (int)round($centerX), $labelY, 140, [
+                'align' => 'center',
+                'baseline' => 'top',
+                'line_gap' => 5,
+                'max_lines' => $showEvery > 1 ? 1 : 2,
+            ]);
+        }
     }
 
     $result = analytics_report_export_gd_image($image);
@@ -1015,12 +1022,16 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
         $maxLabelChars = max($maxLabelChars, $labelLength);
     }
     $estimatedLabelLines = $maxLabelChars > 16 ? 2 : 1;
-    $seriesDensityPadding = count($normalized) > 8 ? 24 : 0;
+    $count = count($normalized);
+    $showEvery = max(1, (int)ceil($count / 8));
+    $labelLineCount = $showEvery > 1 ? 1 : $estimatedLabelLines;
+    $seriesDensityPadding = $count > 8 ? 24 : 0;
+    $showValueLabels = $count <= 10;
 
     $marginLeft = 140;
     $marginRight = 80;
     $marginTop = 100;
-    $marginBottom = 150 + ($estimatedLabelLines * 28) + $seriesDensityPadding;
+    $marginBottom = 150 + ($labelLineCount * 28) + $seriesDensityPadding + ($showEvery > 1 ? 12 : 0);
 
     $chartWidth = $width - $marginLeft - $marginRight;
     $chartHeight = $height - $marginTop - $marginBottom;
@@ -1067,7 +1078,6 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
     imageline($image, $marginLeft, $marginTop + $chartHeight, $marginLeft + $chartWidth, $marginTop + $chartHeight, $axisColor);
     imageline($image, $marginLeft, $marginTop, $marginLeft, $marginTop + $chartHeight, $axisColor);
 
-    $count = count($normalized);
     $baseline = $marginTop + $chartHeight;
     $segment = $count > 1 ? ($chartWidth / ($count - 1)) : 0;
     $points = [];
@@ -1124,23 +1134,27 @@ function analytics_report_generate_line_chart(array $points, array $palette, arr
         imagefilledellipse($image, (int)round($x), (int)round($y), $radius, $radius, $pointColor);
         imageellipse($image, (int)round($x), (int)round($y), $radius + 2, $radius + 2, $lineColor);
 
-        $valueLabel = number_format($meta['value'], (int)($options['decimal_places'] ?? 0)) . $valueSuffix;
-        analytics_report_draw_text($image, $valueLabel, $textColor, 18, (int)round($x), (int)round($y) - 14, [
-            'align' => 'center',
-            'baseline' => 'bottom',
-        ]);
-
-        $labelY = $baseline + 16 + (($pointIndex % 2) * 18);
-        if ($lastLabelRightEdge !== null && $count > 1 && $segment > 0 && ($x - $lastLabelRightEdge) < 40) {
-            $labelY += 16;
+        if ($showValueLabels) {
+            $valueLabel = number_format($meta['value'], (int)($options['decimal_places'] ?? 0)) . $valueSuffix;
+            analytics_report_draw_text($image, $valueLabel, $textColor, 18, (int)round($x), (int)round($y) - 14, [
+                'align' => 'center',
+                'baseline' => 'bottom',
+            ]);
         }
-        analytics_report_draw_wrapped_text($image, $meta['label'], $textColor, 14, (int)round($x), (int)round($labelY), 150, [
-            'align' => 'center',
-            'baseline' => 'top',
-            'line_gap' => 4,
-            'max_lines' => 2,
-        ]);
-        $lastLabelRightEdge = $x + 65;
+
+        if (($pointIndex % $showEvery) === 0) {
+            $labelY = $baseline + 16 + (($pointIndex % 2) * 18);
+            if ($lastLabelRightEdge !== null && $count > 1 && $segment > 0 && ($x - $lastLabelRightEdge) < 40) {
+                $labelY += 16;
+            }
+            analytics_report_draw_wrapped_text($image, $meta['label'], $textColor, 14, (int)round($x), (int)round($labelY), 150, [
+                'align' => 'center',
+                'baseline' => 'top',
+                'line_gap' => 4,
+                'max_lines' => $showEvery > 1 ? 1 : 2,
+            ]);
+            $lastLabelRightEdge = $x + 65;
+        }
     }
 
     $result = analytics_report_export_gd_image($image);
@@ -1268,6 +1282,7 @@ function analytics_report_generate_radar_chart(array $sections, array $palette, 
     }
 
     $polygon = [];
+    $showValueLabels = $count <= 8;
     foreach ($normalized as $index => $section) {
         $angle = $startAngle + $angleStep * $index;
         $value = max(0.0, min($axisMax, $section['value']));
@@ -1300,13 +1315,15 @@ function analytics_report_generate_radar_chart(array $sections, array $palette, 
         imagefilledellipse($image, $pointXInt, $pointYInt, 16, 16, $vertexColor);
         imageellipse($image, $pointXInt, $pointYInt, 18, 18, $strokeColor);
 
-        $valueLabel = number_format($section['value'], (int)($options['decimal_places'] ?? 1)) . $valueSuffix;
-        $valueLabelX = $centerX + cos($angle) * $radius * min(1.0, max(0.2, $ratio + 0.12));
-        $valueLabelY = $centerY + sin($angle) * $radius * min(1.0, max(0.2, $ratio + 0.12));
-        analytics_report_draw_text($image, $valueLabel, $textColor, 18, (int)round($valueLabelX), (int)round($valueLabelY), [
-            'align' => 'center',
-            'baseline' => 'middle',
-        ]);
+        if ($showValueLabels) {
+            $valueLabel = number_format($section['value'], (int)($options['decimal_places'] ?? 1)) . $valueSuffix;
+            $valueLabelX = $centerX + cos($angle) * $radius * min(1.0, max(0.25, $ratio + 0.2));
+            $valueLabelY = $centerY + sin($angle) * $radius * min(1.0, max(0.25, $ratio + 0.2));
+            analytics_report_draw_text($image, $valueLabel, $textColor, 16, (int)round($valueLabelX), (int)round($valueLabelY), [
+                'align' => 'center',
+                'baseline' => 'middle',
+            ]);
+        }
 
         $labelAngleCos = cos($angle);
         $labelAngleSin = sin($angle);
@@ -1324,11 +1341,11 @@ function analytics_report_generate_radar_chart(array $sections, array $palette, 
         } elseif ($labelAngleSin < -0.4) {
             $baseline = 'bottom';
         }
-        analytics_report_draw_wrapped_text($image, $section['label'], $textColor, 16, (int)round($labelX), (int)round($labelY), 160, [
+        analytics_report_draw_wrapped_text($image, $section['label'], $textColor, 15, (int)round($labelX), (int)round($labelY), 150, [
             'align' => $align,
             'baseline' => $baseline,
             'line_gap' => 4,
-            'max_lines' => 2,
+            'max_lines' => $count > 10 ? 1 : 2,
         ]);
     }
 
@@ -1363,6 +1380,28 @@ function analytics_report_draw_text($image, string $text, int $color, float $fon
 
     if ($fontPath && function_exists('imagettftext') && function_exists('imagettfbbox')) {
         $box = imagettfbbox($fontSize, 0, $fontPath, $text);
+        if (!is_array($box) || count($box) < 8) {
+            $font = $options['font'] ?? 3;
+            $charWidth = imagefontwidth($font);
+            $charHeight = imagefontheight($font);
+            $textWidth = $charWidth * strlen($text);
+            $drawX = $x;
+            if ($align === 'center') {
+                $drawX = (int)round($x - $textWidth / 2);
+            } elseif ($align === 'right') {
+                $drawX = (int)round($x - $textWidth);
+            }
+            $drawY = $y;
+            if ($baseline === 'top') {
+                $drawY = $y;
+            } elseif ($baseline === 'middle') {
+                $drawY = (int)round($y - ($charHeight / 2));
+            } else {
+                $drawY = (int)round($y - $charHeight);
+            }
+            imagestring($image, $font, $drawX, $drawY, $text, $color);
+            return;
+        }
         $textWidth = analytics_report_ttf_box_width($box);
         $textHeight = analytics_report_ttf_box_height($box);
         $drawX = $x;
@@ -1918,27 +1957,20 @@ function analytics_report_measure_text_width(string $text, float $fontSize): flo
     return strlen($text) * max(6.0, $fontSize * 0.55);
 }
 
-function analytics_report_measure_text_width(string $text, float $fontSize): float
+function analytics_report_ttf_box_width($box): float
 {
-    $fontPath = analytics_report_default_font_path();
-    if ($fontPath && function_exists('imagettfbbox')) {
-        $box = imagettfbbox($fontSize, 0, $fontPath, $text);
-        if (is_array($box)) {
-            return analytics_report_ttf_box_width($box);
-        }
+    if (!is_array($box) || count($box) < 8) {
+        return 0.0;
     }
-
-    return strlen($text) * max(6.0, $fontSize * 0.55);
-}
-
-function analytics_report_ttf_box_width(array $box): float
-{
     $xs = [$box[0], $box[2], $box[4], $box[6]];
     return max($xs) - min($xs);
 }
 
-function analytics_report_ttf_box_height(array $box): float
+function analytics_report_ttf_box_height($box): float
 {
+    if (!is_array($box) || count($box) < 8) {
+        return 0.0;
+    }
     $ys = [$box[1], $box[3], $box[5], $box[7]];
     return max($ys) - min($ys);
 }
