@@ -548,7 +548,7 @@ class SimplePdfDocument
         $this->pageOpen = true;
         $this->cursorY = $this->height - $this->marginTop;
         $this->renderHeader();
-        $this->renderFooter();
+        $this->renderPageFooter();
     }
 
     private function ensureSpace(float $lineHeight): void
@@ -716,6 +716,7 @@ class SimplePdfDocument
         $this->setFillColor($textColor);
 
         $availableTextWidth = max(80.0, ($this->width - $this->marginRight) - $textX);
+        $textBottomY = $contentTopY;
         $currentTop = $contentTopY;
         if ($config['title'] !== null) {
             $titleLines = $this->wrapTextToWidth((string)$config['title'], (float)$config['title_font_size'], $availableTextWidth);
@@ -729,6 +730,7 @@ class SimplePdfDocument
                 $titleWidth = $this->estimateTextWidth($titleLine, (float)$config['title_font_size']);
                 $titleX = max($textX, $titleX - $titleWidth);
                 $this->drawText($titleLine, 'F2', $config['title_font_size'], $titleX, $currentTop);
+                $textBottomY = min($textBottomY, $currentTop - (float)$config['title_font_size']);
                 if ($lineIndex < count($titleLines) - 1) {
                     $currentTop -= max(2.0, $config['line_gap'] * 0.5);
                 }
@@ -748,6 +750,7 @@ class SimplePdfDocument
                 $subtitleWidth = $this->estimateTextWidth($subtitleLine, (float)$config['subtitle_font_size']);
                 $subtitleX = max($textX, $subtitleX - $subtitleWidth);
                 $this->drawText($subtitleLine, 'F1', $config['subtitle_font_size'], $subtitleX, $currentTop);
+                $textBottomY = min($textBottomY, $currentTop - (float)$config['subtitle_font_size']);
                 if ($lineIndex < count($subtitleLines) - 1) {
                     $currentTop -= max(2.0, $config['line_gap'] * 0.4);
                 }
@@ -757,8 +760,7 @@ class SimplePdfDocument
 
         $contentGap = (float)($config['content_gap'] ?? 10.0);
         $ruleGap = (float)($config['rule_gap'] ?? 6.0);
-        $headerContentHeight = max($imageHeight, $textContentHeight);
-        $headerContentBottomY = $contentTopY - $headerContentHeight;
+        $headerContentBottomY = min($contentTopY - $imageHeight, $textBottomY);
         $ruleY = $headerContentBottomY - (float)$config['bottom_padding'] - $ruleGap;
         $this->drawLineWithColor(
             $this->marginLeft,
@@ -769,7 +771,42 @@ class SimplePdfDocument
             0.8
         );
 
-        $this->cursorY = $topY - $this->headerSpacing + $contentGap;
+        $this->cursorY = $ruleY - $contentGap;
+    }
+
+    private function renderPageFooter(): void
+    {
+        if ($this->pageNumber <= 0) {
+            return;
+        }
+
+        $barColor = [32, 115, 191];
+        if ($this->headerConfig !== null && is_array($this->headerConfig['bar_color'] ?? null)) {
+            $barColor = $this->headerConfig['bar_color'];
+        }
+        $barWidth = $this->width - $this->marginLeft - $this->marginRight;
+        $barY = $this->marginBottom - 8.0;
+        $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
+
+        $label = 'Page ' . self::PAGE_TOKEN . ' of ' . self::PAGE_TOTAL_TOKEN;
+        $fontSize = 9.0;
+        $textWidth = $this->estimateTextWidth($label, $fontSize);
+        $x = ($this->width / 2) - ($textWidth / 2);
+        $y = max(20.0, $barY - 12.0);
+        $this->drawText($label, 'F1', $fontSize, $x, $y);
+    }
+
+    private function setFillColor(array $rgb): void
+    {
+        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
+        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
+        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
+        $this->currentOps[] = sprintf('%s %s %s rg', $r, $g, $b);
+    }
+
+    private function resetFillColor(): void
+    {
+        $this->currentOps[] = '0 0 0 rg';
     }
 
     private function renderFooter(): void
