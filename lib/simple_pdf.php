@@ -783,10 +783,12 @@ class SimplePdfDocument
         $barY = $this->marginBottom - 8.0;
         $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
 
-        $barColor = [32, 115, 191];
-        if ($this->headerConfig !== null && is_array($this->headerConfig['bar_color'] ?? null)) {
-            $barColor = $this->headerConfig['bar_color'];
-        }
+        $barColor = (
+            $this->headerConfig !== null
+            && is_array($this->headerConfig['bar_color'] ?? null)
+        )
+            ? $this->headerConfig['bar_color']
+            : [32, 115, 191];
         $barWidth = $this->width - $this->marginLeft - $this->marginRight;
         $barY = $this->marginBottom - 8.0;
         $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
