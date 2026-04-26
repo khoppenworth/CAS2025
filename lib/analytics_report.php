@@ -1941,35 +1941,51 @@ function analytics_report_default_font_path(): ?string
     return $resolved;
 }
 
-function analytics_report_measure_text_width(string $text, float $fontSize): float
-{
-    $fontPath = analytics_report_default_font_path();
-    if ($fontPath && function_exists('imagettfbbox')) {
-        $box = imagettfbbox($fontSize, 0, $fontPath, $text);
-        if (is_array($box)) {
-            return analytics_report_ttf_box_width($box);
+if (!function_exists('analytics_report_measure_text_width')) {
+    function analytics_report_measure_text_width(string $text, float $fontSize): float
+    {
+        $fontPath = analytics_report_default_font_path();
+        if ($fontPath && function_exists('imagettfbbox')) {
+            $box = imagettfbbox($fontSize, 0, $fontPath, $text);
+            if (is_array($box)) {
+                return analytics_report_ttf_box_width($box);
+            }
         }
-    }
 
-    return strlen($text) * max(6.0, $fontSize * 0.55);
+        return strlen($text) * max(6.0, $fontSize * 0.55);
+    }
 }
 
-function analytics_report_ttf_box_width($box): float
-{
-    if (!is_array($box) || count($box) < 8) {
-        return 0.0;
+if (!function_exists('analytics_reports_measure_text_width')) {
+    /**
+     * Backwards-compatible alias for older typo'd helper references.
+     */
+    function analytics_reports_measure_text_width(string $text, float $fontSize): float
+    {
+        return analytics_report_measure_text_width($text, $fontSize);
     }
-    $xs = [$box[0], $box[2], $box[4], $box[6]];
-    return max($xs) - min($xs);
 }
 
-function analytics_report_ttf_box_height($box): float
-{
-    if (!is_array($box) || count($box) < 8) {
-        return 0.0;
+if (!function_exists('analytics_report_ttf_box_width')) {
+    function analytics_report_ttf_box_width($box): float
+    {
+        if (!is_array($box) || count($box) < 8) {
+            return 0.0;
+        }
+        $xs = [$box[0], $box[2], $box[4], $box[6]];
+        return max($xs) - min($xs);
     }
-    $ys = [$box[1], $box[3], $box[5], $box[7]];
-    return max($ys) - min($ys);
+}
+
+if (!function_exists('analytics_report_ttf_box_height')) {
+    function analytics_report_ttf_box_height($box): float
+    {
+        if (!is_array($box) || count($box) < 8) {
+            return 0.0;
+        }
+        $ys = [$box[1], $box[3], $box[5], $box[7]];
+        return max($ys) - min($ys);
+    }
 }
 
 function analytics_report_format_number($value): string
