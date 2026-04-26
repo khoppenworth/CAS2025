@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /**
- * Seed dummy users, questionnaire assignments, and submissions using existing questionnaires.
+ * Seed demo users, questionnaire assignments, and submissions using existing questionnaires.
  *
  * Usage:
- *   php scripts/seed_dummy_data_from_questionnaires.php
+ *   php scripts/seed_dummy_data_from_questionnaires.php [--statuses=draft,published] [--start-year=2020] [--end-year=2025]
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -24,22 +24,56 @@ if (!isset($pdo) || !$pdo instanceof PDO) {
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
+$flags = [
+    'statuses' => ['draft', 'published'],
+    'startYear' => 2020,
+    'endYear' => 2025,
+];
+
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--statuses=')) {
+        $raw = trim((string)substr($arg, strlen('--statuses=')));
+        $flags['statuses'] = array_values(array_filter(array_map('trim', explode(',', $raw))));
+        continue;
+    }
+    if (str_starts_with($arg, '--start-year=')) {
+        $flags['startYear'] = (int)substr($arg, strlen('--start-year='));
+        continue;
+    }
+    if (str_starts_with($arg, '--end-year=')) {
+        $flags['endYear'] = (int)substr($arg, strlen('--end-year='));
+        continue;
+    }
+}
+
+if ($flags['startYear'] < 1900 || $flags['endYear'] > 2200 || $flags['startYear'] > $flags['endYear']) {
+    fwrite(STDERR, "Invalid year range. Expected --start-year <= --end-year." . PHP_EOL);
+    exit(1);
+}
+if (!$flags['statuses']) {
+    fwrite(STDERR, "Invalid statuses list. Provide at least one status via --statuses." . PHP_EOL);
+    exit(1);
+}
+
 /**
  * @return array<int, array<string, mixed>>
  */
-function load_questionnaires(PDO $pdo): array
+function load_questionnaires(PDO $pdo, array $statuses): array
 {
-    $stmt = $pdo->query(
+    $placeholders = implode(', ', array_fill(0, count($statuses), '?'));
+    $stmt = $pdo->prepare(
         "SELECT q.id, q.title, q.status,\n" .
         "COUNT(qi.id) AS item_count,\n" .
         "SUM(CASE WHEN qi.type = 'likert' THEN 1 ELSE 0 END) AS likert_count,\n" .
         "SUM(CASE WHEN qi.type = 'choice' AND qi.requires_correct = 1 THEN 1 ELSE 0 END) AS correct_count\n" .
         "FROM questionnaire q\n" .
         "LEFT JOIN questionnaire_item qi ON qi.questionnaire_id = q.id AND qi.is_active = 1\n" .
+        "WHERE q.status IN (" . $placeholders . ")\n" .
         "GROUP BY q.id, q.title, q.status\n" .
-        "HAVING item_count > 0 AND likert_count = 0 AND correct_count > 0\n" .
-        "ORDER BY FIELD(q.status, 'published', 'draft', 'inactive'), q.id"
+        "HAVING item_count > 0\n" .
+        "ORDER BY q.id"
     );
+    $stmt->execute($statuses);
 
     return $stmt->fetchAll() ?: [];
 }
@@ -47,15 +81,15 @@ function load_questionnaires(PDO $pdo): array
 /**
  * @return array<int, int>
  */
-function ensure_dummy_users(PDO $pdo): array
+function ensure_demo_users(PDO $pdo): array
 {
-    $passwordHash = password_hash('DummyPass#2025', PASSWORD_DEFAULT);
+    $passwordHash = password_hash('DemoPass#2026', PASSWORD_DEFAULT);
     $users = [
-        ['dummy_supervisor', 'supervisor', 'Dummy Supervisor', 'dummy.supervisor@example.com', 'leadership_tn'],
-        ['dummy_staff_finance', 'staff', 'Dummy Finance Staff', 'dummy.finance@example.com', 'finance'],
-        ['dummy_staff_hr', 'staff', 'Dummy HR Staff', 'dummy.hr@example.com', 'hrm'],
-        ['dummy_staff_ict', 'staff', 'Dummy ICT Staff', 'dummy.ict@example.com', 'ict'],
-        ['dummy_staff_ops', 'staff', 'Dummy Operations Staff', 'dummy.ops@example.com', 'general_service'],
+        ['demo_supervisor', 'supervisor', 'Demo Supervisor', 'demo.supervisor@example.com', 'leadership_tn'],
+        ['demo_staff_finance', 'staff', 'Demo Finance Staff', 'demo.finance@example.com', 'finance'],
+        ['demo_staff_hr', 'staff', 'Demo HR Staff', 'demo.hr@example.com', 'hrm'],
+        ['demo_staff_ict', 'staff', 'Demo ICT Staff', 'demo.ict@example.com', 'ict'],
+        ['demo_staff_ops', 'staff', 'Demo Operations Staff', 'demo.ops@example.com', 'general_service'],
     ];
 
     $selectStmt = $pdo->prepare('SELECT id FROM users WHERE username = ? LIMIT 1');
@@ -80,22 +114,28 @@ function ensure_dummy_users(PDO $pdo): array
     return $ids;
 }
 
-function ensure_current_performance_period(PDO $pdo): int
+/**
+ * @return array<int, int> map of year to performance_period.id
+ */
+function ensure_performance_period_range(PDO $pdo, int $startYear, int $endYear): array
 {
-    $year = (int)date('Y');
-    $label = (string)$year;
-    $start = sprintf('%d-01-01', $year);
-    $end = sprintf('%d-12-31', $year);
-
     $insert = $pdo->prepare(
         'INSERT INTO performance_period (label, period_start, period_end) VALUES (?, ?, ?) ' .
         'ON DUPLICATE KEY UPDATE period_start = VALUES(period_start), period_end = VALUES(period_end)'
     );
-    $insert->execute([$label, $start, $end]);
 
     $select = $pdo->prepare('SELECT id FROM performance_period WHERE label = ? LIMIT 1');
-    $select->execute([$label]);
-    return (int)$select->fetchColumn();
+    $periodByYear = [];
+    for ($year = $startYear; $year <= $endYear; $year++) {
+        $label = (string)$year;
+        $start = sprintf('%d-01-01', $year);
+        $end = sprintf('%d-12-31', $year);
+        $insert->execute([$label, $start, $end]);
+        $select->execute([$label]);
+        $periodByYear[$year] = (int)$select->fetchColumn();
+    }
+
+    return $periodByYear;
 }
 
 /**
@@ -170,15 +210,35 @@ function build_answer_payload(array $item, array $options): array
     ];
 }
 
-$questionnaires = load_questionnaires($pdo);
+function random_timestamp_in_year(int $year, int $startDay = 1, int $endDay = 365): int
+{
+    $maxDay = (int)date('z', strtotime(sprintf('%d-12-31', $year))) + 1;
+    $startDay = max(1, min($startDay, $maxDay));
+    $endDay = max($startDay, min($endDay, $maxDay));
+    $dayOfYear = random_int($startDay, $endDay);
+
+    $base = new DateTimeImmutable(sprintf('%d-01-01 00:00:00', $year));
+    $date = $base->modify('+' . ($dayOfYear - 1) . ' days');
+    $date = $date->setTime(random_int(8, 16), random_int(0, 59), random_int(0, 59));
+
+    return $date->getTimestamp();
+}
+
+$questionnaires = load_questionnaires($pdo, $flags['statuses']);
 if (!$questionnaires) {
-    fwrite(STDERR, "No questionnaires with active items were found. Nothing to seed." . PHP_EOL);
+    fwrite(
+        STDERR,
+        sprintf(
+            "No questionnaires with statuses [%s] and active items were found. Nothing to seed.",
+            implode(', ', $flags['statuses'])
+        ) . PHP_EOL
+    );
     exit(1);
 }
 
 $pdo->beginTransaction();
 try {
-    $userIds = ensure_dummy_users($pdo);
+    $userIds = ensure_demo_users($pdo);
     $staffIds = [];
     $supervisorId = 0;
     foreach ($userIds as $id) {
@@ -193,18 +253,24 @@ try {
         }
     }
 
-    $periodId = ensure_current_performance_period($pdo);
+    $periodByYear = ensure_performance_period_range($pdo, $flags['startYear'], $flags['endYear']);
 
     $cleanupResponseItems = $pdo->prepare(
         'DELETE FROM questionnaire_response_item WHERE response_id IN (' .
-        'SELECT id FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")' .
+        'SELECT id FROM questionnaire_response WHERE user_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')' .
         ')'
     );
     $cleanupResponses = $pdo->prepare(
-        'DELETE FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
+        'DELETE FROM questionnaire_response WHERE user_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')'
     );
     $cleanupAssignments = $pdo->prepare(
-        'DELETE FROM questionnaire_assignment WHERE staff_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
+        'DELETE FROM questionnaire_assignment WHERE staff_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')'
     );
     $cleanupResponseItems->execute();
     $cleanupResponses->execute();
@@ -218,11 +284,11 @@ try {
     );
 
     $insertAssignment = $pdo->prepare(
-        'INSERT INTO questionnaire_assignment (staff_id, questionnaire_id, assigned_by, assigned_at) VALUES (?, ?, ?, NOW())'
+        'INSERT INTO questionnaire_assignment (staff_id, questionnaire_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?)'
     );
     $insertResponse = $pdo->prepare(
         'INSERT INTO questionnaire_response (user_id, questionnaire_id, performance_period_id, status, score, reviewed_by, reviewed_at, review_comment, created_at) ' .
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())'
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $insertResponseItem = $pdo->prepare(
         'INSERT INTO questionnaire_response_item (response_id, linkId, answer) VALUES (?, ?, ?)'
@@ -240,11 +306,32 @@ try {
         }
 
         foreach ($staffIds as $staffId) {
-            $insertAssignment->execute([$staffId, $qid, $supervisorId > 0 ? $supervisorId : null]);
+            $year = random_int($flags['startYear'], $flags['endYear']);
+            $periodId = (int)($periodByYear[$year] ?? 0);
+            if ($periodId <= 0) {
+                throw new RuntimeException(sprintf('No performance period found for year %d.', $year));
+            }
+
+            $assignedTs = random_timestamp_in_year($year, 1, 320);
+            $assignedAt = date('Y-m-d H:i:s', $assignedTs);
+            $insertAssignment->execute([$staffId, $qid, $supervisorId > 0 ? $supervisorId : null, $assignedAt]);
 
             $status = random_int(0, 10) > 2 ? 'submitted' : 'approved';
-            $reviewedAt = $status === 'approved' ? date('Y-m-d H:i:s') : null;
-            $reviewComment = $status === 'approved' ? 'Reviewed dummy submission for seed data.' : null;
+            $createdTs = min(
+                strtotime(sprintf('%d-12-31 23:59:59', $year)),
+                $assignedTs + (random_int(3, 45) * 86400)
+            );
+            $createdAt = date('Y-m-d H:i:s', $createdTs);
+            $reviewedAt = $status === 'approved'
+                ? date(
+                    'Y-m-d H:i:s',
+                    min(
+                        strtotime(sprintf('%d-12-31 23:59:59', $year)),
+                        $createdTs + (random_int(1, 12) * 86400)
+                    )
+                )
+                : null;
+            $reviewComment = $status === 'approved' ? 'Reviewed demo submission for seed data.' : null;
 
             $correctAnswerTotal = 0;
             $correctAnswers = 0;
@@ -258,6 +345,7 @@ try {
                 $status === 'approved' ? ($supervisorId > 0 ? $supervisorId : null) : null,
                 $reviewedAt,
                 $reviewComment,
+                $createdAt,
             ]);
             $responseId = (int)$pdo->lastInsertId();
 
@@ -297,6 +385,6 @@ try {
     fwrite(STDOUT, sprintf('Seed complete. Questionnaires processed: %d, responses created: %d', count($questionnaires), $responsesCreated) . PHP_EOL);
 } catch (Throwable $e) {
     $pdo->rollBack();
-    fwrite(STDERR, 'Failed to seed dummy data: ' . $e->getMessage() . PHP_EOL);
+    fwrite(STDERR, 'Failed to seed demo data: ' . $e->getMessage() . PHP_EOL);
     exit(1);
 }
