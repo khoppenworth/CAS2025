@@ -17,26 +17,25 @@ Before running, ensure your `.env` has valid `DB_HOST`, `DB_PORT`, `DB_NAME`, `D
 ## What it does
 
 - Defaults to seeding both `draft` and `published` questionnaires (override with `--statuses=<comma-separated-statuses>`).
-- Selects questionnaires that have at least one active item, no active `likert` items, and at least one auto-gradable `choice` item marked `requires_correct = 1`.
-- Ensures a fixed set of `dummy_*` users exists (one supervisor and several staff users).
+- Selects all questionnaires in the selected statuses that have at least one active item.
+- Ensures a fixed set of `demo_*` users exists (one supervisor and several staff users).
 - Creates/updates annual performance periods for the selected year range (default `2020`–`2025`, override with `--start-year` and `--end-year`).
-- Deletes prior dummy assignments and responses for `dummy_*` users, then recreates assignments and one response per dummy staff per selected questionnaire.
+- Deletes prior demo assignments and responses for `demo_*` users, then recreates assignments and one response per demo staff per selected questionnaire.
 - Seeds response-item answers and computes a score (graded for `requires_correct` questions; randomized fallback otherwise), with assignment/response timestamps spread across the selected year range.
 
 ## Scope notes
 
-- It does **not** seed every questionnaire in the system.
-- It only seeds questionnaires matching the eligibility filter above.
+- It seeds all questionnaires in the selected statuses that have active items.
 - Seeded rows are standard `questionnaire_response` records, so they appear in analytics queries unless additional filtering is added.
 
 ## Cleanup
 
-Use `dummy_data_cleanup.sql` to remove seeded dummy-user submissions when needed. The cleanup script removes both `demo_*` and `dummy_*` users and their related records, and does not delete questionnaire definitions.
+Use `dummy_data_cleanup.sql` to remove seeded demo-user submissions when needed. The cleanup script removes both `demo_*` and `dummy_*` users and their related records, and does not delete questionnaire definitions.
 
 
 ## Admin toggle
 
 Administrators can now enable or disable the full demo dataset directly from **Admin → Settings**:
 
-- **Enable Demo Dataset** executes `dummy_data.sql` (full demo users, questionnaires, responses, analytics history, and training recommendation mappings).
-- **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo/dummy records and EPSA demo course mappings).
+- **Enable Demo Dataset** executes `dummy_data.sql` (fictive demo users and period baselines only; no questionnaire creation/deletion).
+- **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo/dummy records without touching questionnaire definitions).

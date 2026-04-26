@@ -46,8 +46,6 @@ WHERE user_id IN (
        OR username LIKE 'dummy_%'
 );
 
-DELETE FROM course_catalogue WHERE code LIKE 'EPSA-%';
-
 DELETE FROM users
 WHERE username LIKE 'demo_%'
    OR username LIKE 'dummy_%';

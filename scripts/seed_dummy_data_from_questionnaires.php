@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Seed dummy users, questionnaire assignments, and submissions using existing questionnaires.
+ * Seed demo users, questionnaire assignments, and submissions using existing questionnaires.
  *
  * Usage:
  *   php scripts/seed_dummy_data_from_questionnaires.php [--statuses=draft,published] [--start-year=2020] [--end-year=2025]
@@ -70,7 +70,7 @@ function load_questionnaires(PDO $pdo, array $statuses): array
         "LEFT JOIN questionnaire_item qi ON qi.questionnaire_id = q.id AND qi.is_active = 1\n" .
         "WHERE q.status IN (" . $placeholders . ")\n" .
         "GROUP BY q.id, q.title, q.status\n" .
-        "HAVING item_count > 0 AND likert_count = 0 AND correct_count > 0\n" .
+        "HAVING item_count > 0\n" .
         "ORDER BY q.id"
     );
     $stmt->execute($statuses);
@@ -81,15 +81,15 @@ function load_questionnaires(PDO $pdo, array $statuses): array
 /**
  * @return array<int, int>
  */
-function ensure_dummy_users(PDO $pdo): array
+function ensure_demo_users(PDO $pdo): array
 {
-    $passwordHash = password_hash('DummyPass#2025', PASSWORD_DEFAULT);
+    $passwordHash = password_hash('DemoPass#2026', PASSWORD_DEFAULT);
     $users = [
-        ['dummy_supervisor', 'supervisor', 'Dummy Supervisor', 'dummy.supervisor@example.com', 'leadership_tn'],
-        ['dummy_staff_finance', 'staff', 'Dummy Finance Staff', 'dummy.finance@example.com', 'finance'],
-        ['dummy_staff_hr', 'staff', 'Dummy HR Staff', 'dummy.hr@example.com', 'hrm'],
-        ['dummy_staff_ict', 'staff', 'Dummy ICT Staff', 'dummy.ict@example.com', 'ict'],
-        ['dummy_staff_ops', 'staff', 'Dummy Operations Staff', 'dummy.ops@example.com', 'general_service'],
+        ['demo_supervisor', 'supervisor', 'Demo Supervisor', 'demo.supervisor@example.com', 'leadership_tn'],
+        ['demo_staff_finance', 'staff', 'Demo Finance Staff', 'demo.finance@example.com', 'finance'],
+        ['demo_staff_hr', 'staff', 'Demo HR Staff', 'demo.hr@example.com', 'hrm'],
+        ['demo_staff_ict', 'staff', 'Demo ICT Staff', 'demo.ict@example.com', 'ict'],
+        ['demo_staff_ops', 'staff', 'Demo Operations Staff', 'demo.ops@example.com', 'general_service'],
     ];
 
     $selectStmt = $pdo->prepare('SELECT id FROM users WHERE username = ? LIMIT 1');
@@ -229,7 +229,7 @@ if (!$questionnaires) {
     fwrite(
         STDERR,
         sprintf(
-            "No questionnaires with statuses [%s] and active eligible items were found. Nothing to seed.",
+            "No questionnaires with statuses [%s] and active items were found. Nothing to seed.",
             implode(', ', $flags['statuses'])
         ) . PHP_EOL
     );
@@ -238,7 +238,7 @@ if (!$questionnaires) {
 
 $pdo->beginTransaction();
 try {
-    $userIds = ensure_dummy_users($pdo);
+    $userIds = ensure_demo_users($pdo);
     $staffIds = [];
     $supervisorId = 0;
     foreach ($userIds as $id) {
@@ -257,14 +257,14 @@ try {
 
     $cleanupResponseItems = $pdo->prepare(
         'DELETE FROM questionnaire_response_item WHERE response_id IN (' .
-        'SELECT id FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")' .
+        'SELECT id FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "demo_%")' .
         ')'
     );
     $cleanupResponses = $pdo->prepare(
-        'DELETE FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
+        'DELETE FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "demo_%")'
     );
     $cleanupAssignments = $pdo->prepare(
-        'DELETE FROM questionnaire_assignment WHERE staff_id IN (SELECT id FROM users WHERE username LIKE "dummy_%")'
+        'DELETE FROM questionnaire_assignment WHERE staff_id IN (SELECT id FROM users WHERE username LIKE "demo_%")'
     );
     $cleanupResponseItems->execute();
     $cleanupResponses->execute();
@@ -325,7 +325,7 @@ try {
                     )
                 )
                 : null;
-            $reviewComment = $status === 'approved' ? 'Reviewed dummy submission for seed data.' : null;
+            $reviewComment = $status === 'approved' ? 'Reviewed demo submission for seed data.' : null;
 
             $correctAnswerTotal = 0;
             $correctAnswers = 0;
@@ -379,6 +379,6 @@ try {
     fwrite(STDOUT, sprintf('Seed complete. Questionnaires processed: %d, responses created: %d', count($questionnaires), $responsesCreated) . PHP_EOL);
 } catch (Throwable $e) {
     $pdo->rollBack();
-    fwrite(STDERR, 'Failed to seed dummy data: ' . $e->getMessage() . PHP_EOL);
+    fwrite(STDERR, 'Failed to seed demo data: ' . $e->getMessage() . PHP_EOL);
     exit(1);
 }
