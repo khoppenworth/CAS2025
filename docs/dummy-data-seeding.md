@@ -37,5 +37,5 @@ Use `dummy_data_cleanup.sql` to remove seeded demo-user submissions when needed.
 
 Administrators can now enable or disable the full demo dataset directly from **Admin → Settings**:
 
-- **Enable Demo Dataset** executes `dummy_data.sql` (fictive demo users and period baselines only; no questionnaire creation/deletion).
+- **Enable Demo Dataset** executes `dummy_data.sql` (fictive demo users plus generated assignments/responses for existing draft/published questionnaires; no questionnaire creation/deletion).
 - **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo/dummy records without touching questionnaire definitions).

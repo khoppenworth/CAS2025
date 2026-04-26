@@ -257,14 +257,20 @@ try {
 
     $cleanupResponseItems = $pdo->prepare(
         'DELETE FROM questionnaire_response_item WHERE response_id IN (' .
-        'SELECT id FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "demo_%")' .
+        'SELECT id FROM questionnaire_response WHERE user_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')' .
         ')'
     );
     $cleanupResponses = $pdo->prepare(
-        'DELETE FROM questionnaire_response WHERE user_id IN (SELECT id FROM users WHERE username LIKE "demo_%")'
+        'DELETE FROM questionnaire_response WHERE user_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')'
     );
     $cleanupAssignments = $pdo->prepare(
-        'DELETE FROM questionnaire_assignment WHERE staff_id IN (SELECT id FROM users WHERE username LIKE "demo_%")'
+        'DELETE FROM questionnaire_assignment WHERE staff_id IN (' .
+        'SELECT id FROM users WHERE username LIKE "demo_%" OR username LIKE "dummy_%"' .
+        ')'
     );
     $cleanupResponseItems->execute();
     $cleanupResponses->execute();
