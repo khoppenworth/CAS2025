@@ -159,7 +159,7 @@ class SimplePdfDocument
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
         foreach ($lines as $line) {
-            $this->addTextBlock('• ' . $line, $fontSize, 'F1', 1.35, false);
+            $this->addTextBlock('- ' . $line, $fontSize, 'F1', 1.35, false);
         }
         $this->addSpacer(4.0);
     }

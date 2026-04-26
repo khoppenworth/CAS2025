@@ -488,11 +488,29 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     }
 
     $pdf->addParagraph('Key Findings:');
-    $pdf->addBulletList([
-        'Top 3 strongest competencies: ' . ($topStrengths ? implode(', ', array_map(static fn(array $row): string => $row['name'] . ' (' . number_format($row['score'], 1) . '%)', $topStrengths)) : 'N/A'),
-        'Top 3 critical competency gaps: ' . ($topGaps ? implode(', ', array_map(static fn(array $row): string => $row['name'] . ' (' . number_format(100 - $row['score'], 1) . '% gap)', $topGaps)) : 'N/A'),
-        'Departments with highest and lowest performance: ' . $highestDepartment . ' / ' . $lowestDepartment,
-    ]);
+    $findingLines = [];
+    $findingLines[] = 'Top 3 strongest competencies:';
+    if ($topStrengths) {
+        foreach ($topStrengths as $row) {
+            $findingLines[] = (string)$row['name'] . ' (' . number_format((float)$row['score'], 1) . '%)';
+        }
+    } else {
+        $findingLines[] = 'N/A';
+    }
+
+    $findingLines[] = 'Top 3 critical competency gaps:';
+    if ($topGaps) {
+        foreach ($topGaps as $row) {
+            $gapValue = 100 - (float)$row['score'];
+            $findingLines[] = (string)$row['name'] . ' (' . number_format($gapValue, 1) . '% gap)';
+        }
+    } else {
+        $findingLines[] = 'N/A';
+    }
+
+    $findingLines[] = 'Departments with highest and lowest performance:';
+    $findingLines[] = $highestDepartment . ' / ' . $lowestDepartment;
+    $pdf->addBulletList($findingLines);
 
     $pdf->addSubheading('Questionnaire performance');
     $questionnaireRows = [];
