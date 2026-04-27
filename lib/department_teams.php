@@ -34,7 +34,12 @@ function built_in_department_definitions(): array
 function canonical_department_slug(string $value): string
 {
     $normalized = preg_replace('/[^a-z0-9]+/i', '_', strtolower(trim($value))) ?? '';
-    return trim($normalized, '_');
+    $normalized = trim($normalized, '_');
+    if ($normalized === '') {
+        return '';
+    }
+
+    return substr($normalized, 0, 120);
 }
 
 function canonical_department_team_slug(string $value): string
@@ -68,12 +73,23 @@ function is_placeholder_team_value(string $value): bool
     return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
 }
 
-function unique_slug(string $candidate, array $existing): string
+function unique_slug(string $candidate, array $existing, int $maxLength = 120): string
 {
-    $base = $candidate;
+    $candidate = trim($candidate);
+    if ($candidate === '') {
+        $candidate = 'item';
+    }
+    if ($maxLength < 8) {
+        $maxLength = 8;
+    }
+
+    $base = substr($candidate, 0, $maxLength);
+    $candidate = $base;
     $suffix = 2;
     while (isset($existing[$candidate])) {
-        $candidate = $base . '_' . $suffix;
+        $suffixToken = '_' . $suffix;
+        $baseLimit = max(1, $maxLength - strlen($suffixToken));
+        $candidate = substr($base, 0, $baseLimit) . $suffixToken;
         $suffix++;
         if ($suffix > 10000) {
             break;
