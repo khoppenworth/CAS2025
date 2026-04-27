@@ -59,12 +59,13 @@ function analytics_data_viewer_csv_safe_cell(string $value): string
 function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, int $questionnaireId = 0, string $statusFilter = '', string $dateFrom = '', string $dateTo = ''): array
 {
     $scopeFilters = analytics_data_viewer_apply_scope($viewer, $filters);
-    $isSupervisorDepartmentFallback = trim((string)($viewer['role'] ?? '')) === 'supervisor'
-        && trim((string)($viewer['directorate'] ?? '')) === ''
-        && trim((string)($viewer['department'] ?? '')) !== '';
+    $directorateExpr = 'COALESCE(NULLIF(u.directorate, \'\'), NULLIF(u.department, \'\'), \'Unknown\')';
+    $workFunctionExpr = 'COALESCE(NULLIF(u.work_function, \'\'), NULLIF(u.department, \'\'), \'Unspecified\')';
 
     $sql = 'SELECT qr.id AS response_id, qr.questionnaire_id, q.title AS questionnaire_title, '
-        . 'u.id AS user_id, u.username, u.full_name, u.department, u.directorate, u.work_function, '
+        . 'u.id AS user_id, u.username, u.full_name, u.department, '
+        . $directorateExpr . ' AS directorate, '
+        . $workFunctionExpr . ' AS work_function, '
         . 'COALESCE(NULLIF(u.business_role, \'\'), NULLIF(u.profile_role, \'\'), \'Unspecified\') AS business_role, '
         . 'qr.status, qr.score, qr.created_at, qr.reviewed_at '
         . 'FROM questionnaire_response qr '
@@ -82,15 +83,11 @@ function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, in
         $params[] = $scopeFilters['business_role'];
     }
     if ($scopeFilters['directorate'] !== '') {
-        if ($isSupervisorDepartmentFallback) {
-            $where[] = 'COALESCE(NULLIF(u.directorate, \'\'), NULLIF(u.department, \'\'), \'Unknown\') = ?';
-        } else {
-            $where[] = 'COALESCE(NULLIF(u.directorate, \'\'), \'Unknown\') = ?';
-        }
+        $where[] = $directorateExpr . ' = ?';
         $params[] = $scopeFilters['directorate'];
     }
     if ($scopeFilters['work_function'] !== '') {
-        $where[] = 'COALESCE(NULLIF(u.work_function, \'\'), \'Unspecified\') = ?';
+        $where[] = $workFunctionExpr . ' = ?';
         $params[] = $scopeFilters['work_function'];
     }
     if ($scopeFilters['user_id'] > 0) {

@@ -29,7 +29,7 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="analytics_report_raw_data.csv"');
 
 $out = fopen('php://output', 'w');
-fputcsv($out, ['response_id', 'questionnaire_id', 'questionnaire_title', 'user_id', 'username', 'full_name', 'business_role', 'directorate', 'department', 'work_function', 'status', 'score', 'created_at', 'reviewed_at']);
+fputcsv($out, ['response_id', 'questionnaire_id', 'questionnaire_title', 'user_id', 'username', 'full_name', 'business_role', 'directorate', 'department', 'work_function', 'score', 'created_at', 'reviewed_at']);
 foreach ($rows as $row) {
     fputcsv($out, [
         (int)($row['response_id'] ?? 0),
@@ -42,7 +42,6 @@ foreach ($rows as $row) {
         analytics_data_viewer_csv_safe_cell((string)($row['directorate'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['department'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['work_function'] ?? '')),
-        analytics_data_viewer_csv_safe_cell((string)($row['status'] ?? '')),
         analytics_data_viewer_csv_safe_cell(isset($row['score']) ? (string)$row['score'] : ''),
         analytics_data_viewer_csv_safe_cell((string)($row['created_at'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['reviewed_at'] ?? '')),
