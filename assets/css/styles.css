@@ -3,6 +3,7 @@
   --appbar-height-mobile: 52px;
   --topnav-height: 64px;
   --app-button-height: 48px;
+  --app-font-sans: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -29,7 +30,7 @@ body.md-bg {
   background: var(--app-bg);
   min-height: 100vh;
   margin: 0;
-  font-family: "Segoe UI", "Poppins", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-sans);
   color: inherit;
 }
 
@@ -208,7 +209,7 @@ button,
   border: 1px solid transparent;
   background: transparent;
   color: var(--app-on-surface-strong);
-  font-family: "Inter", "Segoe UI", "Poppins", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-sans);
   font-weight: 600;
   font-size: 0.95rem;
   padding: 0.65rem 1.05rem;
@@ -352,7 +353,7 @@ button,
   color: var(--app-on-surface-strong);
   font-weight: 500;
   font: inherit;
-  font-family: "Inter", "Segoe UI", "Poppins", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-sans);
   text-decoration: none;
   text-align: left;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;

@@ -22,7 +22,7 @@ body.md-bg {
   margin: 0;
   background: var(--md-bg);
   color: var(--app-text-primary);
-  font-family: "Segoe UI", "Poppins", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-sans, "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif);
 }
 
 .md-appbar {

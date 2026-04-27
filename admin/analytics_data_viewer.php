@@ -172,6 +172,13 @@ if ($filtersForExport) {
   <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
   <style>
+    .data-explorer,
+    .data-explorer button,
+    .data-explorer input,
+    .data-explorer select,
+    .data-explorer table {
+      font-family: var(--app-font-sans, "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif);
+    }
     .data-explorer .explorer-filters { display:flex; gap:.75rem; align-items:flex-end; flex-wrap:wrap; }
     .data-explorer .explorer-filters .md-field { min-width: 180px; }
     .data-explorer .explorer-filters .md-button { margin-bottom: .2rem; }
