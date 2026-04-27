@@ -158,9 +158,9 @@ class SimplePdfDocument
 
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
-        $bulletPrefix = chr(149) . ' ';
+        $bulletPrefix = '• ';
         foreach ($lines as $line) {
-            $this->addTextBlock($bulletPrefix . $line, $fontSize, 'F1', 1.35, false);
+            $this->addTextBlock($bulletPrefix . (string)$line, $fontSize, 'F1', 1.35, false);
         }
         $this->addSpacer(4.0);
     }
@@ -857,6 +857,9 @@ class SimplePdfDocument
     private function wrapText(string $text, float $fontSize): array
     {
         $normalized = preg_replace('/\s+/u', ' ', trim($text));
+        if ($normalized === null) {
+            $normalized = preg_replace('/\s+/', ' ', trim($text)) ?? trim($text);
+        }
         if ($normalized === '') {
             return [''];
         }
