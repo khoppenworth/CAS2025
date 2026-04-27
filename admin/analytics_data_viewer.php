@@ -11,7 +11,7 @@ $viewerRole = (string)($viewer['role'] ?? ($_SESSION['user']['role'] ?? ''));
 $locale = ensure_locale();
 $t = load_lang($locale);
 $drawerKey = 'team.analytics';
-$pageTitle = t($t, 'analytics_report_explorer_title', 'Analytics Report Explorer');
+$pageTitle = t($t, 'analytics_report_explorer_title', 'Data Explorer');
 
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;
 $rawFilters = [
@@ -75,8 +75,20 @@ $businessRoleOptions = [];
 $directorateOptions = [];
 $workFunctionOptions = [];
 $userOptions = [];
+$stripPlaceholderOptions = static function (array $options, array $placeholders): array {
+    $filtered = [];
+    foreach ($options as $option) {
+        if (!in_array($option, $placeholders, true)) {
+            $filtered[] = $option;
+        }
+    }
+    return $filtered !== [] ? $filtered : $options;
+};
 
-$roleStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(business_role, ''), NULLIF(profile_role, ''), 'Unspecified') AS role_label FROM users ORDER BY role_label ASC");
+$roleStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.business_role, ''), NULLIF(u.profile_role, ''), 'Unspecified') AS role_label
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY role_label ASC");
 if ($roleStmt) {
     foreach ($roleStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $value = trim((string)($row['role_label'] ?? ''));
@@ -85,7 +97,10 @@ if ($roleStmt) {
         }
     }
 }
-$directorateStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(directorate, ''), 'Unknown') AS directorate_label FROM users ORDER BY directorate_label ASC");
+$directorateStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.directorate, ''), NULLIF(u.department, ''), 'Unknown') AS directorate_label
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY directorate_label ASC");
 if ($directorateStmt) {
     foreach ($directorateStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $value = trim((string)($row['directorate_label'] ?? ''));
@@ -94,7 +109,10 @@ if ($directorateStmt) {
         }
     }
 }
-$workFunctionStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(work_function, ''), 'Unspecified') AS wf_label FROM users ORDER BY wf_label ASC");
+$workFunctionStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.work_function, ''), NULLIF(u.department, ''), 'Unspecified') AS wf_label
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY wf_label ASC");
 if ($workFunctionStmt) {
     foreach ($workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $value = trim((string)($row['wf_label'] ?? ''));
@@ -103,13 +121,20 @@ if ($workFunctionStmt) {
         }
     }
 }
-$userStmt = $pdo->query("SELECT id, COALESCE(NULLIF(full_name,''), username) AS display_name FROM users ORDER BY display_name ASC LIMIT 500");
+$userStmt = $pdo->query("SELECT DISTINCT u.id, COALESCE(NULLIF(u.full_name,''), u.username) AS display_name
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY display_name ASC
+    LIMIT 500");
 if ($userStmt) {
     $userOptions = $userStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 if ($viewerRole === 'supervisor' && $scopeFilters['directorate'] !== '') {
     $directorateOptions = [$scopeFilters['directorate']];
 }
+$businessRoleOptions = $stripPlaceholderOptions($businessRoleOptions, ['Unspecified']);
+$directorateOptions = $stripPlaceholderOptions($directorateOptions, ['Unknown']);
+$workFunctionOptions = $stripPlaceholderOptions($workFunctionOptions, ['Unspecified']);
 
 [$queryParts, $params] = analytics_data_viewer_query($pdo, $viewer, $rawFilters, $questionnaireId, $statusFilter, $dateFrom, $dateTo);
 [$sql, $scopeFilters] = $queryParts;
@@ -146,15 +171,27 @@ if ($filtersForExport) {
   <title><?=htmlspecialchars($pageTitle)?></title>
   <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
   <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
+  <style>
+    .data-explorer,
+    .data-explorer button,
+    .data-explorer input,
+    .data-explorer select,
+    .data-explorer table {
+      font-family: var(--app-font-sans, "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif);
+    }
+    .data-explorer .explorer-filters { display:flex; gap:.75rem; align-items:flex-end; flex-wrap:wrap; }
+    .data-explorer .explorer-filters .md-field { min-width: 180px; }
+    .data-explorer .explorer-filters .md-button { margin-bottom: .2rem; }
+  </style>
 </head>
 <body class="md-app-shell">
 <?php require_once __DIR__ . '/../templates/header.php'; ?>
-<main class="md-content">
+<main class="md-content data-explorer">
   <section class="md-card md-elev-2" style="padding:1rem;">
     <h1 class="md-card-title"><?=htmlspecialchars($pageTitle)?></h1>
-    <p class="md-upgrade-meta"><?=t($t, 'analytics_report_explorer_hint', 'Use filters then select Show Report to view raw data and export CSV.')?></p>
+    <p class="md-upgrade-meta"><?=t($t, 'analytics_report_explorer_hint', 'Use filters then select Show Report to view data and export CSV.')?></p>
 
-    <form method="post" style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;">
+    <form method="post" class="explorer-filters">
       <input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8')?>">
       <label class="md-field"><span><?=t($t, 'questionnaire', 'Questionnaire')?></span>
         <select name="questionnaire_id"><option value="0"><?=t($t, 'all_questionnaires', 'All questionnaires')?></option>
@@ -179,8 +216,8 @@ if ($filtersForExport) {
     <h2 class="md-card-title"><?=t($t, 'report_results', 'Report Results')?></h2>
     <p class="md-upgrade-meta"><?=count($rows)?> <?=t($t, 'records', 'records')?> <?=t($t, 'shown', 'shown')?></p>
     <div style="overflow:auto;">
-      <table class="md-table"><thead><tr><th>ID</th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'individual', 'Individual')?></th><th><?=t($t, 'role', 'Role')?></th><th><?=t($t, 'directorate', 'Directorate')?></th><th><?=t($t, 'department', 'Department')?></th><th><?=t($t, 'work_function', 'Work Role')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'score', 'Score')?></th><th><?=t($t, 'created_at', 'Created')?></th></tr></thead>
-      <tbody><?php foreach ($rows as $row): ?><tr><td><?= (int)($row['response_id'] ?? 0) ?></td><td><?=htmlspecialchars((string)($row['questionnaire_title'] ?? ('#' . (int)($row['questionnaire_id'] ?? 0))), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars(trim((string)($row['full_name'] ?? '')) !== '' ? (string)$row['full_name'] : (string)($row['username'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['business_role'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['directorate'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['department'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['work_function'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['status'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?= isset($row['score']) && $row['score'] !== null ? htmlspecialchars((string)$row['score'], ENT_QUOTES, 'UTF-8') : '—' ?></td><td><?=htmlspecialchars((string)($row['created_at'] ?? ''), ENT_QUOTES, 'UTF-8')?></td></tr><?php endforeach; ?></tbody>
+      <table class="md-table"><thead><tr><th>ID</th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'individual', 'Individual')?></th><th><?=t($t, 'role', 'Role')?></th><th><?=t($t, 'directorate', 'Directorate')?></th><th><?=t($t, 'department', 'Department')?></th><th><?=t($t, 'work_function', 'Work Role')?></th><th><?=t($t, 'score', 'Score')?></th><th><?=t($t, 'created_at', 'Created')?></th></tr></thead>
+      <tbody><?php foreach ($rows as $row): ?><tr><td><?= (int)($row['response_id'] ?? 0) ?></td><td><?=htmlspecialchars((string)($row['questionnaire_title'] ?? ('#' . (int)($row['questionnaire_id'] ?? 0))), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars(trim((string)($row['full_name'] ?? '')) !== '' ? (string)$row['full_name'] : (string)($row['username'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['business_role'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['directorate'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['department'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['work_function'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?= isset($row['score']) && $row['score'] !== null ? htmlspecialchars((string)$row['score'], ENT_QUOTES, 'UTF-8') : '—' ?></td><td><?=htmlspecialchars((string)($row['created_at'] ?? ''), ENT_QUOTES, 'UTF-8')?></td></tr><?php endforeach; ?></tbody>
       </table>
     </div>
   </section>
