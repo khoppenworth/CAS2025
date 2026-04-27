@@ -518,7 +518,7 @@ class SimplePdfDocument
         $objects[2] = $pagesObject;
         $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
         $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
-        $objects[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
+        $objects[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>';
 
         ksort($objects);
 
