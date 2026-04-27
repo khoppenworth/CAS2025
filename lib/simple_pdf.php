@@ -516,7 +516,7 @@ class SimplePdfDocument
 
         $objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
         $objects[2] = $pagesObject;
-        $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Calibri >>';
+        $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
         $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
         $objects[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
 
