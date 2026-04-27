@@ -319,6 +319,7 @@ if (isset($_SESSION['analytics_report_flash']) && is_array($_SESSION['analytics_
 $summary = [];
 $totalParticipants = 0;
 $questionnaires = [];
+$downloadQuestionnaires = [];
 $responseMetaRows = [];
 $questionnaireFamilyExpr = "COALESCE(NULLIF(q.family_key, ''), CONCAT('questionnaire-', q.id))";
 try {
@@ -351,6 +352,15 @@ try {
     );
     $questionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
+    $downloadQuestionnaireStmt = $pdo->query(
+        "SELECT MIN(q.id) AS id, " . $questionnaireFamilyExpr . " AS family_key, MIN(q.title) AS title "
+        . "FROM questionnaire q "
+        . "WHERE q.status <> 'inactive' "
+        . "GROUP BY " . $questionnaireFamilyExpr . " "
+        . "ORDER BY MIN(q.title)"
+    );
+    $downloadQuestionnaires = $downloadQuestionnaireStmt ? $downloadQuestionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
     $responseMetaStmt = $pdo->query(
         'SELECT qr.id, qr.questionnaire_id, COALESCE(q.family_key, CONCAT(\'questionnaire-\', q.id)) AS family_key, qr.user_id, qr.score, qr.status, u.work_function '
         . 'FROM questionnaire_response qr '
@@ -360,6 +370,9 @@ try {
     $responseMetaRows = $responseMetaStmt ? $responseMetaStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (PDOException $e) {
     error_log('analytics base summary queries failed: ' . $e->getMessage());
+}
+if (empty($downloadQuestionnaires)) {
+    $downloadQuestionnaires = $questionnaires;
 }
 [$computedResponseScores, $questionnaireFallbackAverages, $workFunctionFallbackAverages, $overallFallbackAverage]
     = analytics_resolve_score_fallbacks($pdo, $responseMetaRows);
@@ -507,12 +520,15 @@ $downloadUrlFor = static function (array $params = []) use ($pdo, $userId): stri
     }
 };
 
-$defaultReportDownloads = [
+$overviewReportDownloads = [
     [
         'title' => t($t, 'analytics_download_summary', 'Executive Summary'),
         'description' => t($t, 'analytics_download_summary_hint', 'High-level competency health summary for leadership review.'),
         'url' => $downloadUrlFor([]),
     ],
+];
+
+$detailedReportDownloads = [
     [
         'title' => t($t, 'analytics_download_summary_details', 'Full Competency Report'),
         'description' => t($t, 'analytics_download_summary_details_hint', 'Expanded participant, competency, department, and role-based analysis.'),
@@ -520,7 +536,7 @@ $defaultReportDownloads = [
     ],
 ];
 
-foreach ($questionnaires as $qRow) {
+foreach ($downloadQuestionnaires as $qRow) {
     $qid = (int)($qRow['id'] ?? 0);
     if ($qid <= 0) {
         continue;
@@ -528,7 +544,7 @@ foreach ($questionnaires as $qRow) {
     $rawTitle = trim((string)($qRow['title'] ?? ''));
     $displayTitle = $rawTitle !== '' ? $rawTitle : t($t, 'questionnaire', 'Questionnaire');
     $displayTitleForFormat = str_replace('%', '%%', $displayTitle);
-    $defaultReportDownloads[] = [
+    $detailedReportDownloads[] = [
         'title' => sprintf(
             t($t, 'analytics_download_questionnaire_title', 'Questionnaire report: %s'),
             $displayTitleForFormat
@@ -1283,8 +1299,20 @@ $pageHelpKey = 'team.analytics';
         <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
       </a>
     </p>
+    <h3><?=t($t, 'analytics_download_summary_section', 'Main overview report')?></h3>
     <div class="md-download-grid">
-      <?php foreach ($defaultReportDownloads as $download): ?>
+      <?php foreach ($overviewReportDownloads as $download): ?>
+        <div class="md-download-card">
+          <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
+          <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
+          <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
+            <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <h3><?=t($t, 'analytics_download_detailed_section', 'Detailed reports')?></h3>
+    <div class="md-download-grid">
+      <?php foreach ($detailedReportDownloads as $download): ?>
         <div class="md-download-card">
           <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
           <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
