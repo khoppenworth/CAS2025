@@ -18,14 +18,14 @@ $pdo->exec('CREATE TABLE questionnaire_item_option (id INTEGER PRIMARY KEY, ques
 $pdo->exec('CREATE TABLE questionnaire_response (id INTEGER PRIMARY KEY, user_id INT, questionnaire_id INT, performance_period_id INT, status TEXT, score REAL, created_at TEXT, reviewed_at TEXT)');
 $pdo->exec('CREATE TABLE questionnaire_response_item (id INTEGER PRIMARY KEY, response_id INT, linkId TEXT, answer TEXT)');
 $pdo->exec('CREATE TABLE performance_period (id INTEGER PRIMARY KEY, label TEXT, period_start TEXT)');
-$pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, full_name TEXT, work_function TEXT)');
+$pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, full_name TEXT, work_function TEXT, department TEXT)');
 $pdo->exec('CREATE TABLE questionnaire_work_function (questionnaire_id INT, work_function TEXT)');
 
 $pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES (1, 'Annual Review', 'published')");
 $pdo->exec("INSERT INTO questionnaire_section (id, questionnaire_id, title, order_index, is_active) VALUES (1, 1, 'Core Competencies', 1, 1)");
 $pdo->exec("INSERT INTO questionnaire_item (id, questionnaire_id, section_id, linkId, type, allow_multiple, weight_percent, order_index, is_active) VALUES\n    (1, 1, 1, 'likert_a', 'likert', 0, NULL, 1, 1),\n    (2, 1, 1, 'bool_a', 'boolean', 0, 20, 2, 1)");
 $pdo->exec("INSERT INTO performance_period (id, label, period_start) VALUES (1, 'FY2023', '2023-01-01'), (2, 'FY2024', '2024-01-01')");
-$pdo->exec("INSERT INTO users (id, username, full_name, work_function) VALUES\n    (1, 'staff1', 'Staff One', 'finance'),\n    (2, 'staff2', 'Staff Two', 'hrm')");
+$pdo->exec("INSERT INTO users (id, username, full_name, work_function, department) VALUES\n    (1, 'staff1', 'Staff One', 'finance', 'Finance'),\n    (2, 'staff2', 'Staff Two', 'hrm', 'People')");
 $pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (1, 'finance')");
 
 $pdo->exec("INSERT INTO questionnaire_response (id, user_id, questionnaire_id, performance_period_id, status, score, created_at, reviewed_at) VALUES\n    (1, 1, 1, 1, 'approved', 85, '2024-01-01 09:00:00', '2024-01-02 00:00:00'),\n    (2, 2, 1, 2, 'submitted', 60, '2024-02-15 08:00:00', NULL)");
@@ -63,13 +63,18 @@ foreach ($snapshot['work_functions'] as $entry) {
     $workFunctions[$entry['label']] = $entry;
 }
 
-if (!isset($workFunctions['Finance & Grants'])) {
+if (!isset($workFunctions['Finance & Grants']) && !isset($workFunctions['finance'])) {
     fwrite(STDERR, "Finance work function summary missing.\n");
     exit(1);
 }
 
 if (!($snapshot['generated_at'] instanceof DateTimeImmutable)) {
     fwrite(STDERR, "Snapshot should include a DateTimeImmutable timestamp.\n");
+    exit(1);
+}
+
+if (count($snapshot['department_work_function'] ?? []) !== 2) {
+    fwrite(STDERR, "Department/work function breakdown should include all grouped rows.\n");
     exit(1);
 }
 

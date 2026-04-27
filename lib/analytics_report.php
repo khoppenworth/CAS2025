@@ -107,7 +107,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
 
     $summaryRow = $pdo->query(
         "SELECT COUNT(*) AS total_responses, "
-        . "SUM(status='approved') AS approved_count, "
+        . "SUM(status IN ('approved','approved_late')) AS approved_count, "
         . "SUM(status='submitted') AS submitted_count, "
         . "SUM(status='draft') AS draft_count, "
         . "SUM(status='rejected') AS rejected_count, "
@@ -139,7 +139,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
 
     $questionnaireStmt = $pdo->query(
         "SELECT q.id, q.title, COUNT(*) AS total_responses, "
-        . "SUM(qr.status='approved') AS approved_count, "
+        . "SUM(qr.status IN ('approved','approved_late')) AS approved_count, "
         . "SUM(qr.status='submitted') AS submitted_count, "
         . "SUM(qr.status='draft') AS draft_count, "
         . "SUM(qr.status='rejected') AS rejected_count, "
@@ -216,7 +216,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
     try {
         $workFunctionStmt = $pdo->query(
             "SELECT u.work_function, COUNT(*) AS total_responses, "
-            . "SUM(qr.status='approved') AS approved_count, "
+            . "SUM(qr.status IN ('approved','approved_late')) AS approved_count, "
             . "AVG(qr.score) AS avg_score "
             . "FROM questionnaire_response qr "
             . "JOIN users u ON u.id = qr.user_id "
@@ -249,7 +249,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
         $userStmt = $pdo->prepare(
             'SELECT u.username, u.full_name, u.work_function, '
             . 'COUNT(*) AS total_responses, '
-            . "SUM(qr.status='approved') AS approved_count, "
+            . "SUM(qr.status IN ('approved','approved_late')) AS approved_count, "
             . 'AVG(qr.score) AS avg_score '
             . 'FROM questionnaire_response qr '
             . 'JOIN users u ON u.id = qr.user_id '
@@ -325,6 +325,27 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
         $departmentAnalysis = $departmentStmt ? ($departmentStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
     }
 
+    $departmentWorkFunction = [];
+    if (analytics_report_table_has_column($pdo, 'users', 'department')) {
+        try {
+            $departmentWorkStmt = $pdo->query(
+                "SELECT COALESCE(NULLIF(u.department, ''), 'Unknown') AS department, "
+                . "COALESCE(NULLIF(u.work_function, ''), 'Unknown') AS work_function, "
+                . "COUNT(*) AS total_responses, "
+                . "SUM(qr.status IN ('approved','approved_late')) AS approved_count, "
+                . "AVG(qr.score) AS avg_score "
+                . "FROM questionnaire_response qr "
+                . "JOIN users u ON u.id = qr.user_id "
+                . "GROUP BY COALESCE(NULLIF(u.department, ''), 'Unknown'), COALESCE(NULLIF(u.work_function, ''), 'Unknown') "
+                . "ORDER BY department ASC, total_responses DESC, work_function ASC"
+            );
+            $departmentWorkFunction = $departmentWorkStmt ? ($departmentWorkStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        } catch (PDOException $e) {
+            error_log('analytics_report department/work function summary failed: ' . $e->getMessage());
+            $departmentWorkFunction = [];
+        }
+    }
+
     $roleOverview = [];
     if (analytics_report_table_has_column($pdo, 'users', 'cadre')) {
         $roleStmt = $pdo->query(
@@ -363,6 +384,7 @@ function analytics_report_snapshot(PDO $pdo, ?int $questionnaireId = null, bool 
         'period_chart' => $periodSeries,
         'period_chart_selected' => $selectedPeriodSeries,
         'department_analysis' => $departmentAnalysis,
+        'department_work_function' => $departmentWorkFunction,
         'role_overview' => $roleOverview,
         'gender_distribution' => $genderDistribution,
         'include_details' => $includeDetails,
@@ -557,6 +579,27 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
     }
 
+    if (!empty($snapshot['department_analysis'])) {
+        $departmentRows = [];
+        foreach ($snapshot['department_analysis'] as $row) {
+            $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
+            $departmentRows[] = [
+                (string)($row['department'] ?? 'Unknown'),
+                analytics_report_format_number($row['total_responses'] ?? 0),
+                analytics_report_format_score($score),
+                questionnaire_competency_level($score) ?: '—',
+            ];
+        }
+        if ($departmentRows) {
+            $pdf->addSubheading('Performance by department');
+            $pdf->addTable(
+                ['Department', 'Responses', 'Avg', 'Competency'],
+                $departmentRows,
+                [30, 12, 10, 18]
+            );
+        }
+    }
+
     $pdf->addSubheading('Performance charts');
     $chartsAdded = false;
     $palette = analytics_report_palette_colors($cfg);
@@ -704,7 +747,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
         $pdf->addParagraph('By Department:');
         $departmentLines = [];
-        foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 6) as $deptRow) {
+        foreach (($snapshot['department_analysis'] ?? []) as $deptRow) {
             $departmentLines[] = (string)($deptRow['department'] ?? 'Department') . ' – ' . analytics_report_format_number($deptRow['total_responses'] ?? 0) . ' participants';
         }
         $pdf->addBulletList($departmentLines ?: ['No department data available']);
@@ -718,7 +761,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
         $pdf->addSubheading('4. Overall Competency Results Dashboard');
         $orgRows = [];
-        foreach (array_slice($snapshot['questionnaires'] ?? [], 0, 6) as $row) {
+        foreach (($snapshot['questionnaires'] ?? []) as $row) {
             if (!isset($row['avg_score']) || $row['avg_score'] === null) {
                 continue;
             }
@@ -739,7 +782,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
         $pdf->addSubheading('5. Department-Level Analysis');
         $deptRows = [];
-        foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 10) as $row) {
+        foreach (($snapshot['department_analysis'] ?? []) as $row) {
             $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
             $deptRows[] = [
                 (string)($row['department'] ?? 'Unknown'),
@@ -757,6 +800,29 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             'Heatmap visualization',
             'Bar chart comparison across departments',
         ]);
+
+        $pdf->addSubheading('Department Work Function Breakdown');
+        $deptFunctionRows = [];
+        foreach (($snapshot['department_work_function'] ?? []) as $row) {
+            $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
+            $deptFunctionRows[] = [
+                (string)($row['department'] ?? 'Unknown'),
+                (string)($row['work_function'] ?? 'Unknown'),
+                analytics_report_format_number($row['total_responses'] ?? 0),
+                analytics_report_format_number($row['approved_count'] ?? 0),
+                analytics_report_format_score($score),
+                questionnaire_competency_level($score) ?: '—',
+            ];
+        }
+        if ($deptFunctionRows) {
+            $pdf->addTable(
+                ['Department', 'Work function', 'Responses', 'Approved', 'Average score', 'Competency'],
+                $deptFunctionRows,
+                [18, 18, 9, 9, 12, 14]
+            );
+        } else {
+            $pdf->addParagraph('No department/work-function records are available yet.');
+        }
 
         $pdf->addSubheading('6. Role-Based Analysis');
         $roleTable = [];
