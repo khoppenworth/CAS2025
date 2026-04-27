@@ -158,8 +158,9 @@ class SimplePdfDocument
 
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
+        $bulletPrefix = chr(149) . ' ';
         foreach ($lines as $line) {
-            $this->addTextBlock('• ' . $line, $fontSize, 'F1', 1.35, false);
+            $this->addTextBlock($bulletPrefix . $line, $fontSize, 'F1', 1.35, false);
         }
         $this->addSpacer(4.0);
     }
@@ -239,16 +240,7 @@ class SimplePdfDocument
         $rowFill = [250, 252, 255];
         $borderColor = [203, 213, 225];
 
-        $renderRow = function (array $row, bool $isHeader, bool $alternate = false) use (
-            $resolvedWidths,
-            $fontSize,
-            $lineHeight,
-            $cellPaddingX,
-            $cellPaddingY,
-            $headerFill,
-            $rowFill,
-            $borderColor
-        ): void {
+        $buildRowLayout = function (array $row) use ($resolvedWidths, $fontSize, $cellPaddingX, $cellPaddingY, $lineHeight): array {
             $cellLines = [];
             $maxLines = 1;
             foreach ($resolvedWidths as $index => $width) {
@@ -262,12 +254,28 @@ class SimplePdfDocument
                 $maxLines = max($maxLines, count($wrapped));
             }
 
-            $rowHeight = ($maxLines * $lineHeight) + ($cellPaddingY * 2);
-            $this->ensureSpace($rowHeight + 2.0);
+            return [
+                'lines' => $cellLines,
+                'height' => ($maxLines * $lineHeight) + ($cellPaddingY * 2),
+            ];
+        };
 
+        $renderRowLayout = function (array $layout, bool $isHeader, bool $alternate = false) use (
+            $resolvedWidths,
+            $fontSize,
+            $lineHeight,
+            $cellPaddingX,
+            $cellPaddingY,
+            $headerFill,
+            $rowFill,
+            $borderColor
+        ): void {
+            $rowHeight = (float)($layout['height'] ?? 0.0);
+            $cellLines = $layout['lines'] ?? [];
             $x = $this->marginLeft;
             $rowTopY = $this->cursorY;
             $rowBottomY = $rowTopY - $rowHeight;
+
             foreach ($resolvedWidths as $index => $width) {
                 if ($isHeader) {
                     $this->drawFilledRect($x, $rowBottomY, $width, $rowHeight, $headerFill);
@@ -277,21 +285,41 @@ class SimplePdfDocument
                 $this->drawRectOutline($x, $rowBottomY, $width, $rowHeight, $borderColor, 0.5);
 
                 $textY = $rowTopY - $cellPaddingY - $fontSize;
-                foreach ($cellLines[$index] as $line) {
+                foreach (($cellLines[$index] ?? ['']) as $line) {
                     $font = $isHeader ? 'F2' : 'F1';
                     $this->drawText($line, $font, $fontSize, $x + $cellPaddingX, $textY);
                     $textY -= $lineHeight;
                 }
-
                 $x += $width;
             }
 
             $this->cursorY = $rowBottomY;
         };
 
-        $renderRow($headers, true);
-        foreach (array_values($rows) as $rowIndex => $row) {
-            $renderRow((array)$row, false, ($rowIndex % 2) === 1);
+        $headerLayout = $buildRowLayout(array_values($headers));
+        $rowLayouts = [];
+        foreach (array_values($rows) as $row) {
+            $rowLayouts[] = $buildRowLayout((array)$row);
+        }
+
+        if ($rowLayouts === []) {
+            $this->ensureSpace(((float)$headerLayout['height']) + 2.0);
+            $renderRowLayout($headerLayout, true);
+            $this->addSpacer(6.0);
+            return;
+        }
+
+        foreach ($rowLayouts as $rowIndex => $rowLayout) {
+            $required = (float)$rowLayout['height'];
+            $isPageBreak = ($rowIndex === 0) || ($this->cursorY - $required <= $this->marginBottom);
+            if ($isPageBreak) {
+                $headerPlusFirstData = (float)$headerLayout['height'] + $required + 2.0;
+                $this->ensureSpace($headerPlusFirstData);
+                $renderRowLayout($headerLayout, true);
+            }
+
+            $this->ensureSpace(((float)$rowLayout['height']) + 2.0);
+            $renderRowLayout($rowLayout, false, ($rowIndex % 2) === 1);
         }
         $this->addSpacer(6.0);
     }
@@ -792,6 +820,37 @@ class SimplePdfDocument
         $barWidth = $this->width - $this->marginLeft - $this->marginRight;
         $barY = $this->marginBottom - 8.0;
         $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
+
+        $label = 'Page ' . self::PAGE_TOKEN . ' of ' . self::PAGE_TOTAL_TOKEN;
+        $fontSize = 9.0;
+        $textWidth = $this->estimateTextWidth($label, $fontSize);
+        $x = ($this->width / 2) - ($textWidth / 2);
+        $y = max(20.0, $barY - 12.0);
+        $this->drawText($label, 'F1', $fontSize, $x, $y);
+    }
+
+    private function applyTextFillColor(array $rgb): void
+    {
+        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
+        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
+        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
+        $this->currentOps[] = sprintf('%s %s %s rg', $r, $g, $b);
+    }
+
+        $barWidth = $this->width - $this->marginLeft - $this->marginRight;
+        $barY = $this->marginBottom - 8.0;
+        $this->drawFilledRect(
+            $this->marginLeft,
+            $barY,
+            $barWidth,
+            3.0,
+            (
+                $this->headerConfig !== null
+                && is_array($this->headerConfig['bar_color'] ?? null)
+            )
+                ? $this->headerConfig['bar_color']
+                : [32, 115, 191]
+        );
 
         $label = 'Page ' . self::PAGE_TOKEN . ' of ' . self::PAGE_TOTAL_TOKEN;
         $fontSize = 9.0;
