@@ -1279,8 +1279,8 @@ $pageHelpKey = 'team.analytics';
     <h2 class="md-card-title"><?=t($t, 'analytics_download_reports', 'Download default reports')?></h2>
     <p><?=t($t, 'analytics_download_reports_hint', 'Quickly download PDF snapshots for offline sharing.')?></p>
     <p>
-      <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_snapshot_v2.php'), ENT_QUOTES, 'UTF-8')?>">
-        <?=t($t, 'analytics_snapshot_v2_open', 'Open snapshot workspace')?>
+      <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_data_viewer.php'), ENT_QUOTES, 'UTF-8')?>">
+        <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
       </a>
     </p>
     <div class="md-download-grid">
