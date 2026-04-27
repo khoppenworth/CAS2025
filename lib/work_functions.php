@@ -47,6 +47,16 @@ function ensure_work_function_catalog(PDO $pdo): void
                 . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
             );
             try {
+                $columnsStmt = $pdo->query('SHOW COLUMNS FROM work_function_catalog');
+                if ($columnsStmt) {
+                    while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $field = (string)($column['Field'] ?? '');
+                        $type = strtolower((string)($column['Type'] ?? ''));
+                        if ($field === 'slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 100) {
+                            $pdo->exec('ALTER TABLE work_function_catalog MODIFY COLUMN slug VARCHAR(100) NOT NULL');
+                        }
+                    }
+                }
                 $pdo->exec('CREATE INDEX idx_work_function_catalog_sort ON work_function_catalog (archived_at, sort_order, label)');
             } catch (Throwable $e) {
             }
@@ -227,10 +237,17 @@ function reset_work_function_caches(PDO $pdo): void
 
 function generate_unique_work_function_slug(string $candidate, array $existing): string
 {
-    $base = $candidate;
+    $candidate = trim($candidate);
+    if ($candidate === '') {
+        $candidate = 'expert';
+    }
+    $base = substr($candidate, 0, 100);
+    $candidate = $base;
     $suffix = 2;
     while (isset($existing[$candidate])) {
-        $candidate = $base . '_' . $suffix;
+        $suffixToken = '_' . $suffix;
+        $baseLimit = max(1, 100 - strlen($suffixToken));
+        $candidate = substr($base, 0, $baseLimit) . $suffixToken;
         $suffix++;
         if ($suffix > 5000) {
             break;

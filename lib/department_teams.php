@@ -34,7 +34,12 @@ function built_in_department_definitions(): array
 function canonical_department_slug(string $value): string
 {
     $normalized = preg_replace('/[^a-z0-9]+/i', '_', strtolower(trim($value))) ?? '';
-    return trim($normalized, '_');
+    $normalized = trim($normalized, '_');
+    if ($normalized === '') {
+        return '';
+    }
+
+    return substr($normalized, 0, 120);
 }
 
 function canonical_department_team_slug(string $value): string
@@ -68,12 +73,23 @@ function is_placeholder_team_value(string $value): bool
     return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)_\d+$/', $canonical);
 }
 
-function unique_slug(string $candidate, array $existing): string
+function unique_slug(string $candidate, array $existing, int $maxLength = 120): string
 {
-    $base = $candidate;
+    $candidate = trim($candidate);
+    if ($candidate === '') {
+        $candidate = 'item';
+    }
+    if ($maxLength < 8) {
+        $maxLength = 8;
+    }
+
+    $base = substr($candidate, 0, $maxLength);
+    $candidate = $base;
     $suffix = 2;
     while (isset($existing[$candidate])) {
-        $candidate = $base . '_' . $suffix;
+        $suffixToken = '_' . $suffix;
+        $baseLimit = max(1, $maxLength - strlen($suffixToken));
+        $candidate = substr($base, 0, $baseLimit) . $suffixToken;
         $suffix++;
         if ($suffix > 10000) {
             break;
@@ -110,6 +126,16 @@ function ensure_department_catalog(PDO $pdo): void
                 . 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
                 . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
             try {
+                $cols = $pdo->query('SHOW COLUMNS FROM department_catalog');
+                if ($cols) {
+                    while ($c = $cols->fetch(PDO::FETCH_ASSOC)) {
+                        $field = (string)($c['Field'] ?? '');
+                        $type = strtolower((string)($c['Type'] ?? ''));
+                        if ($field === 'slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 120) {
+                            $pdo->exec('ALTER TABLE department_catalog MODIFY COLUMN slug VARCHAR(120) NOT NULL');
+                        }
+                    }
+                }
                 $pdo->exec('CREATE INDEX idx_department_catalog_sort ON department_catalog (archived_at, sort_order, label)');
             } catch (Throwable $e) {
                 // ignore duplicate index errors
@@ -239,14 +265,23 @@ function ensure_department_team_catalog(PDO $pdo): void
                 $hasDepartment = false;
                 if ($cols) {
                     while ($c = $cols->fetch(PDO::FETCH_ASSOC)) {
-                        if (($c['Field'] ?? '') === 'department_slug') {
+                        $field = (string)($c['Field'] ?? '');
+                        $type = strtolower((string)($c['Type'] ?? ''));
+                        if ($field === 'slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 120) {
+                            $pdo->exec('ALTER TABLE department_team_catalog MODIFY COLUMN slug VARCHAR(120) NOT NULL');
+                        }
+                        if ($field === 'department_slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 120) {
+                            $pdo->exec('ALTER TABLE department_team_catalog MODIFY COLUMN department_slug VARCHAR(120) NOT NULL');
+                        }
+                        if ($field === 'department_slug') {
                             $hasDepartment = true;
-                            break;
                         }
                     }
                 }
                 if (!$hasDepartment) {
                     $pdo->exec('ALTER TABLE department_team_catalog ADD COLUMN department_slug VARCHAR(120) NULL AFTER slug');
+                    $pdo->exec("UPDATE department_team_catalog SET department_slug = 'general_service' WHERE department_slug IS NULL OR TRIM(department_slug) = ''");
+                    $pdo->exec('ALTER TABLE department_team_catalog MODIFY COLUMN department_slug VARCHAR(120) NOT NULL');
                 }
                 $pdo->exec('CREATE INDEX idx_department_team_catalog_sort ON department_team_catalog (department_slug, archived_at, sort_order, label)');
             } catch (Throwable $e) {
@@ -344,6 +379,17 @@ function ensure_questionnaire_department_schema(PDO $pdo): void
             . 'department_slug VARCHAR(120) NOT NULL, '
             . 'PRIMARY KEY (questionnaire_id, department_slug)'
             . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        $cols = $pdo->query('SHOW COLUMNS FROM questionnaire_department');
+        if ($cols) {
+            while ($c = $cols->fetch(PDO::FETCH_ASSOC)) {
+                $field = (string)($c['Field'] ?? '');
+                $type = strtolower((string)($c['Type'] ?? ''));
+                if ($field === 'department_slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 120) {
+                    $pdo->exec('ALTER TABLE questionnaire_department MODIFY COLUMN department_slug VARCHAR(120) NOT NULL');
+                }
+            }
+        }
     } catch (PDOException $e) {
         error_log('ensure_questionnaire_department_schema failed: ' . $e->getMessage());
     }

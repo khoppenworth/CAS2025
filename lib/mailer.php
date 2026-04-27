@@ -61,7 +61,7 @@ function mail_html_to_text(string $html): string
     return trim(implode("\n", $lines));
 }
 
-function send_notification_email(array $cfg, $recipients, string $subject, $body, array $attachments = []): bool
+function send_notification_email(array $cfg, $recipients, $subject, $body, array $attachments = []): bool
 {
     $smtp = app_smtp_config($cfg);
     if (!$smtp['enabled']) {
@@ -104,16 +104,26 @@ function send_notification_email(array $cfg, $recipients, string $subject, $body
         $bodyText = mail_html_to_text($bodyHtml);
     }
 
+    $subjectLine = trim((string)$subject);
+    if ($subjectLine === '') {
+        $subjectLine = 'Notification';
+    }
+
     try {
-        return smtp_send($smtp, $list, $subject, ['text' => $bodyText, 'html' => $bodyHtml], $attachments);
+        return smtp_send($smtp, $list, $subjectLine, ['text' => $bodyText, 'html' => $bodyHtml], $attachments);
     } catch (Throwable $e) {
         error_log('SMTP send failed: ' . $e->getMessage());
         return false;
     }
 }
 
-function smtp_send(array $smtp, array $recipients, string $subject, array $body, array $attachments = []): bool
+function smtp_send(array $smtp, array $recipients, $subject, array $body, array $attachments = []): bool
 {
+    $subject = trim((string)$subject);
+    if ($subject === '') {
+        $subject = 'Notification';
+    }
+
     $host = $smtp['host'];
     $port = (int)$smtp['port'];
     if ($port <= 0) {

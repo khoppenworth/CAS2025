@@ -158,9 +158,9 @@ class SimplePdfDocument
 
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
-        $bulletPrefix = chr(149) . ' ';
+        $bulletPrefix = '• ';
         foreach ($lines as $line) {
-            $this->addTextBlock($bulletPrefix . $line, $fontSize, 'F1', 1.35, false);
+            $this->addTextBlock($bulletPrefix . (string)$line, $fontSize, 'F1', 1.35, false);
         }
         $this->addSpacer(4.0);
     }
@@ -807,9 +807,6 @@ class SimplePdfDocument
         if ($this->pageNumber <= 0) {
             return;
         }
-        $barWidth = $this->width - $this->marginLeft - $this->marginRight;
-        $barY = $this->marginBottom - 8.0;
-        $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
 
         $barColor = (
             $this->headerConfig !== null
@@ -820,37 +817,6 @@ class SimplePdfDocument
         $barWidth = $this->width - $this->marginLeft - $this->marginRight;
         $barY = $this->marginBottom - 8.0;
         $this->drawFilledRect($this->marginLeft, $barY, $barWidth, 3.0, $barColor);
-
-        $label = 'Page ' . self::PAGE_TOKEN . ' of ' . self::PAGE_TOTAL_TOKEN;
-        $fontSize = 9.0;
-        $textWidth = $this->estimateTextWidth($label, $fontSize);
-        $x = ($this->width / 2) - ($textWidth / 2);
-        $y = max(20.0, $barY - 12.0);
-        $this->drawText($label, 'F1', $fontSize, $x, $y);
-    }
-
-    private function applyTextFillColor(array $rgb): void
-    {
-        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
-        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
-        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
-        $this->currentOps[] = sprintf('%s %s %s rg', $r, $g, $b);
-    }
-
-        $barWidth = $this->width - $this->marginLeft - $this->marginRight;
-        $barY = $this->marginBottom - 8.0;
-        $this->drawFilledRect(
-            $this->marginLeft,
-            $barY,
-            $barWidth,
-            3.0,
-            (
-                $this->headerConfig !== null
-                && is_array($this->headerConfig['bar_color'] ?? null)
-            )
-                ? $this->headerConfig['bar_color']
-                : [32, 115, 191]
-        );
 
         $label = 'Page ' . self::PAGE_TOKEN . ' of ' . self::PAGE_TOTAL_TOKEN;
         $fontSize = 9.0;
@@ -891,6 +857,9 @@ class SimplePdfDocument
     private function wrapText(string $text, float $fontSize): array
     {
         $normalized = preg_replace('/\s+/u', ' ', trim($text));
+        if ($normalized === null) {
+            $normalized = preg_replace('/\s+/', ' ', trim($text)) ?? trim($text);
+        }
         if ($normalized === '') {
             return [''];
         }
