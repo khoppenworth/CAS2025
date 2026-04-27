@@ -15,6 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/department_teams.php';
 
 if (!isset($pdo) || !$pdo instanceof PDO) {
     fwrite(STDERR, "Database connection is not available. Check your .env DB_* settings and try again." . PHP_EOL);
@@ -78,6 +79,65 @@ function load_questionnaires(PDO $pdo, array $statuses): array
     return $stmt->fetchAll() ?: [];
 }
 
+function has_table(PDO $pdo, string $tableName): bool
+{
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+        );
+        $stmt->execute([$tableName]);
+        return (int)$stmt->fetchColumn() > 0;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function upsert_department_teams_for_demo(PDO $pdo, array $users): void
+{
+    if (!has_table($pdo, 'department_team_catalog')) {
+        return;
+    }
+
+    $teamRows = [];
+    foreach ($users as $user) {
+        $department = trim((string)($user['department'] ?? ''));
+        $teamLabel = trim((string)($user['team_label'] ?? ''));
+        if ($department === '' || $teamLabel === '') {
+            continue;
+        }
+        $teamSlug = (string)($user['cadre'] ?? '');
+        if ($teamSlug === '') {
+            continue;
+        }
+        $teamRows[$teamSlug] = [
+            'slug' => $teamSlug,
+            'department_slug' => $department,
+            'label' => $teamLabel,
+        ];
+    }
+
+    if (!$teamRows) {
+        return;
+    }
+
+    $insertTeamStmt = $pdo->prepare(
+        'INSERT INTO department_team_catalog (slug, department_slug, label, sort_order, archived_at) ' .
+        'VALUES (?, ?, ?, ?, NULL) ' .
+        'ON DUPLICATE KEY UPDATE department_slug = VALUES(department_slug), label = VALUES(label), archived_at = NULL'
+    );
+
+    $sortOrder = 1;
+    foreach ($teamRows as $team) {
+        $insertTeamStmt->execute([
+            $team['slug'],
+            $team['department_slug'],
+            $team['label'],
+            $sortOrder,
+        ]);
+        $sortOrder++;
+    }
+}
+
 /**
  * @return array<int, int>
  */
@@ -85,29 +145,141 @@ function ensure_demo_users(PDO $pdo): array
 {
     $passwordHash = password_hash('DemoPass#2026', PASSWORD_DEFAULT);
     $users = [
-        ['demo_supervisor', 'supervisor', 'Demo Supervisor', 'demo.supervisor@example.com', 'leadership_tn'],
-        ['demo_staff_finance', 'staff', 'Demo Finance Staff', 'demo.finance@example.com', 'finance'],
-        ['demo_staff_hr', 'staff', 'Demo HR Staff', 'demo.hr@example.com', 'hrm'],
-        ['demo_staff_ict', 'staff', 'Demo ICT Staff', 'demo.ict@example.com', 'ict'],
-        ['demo_staff_ops', 'staff', 'Demo Operations Staff', 'demo.ops@example.com', 'general_service'],
+        [
+            'username' => 'demo_supervisor',
+            'role' => 'supervisor',
+            'full_name' => 'Demo Supervisor',
+            'email' => 'demo.supervisor@example.com',
+            'work_function' => 'leadership_tn',
+            'department' => 'leadership_tn',
+            'directorate' => 'Leadership',
+            'cadre' => 'leadership_tn_team_leads',
+            'team_label' => 'Team Leads',
+            'business_role' => 'team_lead',
+            'job_grade' => 'JG-11',
+            'education_level' => 'masters',
+        ],
+        [
+            'username' => 'demo_staff_finance',
+            'role' => 'staff',
+            'full_name' => 'Demo Finance Staff',
+            'email' => 'demo.finance@example.com',
+            'work_function' => 'finance',
+            'department' => 'finance',
+            'directorate' => 'Corporate Services',
+            'cadre' => 'finance_budget_and_reporting',
+            'team_label' => 'Budget & Reporting',
+            'business_role' => 'expert',
+            'job_grade' => 'JG-08',
+            'education_level' => 'bachelors',
+        ],
+        [
+            'username' => 'demo_staff_hr',
+            'role' => 'staff',
+            'full_name' => 'Demo HR Staff',
+            'email' => 'demo.hr@example.com',
+            'work_function' => 'hrm',
+            'department' => 'hrm',
+            'directorate' => 'People & Culture',
+            'cadre' => 'hrm_talent_management',
+            'team_label' => 'Talent Management',
+            'business_role' => 'manager',
+            'job_grade' => 'JG-09',
+            'education_level' => 'bachelors',
+        ],
+        [
+            'username' => 'demo_staff_ict',
+            'role' => 'staff',
+            'full_name' => 'Demo ICT Staff',
+            'email' => 'demo.ict@example.com',
+            'work_function' => 'ict',
+            'department' => 'ict',
+            'directorate' => 'Technology',
+            'cadre' => 'ict_platform_and_support',
+            'team_label' => 'Platform & Support',
+            'business_role' => 'expert',
+            'job_grade' => 'JG-10',
+            'education_level' => 'bachelors',
+        ],
+        [
+            'username' => 'demo_staff_ops',
+            'role' => 'staff',
+            'full_name' => 'Demo Operations Staff',
+            'email' => 'demo.ops@example.com',
+            'work_function' => 'general_service',
+            'department' => 'general_service',
+            'directorate' => 'Operations',
+            'cadre' => 'general_service_facilities_and_logistics',
+            'team_label' => 'Facilities & Logistics',
+            'business_role' => 'staff',
+            'job_grade' => 'JG-07',
+            'education_level' => 'diploma',
+        ],
     ];
 
     $selectStmt = $pdo->prepare('SELECT id FROM users WHERE username = ? LIMIT 1');
     $insertStmt = $pdo->prepare(
-        'INSERT INTO users (username, password, role, full_name, email, work_function, account_status, profile_completed, must_reset_password, language) ' .
-        'VALUES (?, ?, ?, ?, ?, ?, "active", 1, 1, "en")'
+        'INSERT INTO users (username, password, role, full_name, email, work_function, department, directorate, cadre, business_role, profile_role, job_grade, education_level, account_status, profile_completed, must_reset_password, language) ' .
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active", 1, 1, "en")'
+    );
+    $updateStmt = $pdo->prepare(
+        'UPDATE users SET full_name = ?, email = ?, work_function = ?, department = ?, directorate = ?, cadre = ?, business_role = ?, profile_role = ?, job_grade = ?, education_level = ?, account_status = "active", profile_completed = 1, must_reset_password = 1 WHERE id = ?'
     );
 
+    ensure_department_catalog($pdo);
+    ensure_department_team_catalog($pdo);
+    upsert_department_teams_for_demo($pdo, $users);
+
     $ids = [];
-    foreach ($users as [$username, $role, $fullName, $email, $workFunction]) {
+    foreach ($users as $user) {
+        $username = (string)$user['username'];
+        $role = (string)$user['role'];
+        $fullName = (string)$user['full_name'];
+        $email = (string)$user['email'];
+        $workFunction = (string)$user['work_function'];
+        $department = (string)$user['department'];
+        $directorate = (string)$user['directorate'];
+        $cadre = (string)$user['cadre'];
+        $businessRole = (string)$user['business_role'];
+        $jobGrade = (string)$user['job_grade'];
+        $educationLevel = (string)$user['education_level'];
+
         $selectStmt->execute([$username]);
         $existing = $selectStmt->fetchColumn();
         if ($existing !== false) {
-            $ids[] = (int)$existing;
+            $existingId = (int)$existing;
+            $updateStmt->execute([
+                $fullName,
+                $email,
+                $workFunction,
+                $department,
+                $directorate,
+                $cadre,
+                $businessRole,
+                $businessRole,
+                $jobGrade,
+                $educationLevel,
+                $existingId,
+            ]);
+            $ids[] = $existingId;
             continue;
         }
 
-        $insertStmt->execute([$username, $passwordHash, $role, $fullName, $email, $workFunction]);
+        $insertStmt->execute([
+            $username,
+            $passwordHash,
+            $role,
+            $fullName,
+            $email,
+            $workFunction,
+            $department,
+            $directorate,
+            $cadre,
+            $businessRole,
+            $businessRole,
+            $jobGrade,
+            $educationLevel,
+        ]);
         $ids[] = (int)$pdo->lastInsertId();
     }
 
@@ -143,7 +315,7 @@ function ensure_performance_period_range(PDO $pdo, int $startYear, int $endYear)
  * @param array<int, array{value: string, is_correct: bool}> $options
  * @return array{payload: array<int, array<string, mixed>>, correct: bool}
  */
-function build_answer_payload(array $item, array $options): array
+function build_answer_payload(array $item, array $options, ?int $correctAnswerChance = null): array
 {
     $type = (string)($item['type'] ?? 'text');
     if ($type === 'boolean') {
@@ -172,7 +344,8 @@ function build_answer_payload(array $item, array $options): array
         $incorrectOptions = array_values(array_filter($options, static fn(array $opt): bool => !$opt['is_correct']));
         shuffle($options);
         if ($requiresCorrect && $correctOptions) {
-            $answerCorrectly = random_int(1, 10) > 2;
+            $targetChance = $correctAnswerChance ?? random_int(45, 90);
+            $answerCorrectly = random_int(1, 100) <= $targetChance;
             if ($answerCorrectly || !$incorrectOptions) {
                 return [
                     'payload' => [['valueString' => $correctOptions[0]['value']]],
@@ -335,6 +508,7 @@ try {
 
             $correctAnswerTotal = 0;
             $correctAnswers = 0;
+            $correctAnswerChance = random_int(40, 88);
 
             $insertResponse->execute([
                 $staffId,
@@ -358,7 +532,7 @@ try {
                     ],
                     $optionStmt->fetchAll() ?: []
                 );
-                $result = build_answer_payload($item, $options);
+                $result = build_answer_payload($item, $options, $correctAnswerChance);
                 $payload = $result['payload'];
                 $requiresCorrect = (int)($item['requires_correct'] ?? 0) === 1;
                 if ($requiresCorrect) {
