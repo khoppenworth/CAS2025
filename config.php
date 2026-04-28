@@ -1423,9 +1423,9 @@ function site_brand_palette(array $cfg): array
     $mutedLight = tint_color($base, 0.55);
     // Keep application surfaces on a very light brand-tinted gradient,
     // matching the softer treatment used on the login experience.
-    $bgStart = tint_color($primaryLight, 0.78);
-    $bgMid = tint_color($secondary, 0.82);
-    $bgEnd = tint_color($base, 0.9);
+    $bgStart = '#ffffff';
+    $bgMid = '#ffffff';
+    $bgEnd = tint_color($base, 0.985);
 
     return [
         'primary' => $base,
@@ -1513,10 +1513,10 @@ function site_theme_tokens(array $cfg): array
     $success = $semanticSuccess;
     $info = $semanticWarning;
 
-    $lightSurface = tint_color($primary, 0.9);
-    $lightSurfaceAlt = tint_color($primary, 0.95);
-    $lightSurfaceMuted = tint_color($primary, 0.85);
-    $lightSurfaceHighlight = tint_color($primary, 0.82);
+    $lightSurface = '#ffffff';
+    $lightSurfaceAlt = '#ffffff';
+    $lightSurfaceMuted = tint_color($primary, 0.975);
+    $lightSurfaceHighlight = tint_color($primary, 0.965);
     $lightText = adjust_hsl($primary, 0.0, 1.05, 0.38);
     $lightTextSecondary = adjust_hsl($primary, 0.0, 1.0, 0.46);
     $lightTextMuted = adjust_hsl($primary, 0.0, 0.88, 0.58);
@@ -1529,9 +1529,9 @@ function site_theme_tokens(array $cfg): array
     $onSurfaceMuted = rgba_string(shade_color($onSurface, 0.18), 1.0);
     $onSurfaceStrong = shade_color($onSurface, 0.08);
 
-    $lightBorder = rgba_string($primary, 0.16);
-    $lightBorderStrong = rgba_string($primaryDark, 0.24);
-    $lightDivider = rgba_string($primaryDarker, 0.12);
+    $lightBorder = rgba_string($primary, 0.34);
+    $lightBorderStrong = rgba_string($primaryDark, 0.46);
+    $lightDivider = rgba_string($primaryDarker, 0.24);
 
     $shadowSoft = '0 18px 44px ' . rgba_string($primaryDarker, 0.22);
     $shadowStrong = '0 22px 54px ' . rgba_string($primaryDarker, 0.3);
@@ -1707,6 +1707,7 @@ function site_theme_tokens(array $cfg): array
         '--app-bg' => $bgGradient,
         '--app-shadow-soft' => $shadowSoft,
         '--app-shadow-strong' => $shadowStrong,
+        '--app-card-shadow' => '0 8px 20px ' . rgba_string($primaryDarker, 0.12),
         '--app-primary-soft' => $primarySoft,
         '--app-primary-softer' => $primarySofter,
         '--app-danger' => $danger,
@@ -1759,6 +1760,7 @@ function site_theme_tokens(array $cfg): array
         '--app-bg' => $darkBgGradient,
         '--app-shadow-soft' => $darkShadow,
         '--app-shadow-strong' => $darkShadowStrong,
+        '--app-card-shadow' => '0 16px 34px ' . rgba_string(shade_color($primary, 0.7), 0.62),
         '--app-primary-soft' => $darkPrimarySoft,
         '--app-primary-softer' => $darkPrimarySofter,
         '--app-danger' => $darkDanger,
