@@ -41,6 +41,53 @@ WHERE created_by IN (
        OR username LIKE 'dummy_%'
 );
 
+DELETE FROM analytics_report_snapshot_v2
+WHERE generated_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE questionnaire_assignment
+SET assigned_by = NULL
+WHERE assigned_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE questionnaire_response
+SET reviewed_by = NULL
+WHERE reviewed_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE users
+SET approved_by = NULL
+WHERE approved_by IN (
+    SELECT demo_user_id
+    FROM (
+        SELECT id AS demo_user_id
+        FROM users
+        WHERE username LIKE 'demo_%'
+           OR username LIKE 'dummy_%'
+    ) AS demo_user_ids
+);
+
+UPDATE competency_benchmark_policy
+SET created_by = NULL
+WHERE created_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
 DELETE FROM logs
 WHERE user_id IN (
     SELECT id
@@ -67,13 +114,16 @@ ON DUPLICATE KEY UPDATE
     period_end = VALUES(period_end);
 
 -- Insert fictive demo users ------------------------------------------------------
-INSERT INTO users (username, password, role, full_name, email, work_function, account_status, profile_completed, must_reset_password, language)
+INSERT INTO users (
+    username, password, role, full_name, email, work_function, department, directorate, cadre,
+    business_role, profile_role, job_grade, education_level, account_status, profile_completed, must_reset_password, language
+)
 VALUES
-('demo_supervisor', @password, 'supervisor', 'Demo Supervisor', 'demo.supervisor@example.com', 'leadership_tn', 'active', 1, 1, 'en'),
-('demo_staff_finance', @password, 'staff', 'Demo Finance Staff', 'demo.finance@example.com', 'finance', 'active', 1, 1, 'en'),
-('demo_staff_hr', @password, 'staff', 'Demo HR Staff', 'demo.hr@example.com', 'hrm', 'active', 1, 1, 'en'),
-('demo_staff_ict', @password, 'staff', 'Demo ICT Staff', 'demo.ict@example.com', 'ict', 'active', 1, 1, 'en'),
-('demo_staff_ops', @password, 'staff', 'Demo Operations Staff', 'demo.ops@example.com', 'general_service', 'active', 1, 1, 'en');
+('demo_supervisor', @password, 'supervisor', 'Demo Supervisor', 'demo.supervisor@example.com', 'leadership_tn', 'leadership_tn', 'Leadership', 'leadership_tn_team_leads', 'team_lead', 'team_lead', 'JG-11', 'masters', 'active', 1, 1, 'en'),
+('demo_staff_finance', @password, 'staff', 'Demo Finance Staff', 'demo.finance@example.com', 'finance', 'finance', 'Corporate Services', 'finance_budget_and_reporting', 'expert', 'expert', 'JG-08', 'bachelors', 'active', 1, 1, 'en'),
+('demo_staff_hr', @password, 'staff', 'Demo HR Staff', 'demo.hr@example.com', 'hrm', 'hrm', 'People & Culture', 'hrm_talent_management', 'manager', 'manager', 'JG-09', 'bachelors', 'active', 1, 1, 'en'),
+('demo_staff_ict', @password, 'staff', 'Demo ICT Staff', 'demo.ict@example.com', 'ict', 'ict', 'Technology', 'ict_platform_and_support', 'expert', 'expert', 'JG-10', 'bachelors', 'active', 1, 1, 'en'),
+('demo_staff_ops', @password, 'staff', 'Demo Operations Staff', 'demo.ops@example.com', 'general_service', 'general_service', 'Operations', 'general_service_facilities_and_logistics', 'expert', 'expert', 'JG-07', 'diploma', 'active', 1, 1, 'en');
 
 -- Seed analytics-friendly assignments and responses against existing forms -------
 SET @demo_supervisor_id := (SELECT id FROM users WHERE username = 'demo_supervisor' LIMIT 1);
