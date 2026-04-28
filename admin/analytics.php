@@ -442,6 +442,10 @@ foreach ($questionnaireKpiTracker as $familyKey => $userScores) {
 
 $questionnaireIds = array_map(static fn($row) => (int)$row['id'], $questionnaires);
 $selectedQuestionnaireId = (int)($_GET['questionnaire_id'] ?? 0);
+$analyticsViewMode = strtolower((string)($_GET['view'] ?? 'overview'));
+if ($analyticsViewMode !== 'drilldown') {
+    $analyticsViewMode = 'overview';
+}
 $selectedQuestionnaireFamilyKey = '';
 $selectedQuestionnaireStructureId = 0;
 if ($questionnaires) {
@@ -457,6 +461,7 @@ if ($questionnaires) {
     }
 } else {
     $selectedQuestionnaireId = 0;
+    $analyticsViewMode = 'overview';
 }
 
 if (isset($summary['avg_score']) && $summary['avg_score'] !== null) {
@@ -915,6 +920,29 @@ if (count($workFunctionChartData) > 12) {
     $workFunctionChartData = array_slice($workFunctionChartData, 0, 12);
 }
 
+$lowestQuestionnaire = null;
+$highestWorkFunction = null;
+$totalRecommendedStaff = 0;
+foreach ($questionnaires as $row) {
+    if (($row['avg_score'] ?? null) === null) {
+        continue;
+    }
+    if ($lowestQuestionnaire === null || (float)$row['avg_score'] < (float)$lowestQuestionnaire['avg_score']) {
+        $lowestQuestionnaire = $row;
+    }
+}
+foreach ($workFunctionSummary as $row) {
+    if (($row['avg_score'] ?? null) === null) {
+        continue;
+    }
+    if ($highestWorkFunction === null || (float)$row['avg_score'] > (float)$highestWorkFunction['avg_score']) {
+        $highestWorkFunction = $row;
+    }
+}
+foreach ($trainingRecommendationReport as $row) {
+    $totalRecommendedStaff += (int)($row['recommended_staff_count'] ?? 0);
+}
+
 $chartJsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 if (defined('JSON_THROW_ON_ERROR')) {
     $chartJsonFlags |= JSON_THROW_ON_ERROR;
@@ -1125,6 +1153,27 @@ $pageHelpKey = 'team.analytics';
       font-size: 1.25rem;
       margin-bottom: 0.35rem;
     }
+    .md-insight-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin: 0.75rem 0 0;
+    }
+    .md-insight {
+      background: #eef6ff;
+      border-left: 4px solid #1d4ed8;
+      border-radius: 8px;
+      padding: 0.7rem 0.8rem;
+      font-size: 0.9rem;
+    }
+    .md-insight strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-size: 0.82rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #1e3a8a;
+    }
     .md-report-grid {
       display: grid;
       gap: 1rem;
@@ -1271,6 +1320,27 @@ $pageHelpKey = 'team.analytics';
     .md-disclosure[open] > summary {
       margin-bottom: 0.75rem;
     }
+    .md-table-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: center;
+      margin: 0.75rem 0;
+    }
+    .md-table-toolbar label {
+      font-size: 0.85rem;
+      color: var(--app-text-secondary, #4b5563);
+    }
+    .md-table-toolbar input,
+    .md-table-toolbar select {
+      min-width: 160px;
+    }
+    .md-row-toggle {
+      margin-top: 0.5rem;
+    }
+    tr.is-hidden-by-filter {
+      display: none;
+    }
     .md-matrix-wrapper {
       overflow-x: auto;
     }
@@ -1329,12 +1399,15 @@ $pageHelpKey = 'team.analytics';
     <div class="md-alert error"><?=htmlspecialchars($reportError, ENT_QUOTES, 'UTF-8')?></div>
   <?php endif; ?>
   <nav class="md-analytics-top-nav" aria-label="<?=htmlspecialchars(t($t, 'analytics_page_sections', 'Analytics page sections'), ENT_QUOTES, 'UTF-8')?>">
-    <a href="#overview"><?=t($t, 'analytics_overview', 'Analytics overview')?></a>
-    <a href="#questionnaire-performance"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></a>
-    <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></a>
-    <a href="#training-recommendations"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></a>
-    <a href="#downloads-tools"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></a>
-    <?php if ($selectedQuestionnaireId): ?>
+    <a href="<?=htmlspecialchars(url_for('admin/analytics.php') . '?view=overview&questionnaire_id=' . (int)$selectedQuestionnaireId, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'overview_mode', 'Overview mode')?></a>
+    <a href="<?=htmlspecialchars(url_for('admin/analytics.php') . '?view=drilldown&questionnaire_id=' . (int)$selectedQuestionnaireId, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'drilldown_mode', 'Drilldown mode')?></a>
+    <?php if ($analyticsViewMode === 'overview'): ?>
+      <a href="#overview"><?=t($t, 'analytics_overview', 'Analytics overview')?></a>
+      <a href="#questionnaire-performance"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></a>
+      <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></a>
+      <a href="#training-recommendations"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></a>
+      <a href="#downloads-tools"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></a>
+    <?php elseif ($selectedQuestionnaireId): ?>
       <a href="#questionnaire-drilldown"><?=t($t, 'questionnaire_drilldown', 'Questionnaire drilldown')?></a>
     <?php endif; ?>
   </nav>
@@ -1428,8 +1501,32 @@ $pageHelpKey = 'team.analytics';
     <?php if (!empty($summary['latest_at'])): ?>
       <p class="md-analytics-meta"><?=t($t, 'latest_submission', 'Latest submission:')?> <?=htmlspecialchars($summary['latest_at'], ENT_QUOTES, 'UTF-8')?></p>
     <?php endif; ?>
+    <div class="md-insight-strip">
+      <div class="md-insight">
+        <strong><?=t($t, 'insight_lowest_questionnaire', 'Lowest questionnaire')?></strong>
+        <?php if ($lowestQuestionnaire): ?>
+          <?=htmlspecialchars((string)($lowestQuestionnaire['title'] ?? t($t, 'unknown', 'Unknown')), ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars($formatScore($lowestQuestionnaire['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?>%
+        <?php else: ?>
+          <?=t($t, 'not_available', 'N/A')?>
+        <?php endif; ?>
+      </div>
+      <div class="md-insight">
+        <strong><?=t($t, 'insight_best_work_role', 'Best work role')?></strong>
+        <?php if ($highestWorkFunction): ?>
+          <?php $bestWfKey = (string)($highestWorkFunction['work_function'] ?? ''); ?>
+          <?=htmlspecialchars((string)($workFunctionOptions[$bestWfKey] ?? ($bestWfKey !== '' ? $bestWfKey : t($t, 'unknown', 'Unknown'))), ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars($formatScore($highestWorkFunction['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?>%
+        <?php else: ?>
+          <?=t($t, 'not_available', 'N/A')?>
+        <?php endif; ?>
+      </div>
+      <div class="md-insight">
+        <strong><?=t($t, 'insight_training_recommendations', 'Training recommendations')?></strong>
+        <?=sprintf(t($t, 'insight_training_recommendations_value', '%d staff recommendations'), $totalRecommendedStaff)?>
+      </div>
+    </div>
   </div>
 
+  <?php if ($analyticsViewMode === 'overview'): ?>
   <div class="md-card md-elev-2" id="downloads-tools">
     <h2 class="md-card-title"><?=t($t, 'analytics_download_reports', 'Download default reports')?></h2>
     <details class="md-disclosure">
@@ -1485,6 +1582,16 @@ $pageHelpKey = 'team.analytics';
     <h2 class="md-card-title"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></h2>
     <?php if ($questionnaires): ?>
       <p class="md-upgrade-meta"><?=t($t, 'questionnaire_drilldown_hint', 'Select a questionnaire to drill into individual responses.')?></p>
+      <div class="md-table-toolbar">
+        <label>
+          <?=t($t, 'filter_questionnaires', 'Filter questionnaires')?>
+          <input type="search" data-table-filter="questionnaires" placeholder="<?=htmlspecialchars(t($t, 'search', 'Search'), ENT_QUOTES, 'UTF-8')?>">
+        </label>
+        <label>
+          <?=t($t, 'minimum_score', 'Minimum score')?>
+          <input type="number" min="0" max="100" step="1" data-score-filter="questionnaires" placeholder="0-100">
+        </label>
+      </div>
       <?php if ($questionnaireChartData): ?>
         <div
           class="md-chart-container"
@@ -1496,7 +1603,7 @@ $pageHelpKey = 'team.analytics';
         </div>
         <p class="md-analytics-meta md-analytics-meta--hint"><?=t($t, 'performance_heatmap_hint', 'Heatmap colours shift from red to green so low scores stand out for follow-up.')?></p>
       <?php endif; ?>
-      <table class="md-table md-table--interactive">
+      <table class="md-table md-table--interactive" data-filter-target="questionnaires" data-row-limit="10">
         <thead>
           <tr>
             <th><?=t($t, 'questionnaire', 'Questionnaire')?></th>
@@ -1529,6 +1636,7 @@ $pageHelpKey = 'team.analytics';
           <?php endforeach; ?>
         </tbody>
       </table>
+      <button type="button" class="md-button md-row-toggle" data-table-toggle="questionnaires"><?=t($t, 'show_more', 'Show more')?></button>
     <?php else: ?>
       <p class="md-upgrade-meta"><?=t($t, 'no_questionnaire_stats', 'No questionnaire responses are available yet.')?></p>
     <?php endif; ?>
@@ -1573,8 +1681,9 @@ $pageHelpKey = 'team.analytics';
       <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_empty', 'Complete submissions to populate the department and role heatmap.')?></p>
     <?php endif; ?>
   </div>
+  <?php endif; ?>
 
-  <?php if ($selectedQuestionnaireId): ?>
+  <?php if ($selectedQuestionnaireId && $analyticsViewMode === 'drilldown'): ?>
     <div class="md-card md-elev-2" id="questionnaire-drilldown">
       <?php
         $selectedQuestionnaire = null;
@@ -1589,6 +1698,7 @@ $pageHelpKey = 'team.analytics';
         <?=t($t, 'responses_for_questionnaire', 'Responses for questionnaire')?> ·
         <?=htmlspecialchars($selectedQuestionnaire['title'] ?? '', ENT_QUOTES, 'UTF-8')?>
       </h2>
+      <p><a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics.php') . '?view=overview&questionnaire_id=' . (int)$selectedQuestionnaireId, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'back_to_overview', 'Back to overview')?></a></p>
       <?php if ($selectedAggregate['total'] > 0): ?>
         <p class="md-upgrade-meta">
           <?=t($t, 'selected_summary', 'Average score: ')?>
@@ -1599,7 +1709,7 @@ $pageHelpKey = 'team.analytics';
           <?=t($t, 'status_draft', 'Draft')?>: <?=$selectedAggregate['draft']?> ·
           <?=t($t, 'status_rejected', 'Rejected')?>: <?=$selectedAggregate['rejected']?>
         </p>
-        <table class="md-table">
+        <table class="md-table" data-filter-target="responses" data-row-limit="12">
           <thead>
             <tr>
               <th><?=t($t, 'user', 'User')?></th>
@@ -1633,6 +1743,7 @@ $pageHelpKey = 'team.analytics';
             <?php endforeach; ?>
           </tbody>
         </table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="responses"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?>
         <p class="md-upgrade-meta"><?=t($t, 'no_responses_for_selection', 'There are no responses for this questionnaire yet.')?></p>
       <?php endif; ?>
@@ -1645,7 +1756,7 @@ $pageHelpKey = 'team.analytics';
           <summary><?=t($t, 'show_sectional_scores_by_user', 'Show sectional participant scores')?></summary>
           <p class="md-upgrade-meta"><?=t($t, 'sectional_scores_by_user_hint', 'Scores reflect the weighted result for each questionnaire section per submission.')?></p>
           <div class="md-table-responsive">
-            <table class="md-table md-sectional-table">
+            <table class="md-table md-sectional-table" data-filter-target="sectional-scores" data-row-limit="10">
               <thead>
                 <tr>
                   <th><?=t($t, 'user', 'User')?></th>
@@ -1679,6 +1790,7 @@ $pageHelpKey = 'team.analytics';
               </tbody>
             </table>
           </div>
+          <button type="button" class="md-button md-row-toggle" data-table-toggle="sectional-scores"><?=t($t, 'show_more', 'Show more')?></button>
         </details>
       </div>
     <?php endif; ?>
@@ -1687,7 +1799,7 @@ $pageHelpKey = 'team.analytics';
       <div class="md-card md-elev-2">
         <h2 class="md-card-title"><?=t($t, 'sectional_scores_aggregated', 'Section averages for questionnaire')?></h2>
         <p class="md-upgrade-meta"><?=t($t, 'sectional_scores_aggregated_hint', 'Average weighted score per section across all submissions for this questionnaire.')?></p>
-        <table class="md-table">
+        <table class="md-table" data-filter-target="section-aggregates" data-row-limit="10">
           <thead>
             <tr>
               <th><?=t($t, 'section_label', 'Section')?></th>
@@ -1703,6 +1815,7 @@ $pageHelpKey = 'team.analytics';
             <?php endforeach; ?>
           </tbody>
         </table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="section-aggregates"><?=t($t, 'show_more', 'Show more')?></button>
       </div>
     <?php endif; ?>
 
@@ -1711,7 +1824,7 @@ $pageHelpKey = 'team.analytics';
       <details class="md-disclosure">
         <summary><?=t($t, 'show_participant_breakdown', 'Show participant breakdown')?></summary>
       <?php if ($selectedUserBreakdown): ?>
-        <table class="md-table">
+        <table class="md-table" data-filter-target="participant-breakdown" data-row-limit="8">
           <thead>
             <tr>
               <th><?=t($t, 'user', 'User')?></th>
@@ -1745,6 +1858,7 @@ $pageHelpKey = 'team.analytics';
             <?php endforeach; ?>
           </tbody>
         </table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="participant-breakdown"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?>
         <p class="md-upgrade-meta"><?=t($t, 'no_user_breakdown', 'No participant data available for this questionnaire.')?></p>
       <?php endif; ?>
@@ -1752,12 +1866,13 @@ $pageHelpKey = 'team.analytics';
     </div>
   <?php endif; ?>
 
+  <?php if ($analyticsViewMode === 'overview'): ?>
   <div class="md-card md-elev-2" id="training-recommendations">
     <h2 class="md-card-title"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></h2>
     <details class="md-disclosure">
       <summary><?=t($t, 'show_training_recommendations', 'Show training recommendations')?></summary>
       <?php if ($trainingRecommendationReport): ?>
-        <table class="md-table">
+        <table class="md-table" data-filter-target="training-recommendation" data-row-limit="8">
           <thead>
             <tr>
               <th><?=t($t, 'training_course', 'Training')?></th>
@@ -1775,6 +1890,7 @@ $pageHelpKey = 'team.analytics';
             <?php endforeach; ?>
           </tbody>
         </table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="training-recommendation"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?>
         <p class="md-upgrade-meta"><?=t($t, 'training_recommendation_report_empty', 'No training recommendations have been recorded yet.')?></p>
       <?php endif; ?>
@@ -1786,10 +1902,11 @@ $pageHelpKey = 'team.analytics';
     <details class="md-disclosure">
       <summary><?=t($t, 'show_department_performance', 'Show department performance')?></summary>
       <?php if ($departmentSummary): ?>
-        <table class="md-table"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+        <table class="md-table" data-filter-target="department-performance" data-row-limit="8"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
         <?php foreach ($departmentSummary as $row): ?>
           <tr><td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?: t($t,'unknown','Unknown')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
         <?php endforeach; ?></tbody></table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="department-performance"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
     </details>
   </div>
@@ -1799,10 +1916,11 @@ $pageHelpKey = 'team.analytics';
     <details class="md-disclosure">
       <summary><?=t($t, 'show_team_performance', 'Show team performance')?></summary>
       <?php if ($teamSummary): ?>
-        <table class="md-table"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+        <table class="md-table" data-filter-target="team-performance" data-row-limit="8"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
         <?php foreach ($teamSummary as $row): ?>
           <tr><td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
         <?php endforeach; ?></tbody></table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="team-performance"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
     </details>
   </div>
@@ -1822,7 +1940,7 @@ $pageHelpKey = 'team.analytics';
             <canvas id="work-function-heatmap" role="img" aria-label="<?=htmlspecialchars(t($t, 'work_function_heatmap_alt', 'Horizontal bar chart comparing work function averages using heatmap colours.'), ENT_QUOTES, 'UTF-8')?>"></canvas>
           </div>
         <?php endif; ?>
-        <table class="md-table">
+        <table class="md-table" data-filter-target="work-role-performance" data-row-limit="8">
           <thead>
             <tr>
               <th><?=t($t, 'work_function', 'Work Role')?></th>
@@ -1843,19 +1961,17 @@ $pageHelpKey = 'team.analytics';
             <?php endforeach; ?>
           </tbody>
         </table>
+        <button type="button" class="md-button md-row-toggle" data-table-toggle="work-role-performance"><?=t($t, 'show_more', 'Show more')?></button>
       <?php else: ?>
         <p class="md-upgrade-meta"><?=t($t, 'work_function_empty', 'Assign questionnaires to teams to see benchmarks populate here.')?></p>
       <?php endif; ?>
     </details>
   </div>
+  <?php endif; ?>
 </section>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   document.addEventListener('DOMContentLoaded', () => {
     const copyButtons = document.querySelectorAll('[data-copy-target]');
-    if (!copyButtons.length) {
-      return;
-    }
-
     const fallbackCopy = (text) => {
       const helper = document.createElement('textarea');
       helper.value = text;
@@ -1898,6 +2014,65 @@ $pageHelpKey = 'team.analytics';
         }
       });
     });
+
+    const setupRowLimit = (tableName) => {
+      const table = document.querySelector(`[data-filter-target="${tableName}"]`);
+      const toggle = document.querySelector(`[data-table-toggle="${tableName}"]`);
+      if (!table || !toggle) {
+        return;
+      }
+      const limit = Number.parseInt(table.getAttribute('data-row-limit') || '0', 10);
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      if (!limit || rows.length <= limit) {
+        toggle.style.display = 'none';
+        return;
+      }
+      let expanded = false;
+      const applyState = () => {
+        rows.forEach((row, index) => {
+          const hiddenByFilter = row.classList.contains('is-hidden-by-filter');
+          if (hiddenByFilter) {
+            row.style.display = 'none';
+            return;
+          }
+          row.style.display = (!expanded && index >= limit) ? 'none' : '';
+        });
+        toggle.textContent = expanded ? 'Show less' : 'Show more';
+      };
+      applyState();
+      toggle.addEventListener('click', () => {
+        expanded = !expanded;
+        applyState();
+      });
+    };
+
+    const questionnairesTable = document.querySelector('[data-filter-target="questionnaires"]');
+    const questionnaireSearch = document.querySelector('[data-table-filter="questionnaires"]');
+    const questionnaireMinScore = document.querySelector('[data-score-filter="questionnaires"]');
+    const applyQuestionnaireFilters = () => {
+      if (!questionnairesTable) {
+        return;
+      }
+      const term = (questionnaireSearch?.value || '').trim().toLowerCase();
+      const minScore = Number.parseFloat(questionnaireMinScore?.value || '');
+      const useMinScore = !Number.isNaN(minScore);
+      const rows = questionnairesTable.querySelectorAll('tbody tr');
+      rows.forEach((row) => {
+        const text = (row.textContent || '').toLowerCase();
+        const scoreCell = row.children[6];
+        const scoreValue = Number.parseFloat((scoreCell?.textContent || '').replace(/[^\d.-]/g, ''));
+        const scoreMatch = !useMinScore || (!Number.isNaN(scoreValue) && scoreValue >= minScore);
+        const termMatch = term === '' || text.includes(term);
+        row.classList.toggle('is-hidden-by-filter', !(scoreMatch && termMatch));
+      });
+      setupRowLimit('questionnaires');
+    };
+    questionnaireSearch?.addEventListener('input', applyQuestionnaireFilters);
+    questionnaireMinScore?.addEventListener('input', applyQuestionnaireFilters);
+    applyQuestionnaireFilters();
+
+    ['responses', 'sectional-scores', 'section-aggregates', 'participant-breakdown', 'training-recommendation', 'department-performance', 'team-performance', 'work-role-performance']
+      .forEach(setupRowLimit);
   });
 </script>
 <?php if ($hasAnalyticsCharts): ?>
