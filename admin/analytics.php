@@ -780,6 +780,7 @@ $teamCatalog = department_team_catalog($pdo);
 $workFunctionSummary = [];
 $departmentSummary = [];
 $teamSummary = [];
+$departmentRoleSummary = [];
 try {
     $trainingRecommendationStmt = $pdo->query(
         'SELECT cc.id AS course_id, cc.title AS course_title, '
@@ -826,6 +827,17 @@ try {
         . "ORDER BY total_responses DESC"
     );
     $teamSummary = $teamSummaryStmt ? $teamSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+    $departmentRoleStmt = $pdo->query(
+        "SELECT u.department, u.work_function, COUNT(*) AS total_responses, "
+        . "SUM(qr.status='approved') AS approved_count, "
+        . "AVG(qr.score) AS avg_score "
+        . "FROM questionnaire_response qr "
+        . "JOIN users u ON u.id = qr.user_id "
+        . "GROUP BY u.department, u.work_function "
+        . "ORDER BY u.department ASC, u.work_function ASC"
+    );
+    $departmentRoleSummary = $departmentRoleStmt ? $departmentRoleStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (PDOException $e) {
     error_log('analytics summary queries failed: ' . $e->getMessage());
 }
@@ -839,6 +851,25 @@ foreach ($workFunctionSummary as &$wfRow) {
     }
 }
 unset($wfRow);
+
+$departmentRoleMap = [];
+$departmentRoleDepartments = [];
+$departmentRoleFunctions = [];
+foreach ($departmentRoleSummary as $row) {
+    $departmentKey = (string)($row['department'] ?? '');
+    $workFunctionKey = (string)($row['work_function'] ?? '');
+    $departmentRoleDepartments[$departmentKey] = $departmentOptions[$departmentKey]
+        ?? ($departmentKey !== '' ? $departmentKey : t($t, 'unknown', 'Unknown'));
+    $departmentRoleFunctions[$workFunctionKey] = $workFunctionOptions[$workFunctionKey]
+        ?? ($workFunctionKey !== '' ? $workFunctionKey : t($t, 'unknown', 'Unknown'));
+    $departmentRoleMap[$departmentKey][$workFunctionKey] = [
+        'score' => $row['avg_score'] !== null ? (float)$row['avg_score'] : null,
+        'responses' => (int)($row['total_responses'] ?? 0),
+        'approved' => (int)($row['approved_count'] ?? 0),
+    ];
+}
+asort($departmentRoleDepartments, SORT_NATURAL | SORT_FLAG_CASE);
+asort($departmentRoleFunctions, SORT_NATURAL | SORT_FLAG_CASE);
 
 $questionnaireChartData = [];
 foreach ($questionnaires as $row) {
@@ -902,6 +933,25 @@ $formatScore = static function ($score, int $precision = 1): string {
         return '—';
     }
     return number_format((float)$score, $precision);
+};
+
+$heatColorForScore = static function ($score): string {
+    if ($score === null) {
+        return '#f3f4f6';
+    }
+    $value = max(0, min(100, (float)$score));
+    if ($value <= 50) {
+        $ratio = $value / 50;
+        $r = 211 + (249 - 211) * $ratio;
+        $g = 47 + (168 - 47) * $ratio;
+        $b = 47 + (37 - 47) * $ratio;
+    } else {
+        $ratio = ($value - 50) / 50;
+        $r = 249 + (46 - 249) * $ratio;
+        $g = 168 + (125 - 168) * $ratio;
+        $b = 37 + (50 - 37) * $ratio;
+    }
+    return sprintf('rgba(%d, %d, %d, 0.82)', (int)round($r), (int)round($g), (int)round($b));
 };
 
 $formatCompetencyLevel = static function ($score) use ($t): string {
@@ -1181,12 +1231,91 @@ $pageHelpKey = 'team.analytics';
       margin-top: 0.35rem;
       font-size: 0.9rem;
     }
+    .md-analytics-top-nav {
+      position: sticky;
+      top: 0.5rem;
+      z-index: 10;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border-radius: 10px;
+      background: var(--app-surface, #fff);
+      border: 1px solid var(--app-border, #e2e8f0);
+    }
+    .md-analytics-top-nav a {
+      display: inline-block;
+      text-decoration: none;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      color: var(--app-text, #1f2937);
+      background: var(--app-surface-alt, #f5f7fa);
+      font-size: 0.9rem;
+    }
+    .md-analytics-top-nav a:hover,
+    .md-analytics-top-nav a:focus {
+      background: #dbeafe;
+      color: #0b3f93;
+    }
+    .md-disclosure {
+      margin-top: 0.75rem;
+      border-top: 1px solid var(--app-border, #e2e8f0);
+      padding-top: 0.5rem;
+    }
+    .md-disclosure > summary {
+      cursor: pointer;
+      font-weight: 600;
+      margin: 0.25rem 0 0.5rem;
+    }
+    .md-disclosure[open] > summary {
+      margin-bottom: 0.75rem;
+    }
+    .md-matrix-wrapper {
+      overflow-x: auto;
+    }
+    .md-matrix-table {
+      width: 100%;
+      min-width: 640px;
+      border-collapse: separate;
+      border-spacing: 4px;
+    }
+    .md-matrix-table th {
+      background: var(--app-surface-alt, #f5f7fa);
+      padding: 0.5rem;
+      font-size: 0.85rem;
+      text-align: left;
+      border-radius: 6px;
+    }
+    .md-matrix-cell {
+      color: #111827;
+      font-weight: 600;
+      text-align: center;
+      border-radius: 6px;
+      padding: 0.6rem 0.35rem;
+      min-width: 86px;
+    }
+    .md-matrix-cell small {
+      display: block;
+      font-weight: 500;
+      opacity: 0.9;
+    }
+    .md-matrix-cell--empty {
+      background: #f3f4f6;
+      color: #6b7280;
+      font-weight: 500;
+    }
     .md-table-responsive {
       overflow-x: auto;
     }
     .md-sectional-table th,
     .md-sectional-table td {
       white-space: nowrap;
+    }
+    @media (max-width: 860px) {
+      .md-analytics-top-nav {
+        top: 0;
+      }
     }
   </style>
 </head>
@@ -1199,7 +1328,17 @@ $pageHelpKey = 'team.analytics';
   <?php if ($reportError): ?>
     <div class="md-alert error"><?=htmlspecialchars($reportError, ENT_QUOTES, 'UTF-8')?></div>
   <?php endif; ?>
-  <div class="md-card md-kpi-card md-elev-2">
+  <nav class="md-analytics-top-nav" aria-label="<?=htmlspecialchars(t($t, 'analytics_page_sections', 'Analytics page sections'), ENT_QUOTES, 'UTF-8')?>">
+    <a href="#overview"><?=t($t, 'analytics_overview', 'Analytics overview')?></a>
+    <a href="#questionnaire-performance"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></a>
+    <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></a>
+    <a href="#training-recommendations"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></a>
+    <a href="#downloads-tools"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></a>
+    <?php if ($selectedQuestionnaireId): ?>
+      <a href="#questionnaire-drilldown"><?=t($t, 'questionnaire_drilldown', 'Questionnaire drilldown')?></a>
+    <?php endif; ?>
+  </nav>
+  <div class="md-card md-kpi-card md-elev-2" id="overview">
     <div class="md-kpi-hero">
       <div class="md-kpi-hero__copy">
         <p class="md-kpi-hero__eyebrow"><?=t($t, 'epss_kpi_label', 'EPSS KPI')?></p>
@@ -1291,52 +1430,58 @@ $pageHelpKey = 'team.analytics';
     <?php endif; ?>
   </div>
 
-  <div class="md-card md-elev-2">
+  <div class="md-card md-elev-2" id="downloads-tools">
     <h2 class="md-card-title"><?=t($t, 'analytics_download_reports', 'Download default reports')?></h2>
-    <p><?=t($t, 'analytics_download_reports_hint', 'Quickly download PDF snapshots for offline sharing.')?></p>
-    <p>
-      <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_data_viewer.php'), ENT_QUOTES, 'UTF-8')?>">
-        <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
-      </a>
-    </p>
-    <h3><?=t($t, 'analytics_download_summary_section', 'Main overview report')?></h3>
-    <div class="md-download-grid">
-      <?php foreach ($overviewReportDownloads as $download): ?>
-        <div class="md-download-card">
-          <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
-          <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
-          <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
-            <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
-        </div>
-      <?php endforeach; ?>
-    </div>
-    <h3><?=t($t, 'analytics_download_detailed_section', 'Detailed reports')?></h3>
-    <div class="md-download-grid">
-      <?php foreach ($detailedReportDownloads as $download): ?>
-        <div class="md-download-card">
-          <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
-          <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
-          <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
-            <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
-        </div>
-      <?php endforeach; ?>
-    </div>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_download_reports', 'Show download reports')?></summary>
+      <p><?=t($t, 'analytics_download_reports_hint', 'Quickly download PDF snapshots for offline sharing.')?></p>
+      <p>
+        <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_data_viewer.php'), ENT_QUOTES, 'UTF-8')?>">
+          <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
+        </a>
+      </p>
+      <h3><?=t($t, 'analytics_download_summary_section', 'Main overview report')?></h3>
+      <div class="md-download-grid">
+        <?php foreach ($overviewReportDownloads as $download): ?>
+          <div class="md-download-card">
+            <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
+            <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
+            <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
+              <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <h3><?=t($t, 'analytics_download_detailed_section', 'Detailed reports')?></h3>
+      <div class="md-download-grid">
+        <?php foreach ($detailedReportDownloads as $download): ?>
+          <div class="md-download-card">
+            <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
+            <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
+            <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
+              <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </details>
   </div>
 
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'analytics_tools', 'Analytics tools')?></h2>
-    <p><?=t($t, 'analytics_tools_hint', 'Manage automation and external BI resources from dedicated workspaces.')?></p>
-    <p>
-      <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(url_for('admin/analytics_automation.php'), ENT_QUOTES, 'UTF-8')?>">
-        <?=t($t, 'analytics_open_automation', 'Open automation workspace')?>
-      </a>
-      <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics_looker.php'), ENT_QUOTES, 'UTF-8')?>">
-        <?=t($t, 'analytics_open_looker_resources', 'Open Looker resources')?>
-      </a>
-    </p>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_analytics_tools', 'Show analytics tools')?></summary>
+      <p><?=t($t, 'analytics_tools_hint', 'Manage automation and external BI resources from dedicated workspaces.')?></p>
+      <p>
+        <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(url_for('admin/analytics_automation.php'), ENT_QUOTES, 'UTF-8')?>">
+          <?=t($t, 'analytics_open_automation', 'Open automation workspace')?>
+        </a>
+        <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics_looker.php'), ENT_QUOTES, 'UTF-8')?>">
+          <?=t($t, 'analytics_open_looker_resources', 'Open Looker resources')?>
+        </a>
+      </p>
+    </details>
   </div>
 
-  <div class="md-card md-elev-2">
+  <div class="md-card md-elev-2" id="questionnaire-performance">
     <h2 class="md-card-title"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></h2>
     <?php if ($questionnaires): ?>
       <p class="md-upgrade-meta"><?=t($t, 'questionnaire_drilldown_hint', 'Select a questionnaire to drill into individual responses.')?></p>
@@ -1389,8 +1534,48 @@ $pageHelpKey = 'team.analytics';
     <?php endif; ?>
   </div>
 
+  <div class="md-card md-elev-2" id="org-heatmap">
+    <h2 class="md-card-title"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></h2>
+    <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_hint', 'Average score by department (rows) and work role (columns). Darker green indicates stronger performance.')?></p>
+    <?php if ($departmentRoleDepartments && $departmentRoleFunctions): ?>
+      <div class="md-matrix-wrapper">
+        <table class="md-matrix-table" aria-label="<?=htmlspecialchars(t($t, 'department_role_heatmap', 'Department × Role heatmap'), ENT_QUOTES, 'UTF-8')?>">
+          <thead>
+            <tr>
+              <th><?=t($t, 'department', 'Department')?></th>
+              <?php foreach ($departmentRoleFunctions as $workFunctionLabel): ?>
+                <th><?=htmlspecialchars((string)$workFunctionLabel, ENT_QUOTES, 'UTF-8')?></th>
+              <?php endforeach; ?>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($departmentRoleDepartments as $departmentKey => $departmentLabel): ?>
+              <tr>
+                <th><?=htmlspecialchars((string)$departmentLabel, ENT_QUOTES, 'UTF-8')?></th>
+                <?php foreach ($departmentRoleFunctions as $workFunctionKey => $workFunctionLabel): ?>
+                  <?php $cell = $departmentRoleMap[$departmentKey][$workFunctionKey] ?? null; ?>
+                  <?php $score = $cell['score'] ?? null; ?>
+                  <?php if ($cell): ?>
+                    <td class="md-matrix-cell" style="background: <?=htmlspecialchars($heatColorForScore($score), ENT_QUOTES, 'UTF-8')?>;">
+                      <?= $score !== null ? htmlspecialchars(number_format((float)$score, 1), ENT_QUOTES, 'UTF-8') . '%' : '—' ?>
+                      <small><?=sprintf(t($t, 'responses_short', 'n=%d'), (int)($cell['responses'] ?? 0))?></small>
+                    </td>
+                  <?php else: ?>
+                    <td class="md-matrix-cell md-matrix-cell--empty">—</td>
+                  <?php endif; ?>
+                <?php endforeach; ?>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php else: ?>
+      <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_empty', 'Complete submissions to populate the department and role heatmap.')?></p>
+    <?php endif; ?>
+  </div>
+
   <?php if ($selectedQuestionnaireId): ?>
-    <div class="md-card md-elev-2">
+    <div class="md-card md-elev-2" id="questionnaire-drilldown">
       <?php
         $selectedQuestionnaire = null;
         foreach ($questionnaires as $candidate) {
@@ -1456,42 +1641,45 @@ $pageHelpKey = 'team.analytics';
     <?php if ($sectionColumns && $sectionScoresByResponse): ?>
       <div class="md-card md-elev-2">
         <h2 class="md-card-title"><?=t($t, 'sectional_scores_by_user', 'Sectional performance by participant')?></h2>
-        <p class="md-upgrade-meta"><?=t($t, 'sectional_scores_by_user_hint', 'Scores reflect the weighted result for each questionnaire section per submission.')?></p>
-        <div class="md-table-responsive">
-          <table class="md-table md-sectional-table">
-            <thead>
-              <tr>
-                <th><?=t($t, 'user', 'User')?></th>
-                <th><?=t($t, 'performance_period', 'Asessment Period')?></th>
-                <th><?=t($t, 'status', 'Status')?></th>
-                <th><?=t($t, 'score', 'Score (%)')?></th>
-                <?php foreach ($sectionColumns as $col): ?>
-                  <th><?=htmlspecialchars($col['label'], ENT_QUOTES, 'UTF-8')?></th>
-                <?php endforeach; ?>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($sectionScoresByResponse as $row): ?>
-                <?php $statusKey = $row['status'] ?? ''; ?>
+        <details class="md-disclosure">
+          <summary><?=t($t, 'show_sectional_scores_by_user', 'Show sectional participant scores')?></summary>
+          <p class="md-upgrade-meta"><?=t($t, 'sectional_scores_by_user_hint', 'Scores reflect the weighted result for each questionnaire section per submission.')?></p>
+          <div class="md-table-responsive">
+            <table class="md-table md-sectional-table">
+              <thead>
                 <tr>
-                  <td>
-                    <?=htmlspecialchars($row['username'] ?? '', ENT_QUOTES, 'UTF-8')?>
-                    <?php if (!empty($row['full_name'])): ?>
-                      <br><span class="md-muted"><?=htmlspecialchars($row['full_name'], ENT_QUOTES, 'UTF-8')?></span>
-                    <?php endif; ?>
-                  </td>
-                  <td><?=htmlspecialchars($row['period'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
-                  <td><?=htmlspecialchars($statusLabels[$statusKey] ?? ucfirst((string)$statusKey), ENT_QUOTES, 'UTF-8')?></td>
-                  <td><?= $row['overall'] !== null ? (int)$row['overall'] : '—' ?></td>
+                  <th><?=t($t, 'user', 'User')?></th>
+                  <th><?=t($t, 'performance_period', 'Asessment Period')?></th>
+                  <th><?=t($t, 'status', 'Status')?></th>
+                  <th><?=t($t, 'score', 'Score (%)')?></th>
                   <?php foreach ($sectionColumns as $col): ?>
-                    <?php $value = $row['sections'][$col['key']] ?? null; ?>
-                    <td><?= $value !== null ? htmlspecialchars(number_format((float)$value, 1), ENT_QUOTES, 'UTF-8') : '—' ?></td>
+                    <th><?=htmlspecialchars($col['label'], ENT_QUOTES, 'UTF-8')?></th>
                   <?php endforeach; ?>
                 </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                <?php foreach ($sectionScoresByResponse as $row): ?>
+                  <?php $statusKey = $row['status'] ?? ''; ?>
+                  <tr>
+                    <td>
+                      <?=htmlspecialchars($row['username'] ?? '', ENT_QUOTES, 'UTF-8')?>
+                      <?php if (!empty($row['full_name'])): ?>
+                        <br><span class="md-muted"><?=htmlspecialchars($row['full_name'], ENT_QUOTES, 'UTF-8')?></span>
+                      <?php endif; ?>
+                    </td>
+                    <td><?=htmlspecialchars($row['period'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
+                    <td><?=htmlspecialchars($statusLabels[$statusKey] ?? ucfirst((string)$statusKey), ENT_QUOTES, 'UTF-8')?></td>
+                    <td><?= $row['overall'] !== null ? (int)$row['overall'] : '—' ?></td>
+                    <?php foreach ($sectionColumns as $col): ?>
+                      <?php $value = $row['sections'][$col['key']] ?? null; ?>
+                      <td><?= $value !== null ? htmlspecialchars(number_format((float)$value, 1), ENT_QUOTES, 'UTF-8') : '—' ?></td>
+                    <?php endforeach; ?>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     <?php endif; ?>
 
@@ -1520,6 +1708,8 @@ $pageHelpKey = 'team.analytics';
 
     <div class="md-card md-elev-2">
       <h2 class="md-card-title"><?=t($t, 'user_breakdown', 'Participant breakdown')?></h2>
+      <details class="md-disclosure">
+        <summary><?=t($t, 'show_participant_breakdown', 'Show participant breakdown')?></summary>
       <?php if ($selectedUserBreakdown): ?>
         <table class="md-table">
           <thead>
@@ -1558,92 +1748,105 @@ $pageHelpKey = 'team.analytics';
       <?php else: ?>
         <p class="md-upgrade-meta"><?=t($t, 'no_user_breakdown', 'No participant data available for this questionnaire.')?></p>
       <?php endif; ?>
+      </details>
     </div>
   <?php endif; ?>
 
-  <div class="md-card md-elev-2">
+  <div class="md-card md-elev-2" id="training-recommendations">
     <h2 class="md-card-title"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></h2>
-    <?php if ($trainingRecommendationReport): ?>
-      <table class="md-table">
-        <thead>
-          <tr>
-            <th><?=t($t, 'training_course', 'Training')?></th>
-            <th><?=t($t, 'recommended_staff_count', 'Recommended staff')?></th>
-            <th><?=t($t, 'staff_members', 'Staff members')?></th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($trainingRecommendationReport as $row): ?>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_training_recommendations', 'Show training recommendations')?></summary>
+      <?php if ($trainingRecommendationReport): ?>
+        <table class="md-table">
+          <thead>
             <tr>
-              <td><?=htmlspecialchars($row['course_title'] ?? t($t, 'unknown', 'Unknown'), ENT_QUOTES, 'UTF-8')?></td>
-              <td><?= (int)($row['recommended_staff_count'] ?? 0) ?></td>
-              <td><?=htmlspecialchars((string)($row['recommended_staff'] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
+              <th><?=t($t, 'training_course', 'Training')?></th>
+              <th><?=t($t, 'recommended_staff_count', 'Recommended staff')?></th>
+              <th><?=t($t, 'staff_members', 'Staff members')?></th>
             </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    <?php else: ?>
-      <p class="md-upgrade-meta"><?=t($t, 'training_recommendation_report_empty', 'No training recommendations have been recorded yet.')?></p>
-    <?php endif; ?>
+          </thead>
+          <tbody>
+            <?php foreach ($trainingRecommendationReport as $row): ?>
+              <tr>
+                <td><?=htmlspecialchars($row['course_title'] ?? t($t, 'unknown', 'Unknown'), ENT_QUOTES, 'UTF-8')?></td>
+                <td><?= (int)($row['recommended_staff_count'] ?? 0) ?></td>
+                <td><?=htmlspecialchars((string)($row['recommended_staff'] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php else: ?>
+        <p class="md-upgrade-meta"><?=t($t, 'training_recommendation_report_empty', 'No training recommendations have been recorded yet.')?></p>
+      <?php endif; ?>
+    </details>
   </div>
 
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'department_performance', 'Department Performance')?></h2>
-    <?php if ($departmentSummary): ?>
-      <table class="md-table"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
-      <?php foreach ($departmentSummary as $row): ?>
-        <tr><td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?: t($t,'unknown','Unknown')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
-      <?php endforeach; ?></tbody></table>
-    <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_department_performance', 'Show department performance')?></summary>
+      <?php if ($departmentSummary): ?>
+        <table class="md-table"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+        <?php foreach ($departmentSummary as $row): ?>
+          <tr><td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?: t($t,'unknown','Unknown')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
+        <?php endforeach; ?></tbody></table>
+      <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+    </details>
   </div>
 
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'team_performance', 'Team Performance')?></h2>
-    <?php if ($teamSummary): ?>
-      <table class="md-table"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
-      <?php foreach ($teamSummary as $row): ?>
-        <tr><td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
-      <?php endforeach; ?></tbody></table>
-    <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_team_performance', 'Show team performance')?></summary>
+      <?php if ($teamSummary): ?>
+        <table class="md-table"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
+        <?php foreach ($teamSummary as $row): ?>
+          <tr><td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
+        <?php endforeach; ?></tbody></table>
+      <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
+    </details>
   </div>
 
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t, 'work_function_performance', 'Work Role Performance')?></h2>
-    <?php if ($workFunctionSummary): ?>
-      <?php if ($workFunctionChartData): ?>
-        <div
-          class="md-chart-container"
-          data-chart-target="work-function-heatmap"
-          data-has-data="true"
-          data-empty-message="<?= htmlspecialchars(t($t, 'work_function_heatmap_empty', 'Performance by work function will display after a few submissions are recorded.'), ENT_QUOTES, 'UTF-8') ?>"
-        >
-          <canvas id="work-function-heatmap" role="img" aria-label="<?=htmlspecialchars(t($t, 'work_function_heatmap_alt', 'Horizontal bar chart comparing work function averages using heatmap colours.'), ENT_QUOTES, 'UTF-8')?>"></canvas>
-        </div>
-      <?php endif; ?>
-      <table class="md-table">
-        <thead>
-          <tr>
-            <th><?=t($t, 'work_function', 'Work Role')?></th>
-            <th><?=t($t, 'count', 'Responses')?></th>
-            <th><?=t($t, 'approved', 'Approved')?></th>
-            <th><?=t($t, 'average_score', 'Average score (%)')?></th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($workFunctionSummary as $row): ?>
-            <?php $wfKey = $row['work_function'] ?? ''; ?>
+    <details class="md-disclosure">
+      <summary><?=t($t, 'show_work_role_performance', 'Show work role performance')?></summary>
+      <?php if ($workFunctionSummary): ?>
+        <?php if ($workFunctionChartData): ?>
+          <div
+            class="md-chart-container"
+            data-chart-target="work-function-heatmap"
+            data-has-data="true"
+            data-empty-message="<?= htmlspecialchars(t($t, 'work_function_heatmap_empty', 'Performance by work function will display after a few submissions are recorded.'), ENT_QUOTES, 'UTF-8') ?>"
+          >
+            <canvas id="work-function-heatmap" role="img" aria-label="<?=htmlspecialchars(t($t, 'work_function_heatmap_alt', 'Horizontal bar chart comparing work function averages using heatmap colours.'), ENT_QUOTES, 'UTF-8')?>"></canvas>
+          </div>
+        <?php endif; ?>
+        <table class="md-table">
+          <thead>
             <tr>
-              <td><?=htmlspecialchars($workFunctionOptions[$wfKey] ?? ($wfKey !== '' ? $wfKey : t($t, 'unknown', 'Unknown')), ENT_QUOTES, 'UTF-8')?></td>
-              <td><?= (int)$row['total_responses'] ?></td>
-              <td><?= (int)$row['approved_count'] ?></td>
-              <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
+              <th><?=t($t, 'work_function', 'Work Role')?></th>
+              <th><?=t($t, 'count', 'Responses')?></th>
+              <th><?=t($t, 'approved', 'Approved')?></th>
+              <th><?=t($t, 'average_score', 'Average score (%)')?></th>
             </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    <?php else: ?>
-      <p class="md-upgrade-meta"><?=t($t, 'work_function_empty', 'Assign questionnaires to teams to see benchmarks populate here.')?></p>
-    <?php endif; ?>
+          </thead>
+          <tbody>
+            <?php foreach ($workFunctionSummary as $row): ?>
+              <?php $wfKey = $row['work_function'] ?? ''; ?>
+              <tr>
+                <td><?=htmlspecialchars($workFunctionOptions[$wfKey] ?? ($wfKey !== '' ? $wfKey : t($t, 'unknown', 'Unknown')), ENT_QUOTES, 'UTF-8')?></td>
+                <td><?= (int)$row['total_responses'] ?></td>
+                <td><?= (int)$row['approved_count'] ?></td>
+                <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php else: ?>
+        <p class="md-upgrade-meta"><?=t($t, 'work_function_empty', 'Assign questionnaires to teams to see benchmarks populate here.')?></p>
+      <?php endif; ?>
+    </details>
   </div>
 </section>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
