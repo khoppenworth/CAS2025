@@ -18,7 +18,8 @@ Before running, ensure your `.env` has valid `DB_HOST`, `DB_PORT`, `DB_NAME`, `D
 
 - Defaults to seeding both `draft` and `published` questionnaires (override with `--statuses=<comma-separated-statuses>`).
 - Selects all questionnaires in the selected statuses that have at least one active item.
-- Ensures a fixed set of `demo_*` users exists (one supervisor and several staff users).
+- Ensures a fixed set of `demo_*` users exists (one `supervisor` account and several `staff` accounts).
+- Applies business/profile role metadata to demo users using system role vocabulary (`team_lead`, `manager`, `expert`) so analytics role filters look realistic.
 - Creates/updates annual performance periods for the selected year range (default `2020`–`2025`, override with `--start-year` and `--end-year`).
 - Deletes prior demo assignments and responses for `demo_*` users, then recreates assignments and one response per demo staff per selected questionnaire.
 - Seeds response-item answers and computes a score (graded for `requires_correct` questions; randomized fallback otherwise), with assignment/response timestamps spread across the selected year range.
@@ -38,4 +39,4 @@ Use `dummy_data_cleanup.sql` to remove seeded demo-user submissions when needed.
 Administrators can now enable or disable the full demo dataset directly from **Admin → Settings**:
 
 - **Enable Demo Dataset** executes `dummy_data.sql` (fictive demo users plus generated assignments/responses for existing draft/published questionnaires; no questionnaire creation/deletion).
-- **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo/dummy records without touching questionnaire definitions).
+- **Disable Demo Dataset** executes `dummy_data_cleanup.sql` (removes demo/dummy records without touching questionnaire definitions, and nulls metadata foreign-key references such as reviewer/assigner/snapshot creator pointers).
