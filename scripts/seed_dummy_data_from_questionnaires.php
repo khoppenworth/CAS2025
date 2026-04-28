@@ -211,7 +211,7 @@ function ensure_demo_users(PDO $pdo): array
             'directorate' => 'Operations',
             'cadre' => 'general_service_facilities_and_logistics',
             'team_label' => 'Facilities & Logistics',
-            'business_role' => 'staff',
+            'business_role' => 'expert',
             'job_grade' => 'JG-07',
             'education_level' => 'diploma',
         ],

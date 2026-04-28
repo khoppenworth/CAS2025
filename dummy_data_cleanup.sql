@@ -38,6 +38,53 @@ WHERE created_by IN (
        OR username LIKE 'dummy_%'
 );
 
+DELETE FROM analytics_report_snapshot_v2
+WHERE generated_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE questionnaire_assignment
+SET assigned_by = NULL
+WHERE assigned_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE questionnaire_response
+SET reviewed_by = NULL
+WHERE reviewed_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
+UPDATE users
+SET approved_by = NULL
+WHERE approved_by IN (
+    SELECT demo_user_id
+    FROM (
+        SELECT id AS demo_user_id
+        FROM users
+        WHERE username LIKE 'demo_%'
+           OR username LIKE 'dummy_%'
+    ) AS demo_user_ids
+);
+
+UPDATE competency_benchmark_policy
+SET created_by = NULL
+WHERE created_by IN (
+    SELECT id
+    FROM users
+    WHERE username LIKE 'demo_%'
+       OR username LIKE 'dummy_%'
+);
+
 DELETE FROM logs
 WHERE user_id IN (
     SELECT id
