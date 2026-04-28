@@ -70,10 +70,13 @@ WHERE reviewed_by IN (
 UPDATE users
 SET approved_by = NULL
 WHERE approved_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
+    SELECT demo_user_id
+    FROM (
+        SELECT id AS demo_user_id
+        FROM users
+        WHERE username LIKE 'demo_%'
+           OR username LIKE 'dummy_%'
+    ) AS demo_user_ids
 );
 
 UPDATE competency_benchmark_policy
