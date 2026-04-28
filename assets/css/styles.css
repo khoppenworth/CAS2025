@@ -850,7 +850,7 @@ body.theme-dark .md-page-header::after {
   border-radius: 16px;
   overflow: hidden;
   background: var(--app-surface);
-  box-shadow: var(--app-shadow-soft);
+  box-shadow: var(--app-card-shadow, var(--app-shadow-soft));
   border: 1px solid var(--app-border);
   position: relative;
   padding-top: calc(1.35rem + 4px);
