@@ -128,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $epssWorkExperienceBand = trim((string)($_POST['epss_work_experience_band'] ?? ''));
     $language = $_POST['language'] ?? ($_SESSION['lang'] ?? 'en');
     $password = $_POST['password'] ?? '';
+    $passwordConfirm = $_POST['password_confirm'] ?? '';
 
     $validCountryCodes = array_column($phoneCountries, 'code');
     if (!in_array($phoneCountry, $validCountryCodes, true)) {
@@ -191,6 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
         $error = t($t,'password_reset_required','Please set a new password before continuing.');
+    } elseif ($password !== '' && $password !== $passwordConfirm) {
+        $error = t($t,'password_confirm_mismatch','Password confirmation does not match.');
     } elseif ($password !== '' && !password_meets_policy($password)) {
         $error = t($t,'password_policy_invalid','Password must be at least 8 characters and include at least one number or symbol.');
     } else {
@@ -460,8 +463,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </select>
       </label>
       <label class="md-field">
-        <span><?=t($t,'new_password','New Password (optional)')?></span>
+        <span><?=$forcePasswordReset ? t($t,'new_password','New Password') : t($t,'new_password_optional','New Password (optional)')?></span>
         <input type="password" name="password" minlength="8" data-password-field>
+      </label>
+      <label class="md-field">
+        <span><?=t($t,'confirm_password','Confirm Password')?></span>
+        <input type="password" name="password_confirm" minlength="8" data-password-confirm-field>
       </label>
       </div>
       <div class="md-form-actions md-profile-actions">

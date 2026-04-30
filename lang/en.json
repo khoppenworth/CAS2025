@@ -454,7 +454,7 @@
   "my_workspace_summary": "Stay on top of your goals and tasks.",
   "name": "Name",
   "navigation_menu": "Navigation",
-  "new_password": "New Password (optional)",
+  "new_password": "New Password",
   "new_password_reset": "New Password",
   "next_assessment": "Next Assessment",
   "next_assessment_not_set": "Your next assessment date has not been scheduled yet.",
@@ -871,5 +871,8 @@
   "stat_total_registered_users": "Total registered users",
   "stat_total_submissions": "Total submissions",
   "stat_latest_submission_date": "Latest submission date",
-  "stat_top_indicator": "Staff reaching 80%+ (top KPI)"
+  "stat_top_indicator": "Staff reaching 80%+ (top KPI)",
+  "new_password_optional": "New Password (optional)",
+  "confirm_password": "Confirm Password",
+  "password_confirm_mismatch": "Password confirmation does not match."
 }

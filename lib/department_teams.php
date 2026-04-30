@@ -322,6 +322,18 @@ function ensure_department_team_catalog(PDO $pdo): void
         }
         $sort = count($teamRows) + 1;
 
+        if (!isset($seenLabelsByDepartment['general_service']['not listed'])) {
+            $defaultSlug = 'general_service_not_listed';
+            if (isset($seenSlugs[$defaultSlug])) {
+                $defaultSlug = unique_slug($defaultSlug, $seenSlugs);
+            }
+            $insert->execute([$defaultSlug, 'general_service', 'Not Listed', $sort]);
+            $seenSlugs[$defaultSlug] = true;
+            $teamRows[$defaultSlug] = ['department_slug' => 'general_service', 'label' => 'Not Listed'];
+            $seenLabelsByDepartment['general_service']['not listed'] = true;
+            $sort++;
+        }
+
         $sourceStmt = $pdo->query("SELECT DISTINCT department, cadre FROM users WHERE cadre IS NOT NULL AND TRIM(cadre) <> '' ORDER BY department, cadre");
         if ($sourceStmt) {
             while ($row = $sourceStmt->fetch(PDO::FETCH_ASSOC)) {
