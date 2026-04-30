@@ -71,6 +71,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'update') {
         $courseId = (int)($_POST['course_id'] ?? 0);
+        $code = trim((string)($_POST['code'] ?? ''));
+        $title = trim((string)($_POST['title'] ?? ''));
+        $moodleUrl = trim((string)($_POST['moodle_url'] ?? ''));
+        $recommendedFor = trim((string)($_POST['recommended_for'] ?? ''));
+        $questionnaireId = (int)($_POST['questionnaire_id'] ?? 0);
+        $questionnaireIdValue = $questionnaireId > 0 ? $questionnaireId : null;
         $minScore = max(0, min(100, (int)($_POST['min_score'] ?? 0)));
         $maxScore = max(0, min(100, (int)($_POST['max_score'] ?? 100)));
         $isActive = isset($_POST['is_active']) ? 1 : 0;
@@ -78,12 +84,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($courseId <= 0) {
             $errors[] = t($t, 'course_mapping_error_not_found', 'Select a valid course mapping.');
         }
+        if ($code === '' || $title === '') {
+            $errors[] = t($t, 'course_mapping_error_required', 'Code and title are required.');
+        }
+        if (!isset($workFunctions[$recommendedFor])) {
+            $errors[] = t($t, 'course_mapping_error_work_function', 'Select a valid work function.');
+        }
+        if ($questionnaireIdValue !== null && !isset($questionnaireOptions[$questionnaireIdValue])) {
+            $errors[] = t($t, 'course_mapping_error_questionnaire', 'Select a valid questionnaire or choose All questionnaires.');
+        }
         if ($minScore > $maxScore) {
             $errors[] = t($t, 'course_mapping_error_score_range', 'Minimum score must be less than or equal to maximum score.');
         }
 
         if ($errors === []) {
-            $pdo->prepare('UPDATE course_catalogue SET min_score = ?, max_score = ?, is_active = ? WHERE id = ?')->execute([$minScore, $maxScore, $isActive, $courseId]);
+            $pdo->prepare('UPDATE course_catalogue SET code = ?, title = ?, moodle_url = ?, recommended_for = ?, questionnaire_id = ?, min_score = ?, max_score = ?, is_active = ? WHERE id = ?')
+                ->execute([$code, $title, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive, $courseId]);
             $_SESSION['course_mapping_flash'] = t($t, 'course_mapping_updated', 'Course mapping updated.');
             header('Location: ' . url_for('admin/course_mappings.php'));
             exit;
@@ -176,26 +192,39 @@ $drawerKey = 'admin.course_mappings';
       <?php foreach ($mappings as $row): ?>
         <?php $rowQuestionnaireId = (int)($row['questionnaire_id'] ?? 0); ?>
         <tr>
-          <td><?=htmlspecialchars((string)$row['code'])?></td>
-          <td><?=htmlspecialchars((string)$row['title'])?></td>
-          <td><?=htmlspecialchars((string)($workFunctions[(string)$row['recommended_for']] ?? $row['recommended_for']))?></td>
-          <td><?=htmlspecialchars($rowQuestionnaireId > 0 ? ($questionnaireOptions[$rowQuestionnaireId] ?? ('#' . $rowQuestionnaireId)) : t($t, 'all_questionnaires', 'All Questionnaires'), ENT_QUOTES, 'UTF-8')?></td>
-          <td>
-            <form method="post" class="md-form-inline">
-              <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-              <input type="hidden" name="action" value="update">
-              <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
+          <form method="post">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="action" value="update">
+            <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
+            <td><input class="md-input" type="text" name="code" value="<?=htmlspecialchars((string)$row['code'], ENT_QUOTES, 'UTF-8')?>" required></td>
+            <td><input class="md-input" type="text" name="title" value="<?=htmlspecialchars((string)$row['title'], ENT_QUOTES, 'UTF-8')?>" required></td>
+            <td>
+              <select class="md-select" name="recommended_for" required>
+                <?php foreach ($workFunctions as $slug => $label): ?>
+                  <option value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>" <?=((string)$row['recommended_for'] === (string)$slug ? 'selected' : '')?>><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
+            <td>
+              <select class="md-select" name="questionnaire_id">
+                <option value="0" <?=($rowQuestionnaireId <= 0 ? 'selected' : '')?>><?=t($t, 'all_questionnaires', 'All Questionnaires')?></option>
+                <?php foreach ($questionnaireOptions as $qid => $qTitle): ?>
+                  <option value="<?= (int)$qid ?>" <?=($rowQuestionnaireId === (int)$qid ? 'selected' : '')?>><?=htmlspecialchars($qTitle, ENT_QUOTES, 'UTF-8')?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
+            <td>
               <input class="md-input" style="width:70px" type="number" name="min_score" min="0" max="100" value="<?= (int)$row['min_score'] ?>" required>
               -
               <input class="md-input" style="width:70px" type="number" name="max_score" min="0" max="100" value="<?= (int)$row['max_score'] ?>" required>%
-          </td>
-          <td>
+            </td>
+            <td>
               <label class="md-check"><input type="checkbox" name="is_active" value="1" <?=((int)($row['is_active'] ?? 1) === 1 ? 'checked' : '')?>> <?=((int)($row['is_active'] ?? 1) === 1 ? t($t, 'active', 'Active') : t($t, 'inactive', 'Inactive'))?></label>
-          </td>
-          <td><?php if (!empty($row['moodle_url'])): ?><a href="<?=htmlspecialchars((string)$row['moodle_url'])?>" target="_blank" rel="noopener"><?=htmlspecialchars((string)$row['moodle_url'])?></a><?php else: ?>—<?php endif; ?></td>
-          <td>
+            </td>
+            <td><input class="md-input" type="url" name="moodle_url" value="<?=htmlspecialchars((string)($row['moodle_url'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></td>
+            <td>
               <button type="submit" class="md-button md-outline"><?=t($t, 'save', 'Save')?></button>
-            </form>
+          </form>
             <form method="post" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_mapping', 'Delete this mapping?'), ENT_QUOTES, 'UTF-8')?>');" style="margin-top:8px;">
               <input type="hidden" name="csrf" value="<?=csrf_token()?>">
               <input type="hidden" name="action" value="delete">
