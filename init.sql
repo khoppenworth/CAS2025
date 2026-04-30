@@ -227,8 +227,8 @@ CREATE TABLE competency_level_band (
   max_pct DECIMAL(5,2) NOT NULL,
   rank_order INT NOT NULL DEFAULT 0,
   is_system_default TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_competency_level_band_name (name),
   UNIQUE KEY uniq_competency_level_band_rank (rank_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -241,8 +241,8 @@ CREATE TABLE competency_benchmark_policy (
   effective_from DATE NULL,
   effective_to DATE NULL,
   created_by INT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_benchmark_scope (scope_type, scope_id),
   KEY idx_benchmark_effective (effective_from, effective_to)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -256,10 +256,10 @@ CREATE TABLE analytics_report_snapshot_v2 (
   filters_json LONGTEXT NULL,
   summary_json LONGTEXT NOT NULL,
   details_json LONGTEXT NOT NULL,
-  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finalized_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_snapshot_status (status),
   KEY idx_snapshot_questionnaire (questionnaire_id),
   KEY idx_snapshot_generated_at (generated_at)
@@ -270,7 +270,7 @@ CREATE TABLE work_function_catalog (
   label VARCHAR(255) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   archived_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO work_function_catalog (slug, label, sort_order) VALUES
@@ -307,7 +307,7 @@ CREATE TABLE questionnaire_assignment (
   staff_id INT NOT NULL,
   questionnaire_id INT NOT NULL,
   assigned_by INT NULL,
-  assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (staff_id, questionnaire_id),
   KEY idx_assignment_questionnaire (questionnaire_id),
   KEY idx_assignment_assigned_by (assigned_by),
@@ -326,8 +326,8 @@ CREATE TABLE analytics_report_schedule (
   questionnaire_id INT NULL,
   include_details TINYINT(1) NOT NULL DEFAULT 0,
   active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_report_schedule_next_run (next_run_at),
   KEY idx_report_schedule_active (active),
   CONSTRAINT fk_report_schedule_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
