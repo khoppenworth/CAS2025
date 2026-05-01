@@ -14,6 +14,9 @@ define('APP_WORK_FUNCTIONS_LOADED', true);
 function built_in_work_function_definitions(): array
 {
     return [
+        'finance' => 'Finance & Grants',
+        'hrm' => 'HRM',
+        'wim' => 'WIM',
         'director' => 'Director',
         'manager' => 'Manager',
         'team_lead' => 'Team Lead',
@@ -401,7 +404,8 @@ function canonical_work_function_key(string $value, ?array $definitions = null):
         return 'manager';
     }
 
-    return 'expert';
+    // Preserve unknown slugs (legacy/custom values) instead of coercing to a default role.
+    return $normalized;
 }
 
 function canonical(string $value, ?array $definitions = null): string
