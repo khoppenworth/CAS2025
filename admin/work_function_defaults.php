@@ -38,6 +38,10 @@ try {
 
 $departments = department_catalog($pdo);
 $departmentOptions = department_options($pdo);
+$allDepartmentOptions = [];
+foreach ($departments as $depSlug => $depRecord) {
+    $allDepartmentOptions[$depSlug] = (string)($depRecord['label'] ?? $depSlug);
+}
 $teams = department_team_catalog($pdo);
 $workRoles = work_function_catalog($pdo);
 
@@ -144,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             $label = trim((string)($_POST['label'] ?? ''));
             $departmentSlug = trim((string)($_POST['department_slug'] ?? ''));
-            if ($slug === '' || $label === '' || !isset($departmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
+            if ($slug === '' || $label === '' || !isset($allDepartmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
             $pdo->prepare('UPDATE department_team_catalog SET label=?, department_slug=? WHERE slug=?')->execute([$label,$departmentSlug,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect()); exit;
@@ -371,7 +375,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="team" placeholder="<?=htmlspecialchars(t($t, 'search_team_placeholder', 'Search teams'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
         <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($departmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
+          <form method="post" class="md-work-function-row md-compact-actions" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
         <?php endforeach; ?>
         <p class="md-search-empty" data-search-empty="team"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
