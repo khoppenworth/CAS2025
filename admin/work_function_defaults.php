@@ -335,6 +335,9 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-tab-row { margin-bottom: .95rem; border-bottom: 1px solid rgba(0,0,0,.1); }
   .md-tab-chip { display: inline-block; text-decoration: none; padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: inherit; }
   .md-tab-chip.is-active { background: #1f6feb; color: #fff; }
+  .md-pane { display: none; }
+  .md-pane.is-active { display: block; }
+  .md-multiselect { width: 100%; min-height: 120px; }
 </style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
@@ -358,7 +361,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <a class="md-filter-chip <?=$statusFilter==='all'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?status=all', ENT_QUOTES, 'UTF-8')?>">All</a>
     </div>
 
-    <section class="md-defaults-group" id="departments">
+    <section class="md-defaults-group md-pane is-active" id="departments" data-pane>
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeDepartmentCount : ($statusFilter === 'inactive' ? ($totalDepartmentCount - $activeDepartmentCount) : $totalDepartmentCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
@@ -387,7 +390,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </section>
 
-    <section class="md-defaults-group" id="teams">
+    <section class="md-defaults-group md-pane" id="teams" data-pane>
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeTeamCount : ($statusFilter === 'inactive' ? ($totalTeamCount - $activeTeamCount) : $totalTeamCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
@@ -406,7 +409,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </section>
 
-    <section class="md-defaults-group" id="roles">
+    <section class="md-defaults-group md-pane" id="roles" data-pane>
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'work_function','Work Role'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeWorkRoleCount : ($statusFilter === 'inactive' ? ($totalWorkRoleCount - $activeWorkRoleCount) : $totalWorkRoleCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
@@ -424,7 +427,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </section>
 
-    <section class="md-defaults-group" id="defaults">
+    <section class="md-defaults-group md-pane" id="defaults" data-pane>
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
@@ -457,16 +460,26 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         </form>
         <form method="post" class="md-compact-actions">
           <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
-          <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
-            <div class="md-defaults-group" style="margin-bottom:.6rem;">
-              <div class="md-defaults-header"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?> <span class="md-defaults-meta">(<?= (int)($assignmentCounts[$depSlug] ?? 0) ?> selected)</span></div>
-              <div class="md-assignment-options" style="max-height:180px;">
-                <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
-                  <label><input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>> <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></label>
-                <?php endforeach; ?>
-              </div>
-            </div>
-          <?php endforeach; ?>
+          <div class="md-table-wrap" style="width:100%;">
+            <table class="md-table">
+              <thead><tr><th>Department</th><th>Questionnaires</th><th>Selected</th></tr></thead>
+              <tbody>
+              <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                <tr>
+                  <td><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></td>
+                  <td>
+                    <select class="md-multiselect" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" multiple>
+                      <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
+                        <option value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'selected':''?>><?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </td>
+                  <td><?= (int)($assignmentCounts[$depSlug] ?? 0) ?></td>
+                </tr>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
           <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
         </form>
       </div>
@@ -476,6 +489,22 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var tabLinks = document.querySelectorAll('.md-tab-chip');
+    var panes = document.querySelectorAll('[data-pane]');
+    function showPane(hash) {
+      panes.forEach(function (pane) { pane.classList.toggle('is-active', '#' + pane.id === hash); });
+      tabLinks.forEach(function (link) { link.classList.toggle('is-active', link.getAttribute('href') === hash); });
+    }
+    tabLinks.forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        var hash = link.getAttribute('href');
+        if (!hash || hash.charAt(0) !== '#') return;
+        e.preventDefault();
+        showPane(hash);
+        if (history.replaceState) history.replaceState(null, '', hash);
+      });
+    });
+    if (window.location.hash) showPane(window.location.hash);
     var searchInputs = document.querySelectorAll('.js-catalog-search');
     searchInputs.forEach(function (input) {
       input.addEventListener('input', function () {
