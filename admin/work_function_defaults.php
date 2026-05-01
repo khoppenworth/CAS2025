@@ -338,6 +338,10 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-pane { display: none; }
   .md-pane.is-active { display: block; }
   .md-multiselect { width: 100%; min-height: 120px; }
+  .md-inline-editor { margin-top: .4rem; padding-top: .4rem; border-top: 1px dashed rgba(0,0,0,.15); }
+  .md-status-chip { display: inline-block; padding: .15rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+  .md-status-chip.active { background: #e7f8ee; color: #136c3a; }
+  .md-status-chip.inactive { background: #f3f4f6; color: #4b5563; }
 </style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
@@ -373,26 +377,31 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         </div>
         <div class="md-table-wrap">
           <table class="md-table">
-            <thead><tr><th>Department</th><th>Slug</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Department</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
             <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
               <tr class="md-work-function-row" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-                <td>
-                  <form method="post" class="md-compact-actions">
-                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                    <input type="hidden" name="mode" value="department_update">
-                    <label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-                    <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
-                  </form>
-                </td>
+                <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
                 <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
+                <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
                 <td>
-                  <form method="post">
-                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                    <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
-                  </form>
+                  <details>
+                    <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
+                    <div class="md-inline-editor">
+                      <form method="post" class="md-compact-actions">
+                        <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                        <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                        <input type="hidden" name="mode" value="department_update">
+                        <label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                        <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+                      </form>
+                      <form method="post">
+                        <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                        <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                        <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
+                      </form>
+                    </div>
+                  </details>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -413,34 +422,32 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="team" placeholder="<?=htmlspecialchars(t($t, 'search_team_placeholder', 'Search teams'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Team</th><th>Department</th><th>Slug</th><th>Actions</th></tr></thead><tbody>
+        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Team</th><th>Department</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
           <tr class="md-work-function-row" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-            <td>
-              <form method="post" class="md-compact-actions">
-                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                <input type="hidden" name="mode" value="team_update">
-                <label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-                <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
-              </form>
-            </td>
-            <td>
-              <form method="post">
-                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                <input type="hidden" name="mode" value="team_update">
-                <select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select>
-                <button type="submit" class="md-button md-outline"><?=t($t,'save','Save Changes')?></button>
-              </form>
-            </td>
+            <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
+            <td><?=htmlspecialchars((string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
             <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
+            <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
             <td>
-              <form method="post">
-                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
-              </form>
+              <details>
+                <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
+                <div class="md-inline-editor">
+                  <form method="post" class="md-compact-actions">
+                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                    <input type="hidden" name="mode" value="team_update">
+                    <label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                    <label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
+                    <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+                  </form>
+                  <form method="post">
+                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                    <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
+                  </form>
+                </div>
+              </details>
             </td>
           </tr>
         <?php endforeach; ?>
@@ -458,25 +465,30 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="role" placeholder="<?=htmlspecialchars(t($t, 'search_work_role_placeholder', 'Search work roles'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Work role</th><th>Slug</th><th>Actions</th></tr></thead><tbody>
+        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Work role</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         <?php foreach ($workRoles as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
           <tr class="md-work-function-row" data-search-group="role" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-            <td>
-              <form method="post" class="md-compact-actions">
-                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                <input type="hidden" name="mode" value="role_update">
-                <label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-                <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
-              </form>
-            </td>
+            <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
             <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
+            <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
             <td>
-              <form method="post">
-                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button>
-              </form>
+              <details>
+                <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
+                <div class="md-inline-editor">
+                  <form method="post" class="md-compact-actions">
+                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                    <input type="hidden" name="mode" value="role_update">
+                    <label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                    <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+                  </form>
+                  <form method="post">
+                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                    <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button>
+                  </form>
+                </div>
+              </details>
             </td>
           </tr>
         <?php endforeach; ?>
