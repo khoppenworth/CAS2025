@@ -117,6 +117,15 @@ if ($profileInitials === '') {
     <span><?=$siteTitle?></span>
   </div>
   <div class="md-appbar-actions">
+    <button
+      type="button"
+      class="md-appbar-link md-appbar-theme-toggle"
+      data-theme-toggle
+      aria-label="<?=htmlspecialchars(t($t, 'theme_switch_to_dark', 'Switch to dark theme'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'theme_switch_to_dark', 'Switch to dark theme'), ENT_QUOTES, 'UTF-8')?>"
+    >
+      ☀️
+    </button>
     <a
       href="<?=htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8')?>"
       class="md-appbar-link md-appbar-language"
