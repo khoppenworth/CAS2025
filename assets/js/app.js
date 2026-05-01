@@ -159,7 +159,15 @@
     return { sunrise: calc(true), sunset: calc(false) };
   };
 
+  const prefersDarkMedia = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+
   const detectAutoTheme = (options = {}) => {
+    if (prefersDarkMedia && typeof prefersDarkMedia.matches === 'boolean') {
+      return prefersDarkMedia.matches ? 'dark' : 'light';
+    }
+
     const now = options.now instanceof Date ? options.now : new Date();
     const coords = options.coords || null;
     if (coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude)) {
@@ -195,6 +203,15 @@
     }
   } else {
     applyThemeMode(manualThemeOverride);
+
+    if (!manualThemeOverride && prefersDarkMedia) {
+      const syncWithSystemTheme = () => applyThemeMode(null);
+      if (typeof prefersDarkMedia.addEventListener === 'function') {
+        prefersDarkMedia.addEventListener('change', syncWithSystemTheme);
+      } else if (typeof prefersDarkMedia.addListener === 'function') {
+        prefersDarkMedia.addListener(syncWithSystemTheme);
+      }
+    }
 
     if (!manualThemeOverride && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
       navigator.geolocation.getCurrentPosition((position) => {
