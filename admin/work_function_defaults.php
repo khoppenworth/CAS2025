@@ -309,10 +309,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
 <style>
   .md-defaults-group { margin-bottom: .9rem; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: rgba(255,255,255,.72); }
-  .md-defaults-group > summary { cursor: pointer; padding: .7rem .9rem; font-weight: 700; list-style: none; display: flex; justify-content: flex-start; align-items: center; gap: .5rem; }
-  .md-defaults-group > summary::before { content: '▸'; font-size: .95rem; color: rgba(0,0,0,.65); transition: transform .2s ease; }
-  .md-defaults-group[open] > summary::before { transform: rotate(90deg); }
-  .md-defaults-group > summary::-webkit-details-marker { display: none; }
+  .md-defaults-header { padding: .75rem .9rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; border-bottom: 1px solid rgba(0,0,0,.08); }
   .md-defaults-meta { margin-left: auto; }
   .md-defaults-group-body { padding: .35rem .9rem .85rem; }
   .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; }
@@ -331,6 +328,16 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-search-block .md-field { margin: 0; max-width: 360px; }
   .md-search-empty { display: none; margin: .4rem 0 0; color: #6b7280; font-size: .9rem; }
   .md-search-empty.is-visible { display: block; }
+  .md-table-wrap { overflow-x: auto; margin-top: .45rem; }
+  .md-table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+  .md-table th, .md-table td { border-bottom: 1px solid rgba(0,0,0,.08); padding: .5rem .4rem; vertical-align: top; text-align: left; }
+  .md-table th { font-size: .84rem; text-transform: uppercase; color: #6b7280; letter-spacing: .03em; }
+  .md-tab-row { margin-bottom: .95rem; border-bottom: 1px solid rgba(0,0,0,.1); }
+  .md-tab-chip { display: inline-block; text-decoration: none; padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: inherit; }
+  .md-tab-chip.is-active { background: #1f6feb; color: #fff; }
+  .md-pane { display: none; }
+  .md-pane.is-active { display: block; }
+  .md-multiselect { width: 100%; min-height: 120px; }
 </style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
@@ -341,67 +348,90 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <?php if ($msg !== ''): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
+    <div class="md-tab-row">
+      <a class="md-tab-chip is-active" href="#departments">Departments</a>
+      <a class="md-tab-chip" href="#teams">Teams</a>
+      <a class="md-tab-chip" href="#roles">Work Roles</a>
+      <a class="md-tab-chip" href="#defaults">Questionnaire Defaults</a>
+    </div>
+
     <div class="md-filter-row">
       <a class="md-filter-chip <?=$statusFilter==='active'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>">Active</a>
       <a class="md-filter-chip <?=$statusFilter==='inactive'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?status=inactive', ENT_QUOTES, 'UTF-8')?>">Inactive</a>
       <a class="md-filter-chip <?=$statusFilter==='all'?'is-active':''?>" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?status=all', ENT_QUOTES, 'UTF-8')?>">All</a>
     </div>
 
-    <details class="md-defaults-group">
-      <summary>
+    <section class="md-defaults-group md-pane is-active" id="departments" data-pane>
+      <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeDepartmentCount : ($statusFilter === 'inactive' ? ($totalDepartmentCount - $activeDepartmentCount) : $totalDepartmentCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
-      </summary>
+      </div>
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="department" placeholder="<?=htmlspecialchars(t($t, 'search_department_placeholder', 'Search departments'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
-        <?php endforeach; ?>
+        <div class="md-table-wrap">
+          <table class="md-table">
+            <thead><tr><th>Department</th><th>Actions</th></tr></thead>
+            <tbody>
+            <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
+              <tr class="md-work-function-row" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
+                <td>
+                  <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                </td>
+                <td><button type="submit" class="md-button md-primary" name="mode" value="department_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form></td>
+              </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
         <p class="md-search-empty" data-search-empty="department"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
-    </details>
+    </section>
 
-    <details class="md-defaults-group">
-      <summary>
+    <section class="md-defaults-group md-pane" id="teams" data-pane>
+      <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeTeamCount : ($statusFilter === 'inactive' ? ($totalTeamCount - $activeTeamCount) : $totalTeamCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
-      </summary>
+      </div>
       <div class="md-defaults-group-body">
         <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="team" placeholder="<?=htmlspecialchars(t($t, 'search_team_placeholder', 'Search teams'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
+        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Team</th><th>Actions</th></tr></thead><tbody>
         <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form>
+          <tr class="md-work-function-row" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><td><form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label></td><td><button type="submit" class="md-button md-primary" name="mode" value="team_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button></form></td></tr>
         <?php endforeach; ?>
+        </tbody></table></div>
         <p class="md-search-empty" data-search-empty="team"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
-    </details>
+    </section>
 
-    <details class="md-defaults-group">
-      <summary>
+    <section class="md-defaults-group md-pane" id="roles" data-pane>
+      <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'work_function','Work Role'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeWorkRoleCount : ($statusFilter === 'inactive' ? ($totalWorkRoleCount - $activeWorkRoleCount) : $totalWorkRoleCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
-      </summary>
+      </div>
       <div class="md-defaults-group-body">
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="role" placeholder="<?=htmlspecialchars(t($t, 'search_work_role_placeholder', 'Search work roles'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
+        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Work role</th><th>Actions</th></tr></thead><tbody>
         <?php foreach ($workRoles as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <form method="post" class="md-work-function-row md-compact-actions" data-search-group="role" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button></form>
+          <tr class="md-work-function-row" data-search-group="role" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>"><td><form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label></td><td><button type="submit" class="md-button md-primary" name="mode" value="role_update"><?=t($t,'save','Save Changes')?></button><button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button></form></td></tr>
         <?php endforeach; ?>
+        </tbody></table></div>
         <p class="md-search-empty" data-search-empty="role"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
-    </details>
+    </section>
 
-    <details class="md-defaults-group">
-      <summary>
+    <section class="md-defaults-group md-pane" id="defaults" data-pane>
+      <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
-      </summary>
+      </div>
       <div class="md-defaults-group-body md-assignment-picker">
         <form method="post" class="md-compact-actions" style="margin-bottom:.8rem; padding:.65rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
           <input type="hidden" name="csrf" value="<?=csrf_token()?>">
@@ -430,25 +460,51 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         </form>
         <form method="post" class="md-compact-actions">
           <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
-          <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
-            <details>
-              <summary><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?> <span class="md-defaults-meta">(<?= (int)($assignmentCounts[$depSlug] ?? 0) ?> selected)</span></summary>
-              <div class="md-assignment-options">
-                <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
-                  <label><input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>> <?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></label>
-                <?php endforeach; ?>
-              </div>
-            </details>
-          <?php endforeach; ?>
+          <div class="md-table-wrap" style="width:100%;">
+            <table class="md-table">
+              <thead><tr><th>Department</th><th>Questionnaires</th><th>Selected</th></tr></thead>
+              <tbody>
+              <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                <tr>
+                  <td><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></td>
+                  <td>
+                    <select class="md-multiselect" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" multiple>
+                      <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
+                        <option value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'selected':''?>><?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </td>
+                  <td><?= (int)($assignmentCounts[$depSlug] ?? 0) ?></td>
+                </tr>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
           <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
         </form>
       </div>
-    </details>
+    </section>
   </div>
 </section>
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var tabLinks = document.querySelectorAll('.md-tab-chip');
+    var panes = document.querySelectorAll('[data-pane]');
+    function showPane(hash) {
+      panes.forEach(function (pane) { pane.classList.toggle('is-active', '#' + pane.id === hash); });
+      tabLinks.forEach(function (link) { link.classList.toggle('is-active', link.getAttribute('href') === hash); });
+    }
+    tabLinks.forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        var hash = link.getAttribute('href');
+        if (!hash || hash.charAt(0) !== '#') return;
+        e.preventDefault();
+        showPane(hash);
+        if (history.replaceState) history.replaceState(null, '', hash);
+      });
+    });
+    if (window.location.hash) showPane(window.location.hash);
     var searchInputs = document.querySelectorAll('.js-catalog-search');
     searchInputs.forEach(function (input) {
       input.addEventListener('input', function () {
