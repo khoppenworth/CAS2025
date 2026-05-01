@@ -212,6 +212,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
             header('Location: ' . $buildRedirect()); exit;
         }
+        if ($mode === 'assignments_bulk_clone') {
+            $sourceDepartment = trim((string)($_POST['source_department'] ?? ''));
+            $targetDepartments = $_POST['target_departments'] ?? [];
+            if (!isset($departmentOptions[$sourceDepartment])) {
+                throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
+            }
+            if (!is_array($targetDepartments)) {
+                $targetDepartments = [];
+            }
+            $validTargets = [];
+            foreach ($targetDepartments as $depSlugRaw) {
+                $depSlug = trim((string)$depSlugRaw);
+                if ($depSlug === '' || $depSlug === $sourceDepartment || !isset($departmentOptions[$depSlug])) {
+                    continue;
+                }
+                $validTargets[$depSlug] = true;
+            }
+            if ($validTargets === []) {
+                throw new InvalidArgumentException(t($t,'work_function_defaults_bulk_target_required','Select at least one target department.'));
+            }
+            $sourceQuestionnaireIds = [];
+            $sourceAssignStmt = $pdo->prepare('SELECT questionnaire_id FROM questionnaire_department WHERE department_slug = ?');
+            $sourceAssignStmt->execute([$sourceDepartment]);
+            foreach ($sourceAssignStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $qid = (int)($row['questionnaire_id'] ?? 0);
+                if ($qid > 0) {
+                    $sourceQuestionnaireIds[$qid] = true;
+                }
+            }
+            $pdo->beginTransaction();
+            $deleteStmt = $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?');
+            $insertStmt = $pdo->prepare('INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES (?, ?)');
+            foreach (array_keys($validTargets) as $targetDepartment) {
+                $deleteStmt->execute([$targetDepartment]);
+                foreach (array_keys($sourceQuestionnaireIds) as $qid) {
+                    $insertStmt->execute([$qid, $targetDepartment]);
+                }
+            }
+            $pdo->commit();
+            $_SESSION[$flashKey] = t($t,'work_function_defaults_bulk_cloned','Assignments copied to selected departments.');
+            header('Location: ' . $buildRedirect()); exit;
+        }
     } catch (InvalidArgumentException $e) {
         $metadataErrors[] = $e->getMessage();
     } catch (Throwable $e) {
@@ -357,6 +399,31 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
       </summary>
       <div class="md-defaults-group-body md-assignment-picker">
+        <form method="post" class="md-compact-actions" style="margin-bottom:.8rem; padding:.65rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <input type="hidden" name="mode" value="assignments_bulk_clone">
+          <label class="md-field">
+            <span><?=htmlspecialchars(t($t,'bulk_clone_from','Copy assignments from'), ENT_QUOTES, 'UTF-8')?></span>
+            <select name="source_department" required>
+              <option value=""><?=htmlspecialchars(t($t,'select','Select'), ENT_QUOTES, 'UTF-8')?></option>
+              <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <div class="md-field" style="flex:2 1 380px;">
+            <span><?=htmlspecialchars(t($t,'bulk_clone_to','Apply to departments'), ENT_QUOTES, 'UTF-8')?></span>
+            <div style="display:flex; flex-wrap:wrap; gap:.5rem; max-height:120px; overflow:auto; padding:.35rem; border:1px solid rgba(0,0,0,.1); border-radius:6px;">
+              <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                <label style="display:inline-flex; align-items:center; gap:.25rem;">
+                  <input type="checkbox" name="target_departments[]" value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>">
+                  <span><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></span>
+                </label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <button type="submit" class="md-button md-outline"><?=htmlspecialchars(t($t,'copy_assignments','Copy Assignments'), ENT_QUOTES, 'UTF-8')?></button>
+        </form>
         <form method="post" class="md-compact-actions">
           <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
           <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
