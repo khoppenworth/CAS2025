@@ -201,3 +201,42 @@
     padding: 32px 24px;
   }
 }
+
+/* Login polish: hierarchy, spacing, and action clarity */
+.md-login-page .login-panel__header h2 {
+  font-size: clamp(1.45rem, 2vw, 1.8rem);
+  line-height: 1.25;
+}
+
+.md-login-page .login-panel__header p {
+  line-height: 1.55;
+  max-width: 42ch;
+}
+
+.md-login-page .md-login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.md-login-page .md-field input {
+  min-height: 48px;
+  border-radius: 12px;
+}
+
+.md-login-page .md-login-actions {
+  margin-top: 4px;
+}
+
+.md-login-page .md-login-divider {
+  margin: 4px 0;
+}
+
+.md-login-page .md-sso-btn {
+  min-height: 46px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.md-login-page .md-alert {
+  margin: 0;
+}
