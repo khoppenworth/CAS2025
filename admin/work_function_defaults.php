@@ -49,9 +49,13 @@ $statusFilter = strtolower(trim((string)($_GET['status'] ?? 'active')));
 if (!in_array($statusFilter, ['active', 'inactive', 'all'], true)) {
     $statusFilter = 'active';
 }
-$buildRedirect = static function () use ($statusFilter): string {
+$buildRedirect = static function (?string $tab = null) use ($statusFilter): string {
     $path = url_for('admin/work_function_defaults.php');
-    return $statusFilter === 'active' ? $path : $path . '?status=' . urlencode($statusFilter);
+    $url = $statusFilter === 'active' ? $path : $path . '?status=' . urlencode($statusFilter);
+    if ($tab !== null && $tab !== '') {
+        $url .= '#' . rawurlencode($tab);
+    }
+    return $url;
 };
 
 
@@ -86,6 +90,10 @@ $totalWorkRoleCount = count($workRoles);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode = (string)($_POST['mode'] ?? '');
+    $currentTab = trim((string)($_POST['current_tab'] ?? ''));
+    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'defaults'], true)) {
+        $currentTab = '';
+    }
     try {
         if ($mode === 'department_add') {
             $label = trim((string)($_POST['label'] ?? ''));
@@ -100,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sort = count($departments) + 1;
             $pdo->prepare('INSERT INTO department_catalog (slug,label,sort_order) VALUES (?,?,?)')->execute([$slug,$label,$sort]);
             $_SESSION[$metadataFlashKey] = t($t,'department_created','Department added.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -108,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET label=? WHERE slug=?')->execute([$label,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -121,14 +129,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
             $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department archived.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_activate') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_add') {
             $label = trim((string)($_POST['label'] ?? ''));
@@ -142,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sort = count($teams) + 1;
             $pdo->prepare('INSERT INTO department_team_catalog (slug,department_slug,label,sort_order) VALUES (?,?,?,?)')->execute([$slug,$departmentSlug,$label,$sort]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_created','Team added.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -151,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '' || !isset($allDepartmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
             $pdo->prepare('UPDATE department_team_catalog SET label=?, department_slug=? WHERE slug=?')->execute([$label,$departmentSlug,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -160,14 +168,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $teamLabel = (string)($teams[$slug]['label'] ?? '');
             $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_activate') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -175,14 +183,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '' || $label === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
             update_work_function_label($pdo, $slug, $label);
             $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'role_archive') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_work_function','Select a valid work function.'));
             archive_work_function($pdo, $slug);
             $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_archived','Work function archived.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'role_activate') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -190,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE work_function_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             reset_work_function_caches($pdo);
             $_SESSION[$metadataFlashKey] = t($t,'work_function_catalog_updated','Work function updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
 
         if ($mode === 'assignments_save') {
@@ -214,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'assignments_bulk_clone') {
             $sourceDepartment = trim((string)($_POST['source_department'] ?? ''));
@@ -256,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $_SESSION[$flashKey] = t($t,'work_function_defaults_bulk_cloned','Assignments copied to selected departments.');
-            header('Location: ' . $buildRedirect()); exit;
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
     } catch (InvalidArgumentException $e) {
         $metadataErrors[] = $e->getMessage();
@@ -328,12 +336,17 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-search-block .md-field { margin: 0; max-width: 360px; }
   .md-search-empty { display: none; margin: .4rem 0 0; color: #6b7280; font-size: .9rem; }
   .md-search-empty.is-visible { display: block; }
-  .md-table-wrap { overflow-x: auto; margin-top: .45rem; }
-  .md-table { width: 100%; border-collapse: collapse; font-size: .93rem; }
-  .md-table th, .md-table td { border-bottom: 1px solid rgba(0,0,0,.08); padding: .5rem .4rem; vertical-align: top; text-align: left; }
-  .md-table th { font-size: .84rem; text-transform: uppercase; color: #6b7280; letter-spacing: .03em; }
+  .md-list { margin-top: .45rem; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; overflow: hidden; }
+  .md-list-head, .md-list-row { display: grid; gap: .5rem; padding: .55rem .6rem; align-items: start; }
+  .md-list-head { background: #f8fafc; border-bottom: 1px solid rgba(0,0,0,.08); font-size: .81rem; text-transform: uppercase; color: #6b7280; letter-spacing: .03em; font-weight: 700; }
+  .md-list-row { border-bottom: 1px solid rgba(0,0,0,.08); font-size: .93rem; }
+  .md-list-row:last-child { border-bottom: 0; }
+  .md-list-col code { font-size: .85rem; }
+  .md-list-department { grid-template-columns: minmax(150px,1.2fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
+  .md-list-team { grid-template-columns: minmax(140px,1fr) minmax(140px,1fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
+  .md-list-role { grid-template-columns: minmax(150px,1.2fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
   .md-tab-row { margin-bottom: .95rem; border-bottom: 1px solid rgba(0,0,0,.1); }
-  .md-tab-chip { display: inline-block; text-decoration: none; padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: inherit; }
+  .md-tab-chip { display: inline-block; text-decoration: none; padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: inherit; border: 0; background: transparent; cursor: pointer; }
   .md-tab-chip.is-active { background: #1f6feb; color: #fff; }
   .md-pane { display: none; }
   .md-pane.is-active { display: block; }
@@ -342,6 +355,14 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-status-chip { display: inline-block; padding: .15rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
   .md-status-chip.active { background: #e7f8ee; color: #136c3a; }
   .md-status-chip.inactive { background: #f3f4f6; color: #4b5563; }
+  .md-saving-indicator { display: none; margin-left: .45rem; font-size: .78rem; color: #6b7280; }
+  .md-list-row.is-saving .md-saving-indicator { display: inline-block; }
+  .md-list-row.is-saving { opacity: .72; }
+  @media (max-width: 900px) {
+    .md-list-head { display: none; }
+    .md-list-row { grid-template-columns: 1fr !important; gap: .35rem; }
+    .md-list-col::before { content: attr(data-label); display: block; font-size: .76rem; color: #6b7280; text-transform: uppercase; letter-spacing: .03em; margin-bottom: .08rem; }
+  }
 </style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
@@ -353,10 +374,10 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
     <div class="md-tab-row">
-      <a class="md-tab-chip is-active" href="#departments">Departments</a>
-      <a class="md-tab-chip" href="#teams">Teams</a>
-      <a class="md-tab-chip" href="#roles">Work Roles</a>
-      <a class="md-tab-chip" href="#defaults">Questionnaire Defaults</a>
+      <button type="button" class="md-tab-chip is-active" data-tab-target="departments">Departments</button>
+      <button type="button" class="md-tab-chip" data-tab-target="teams">Teams</button>
+      <button type="button" class="md-tab-chip" data-tab-target="roles">Work Roles</button>
+      <button type="button" class="md-tab-chip" data-tab-target="defaults">Questionnaire Defaults</button>
     </div>
 
     <div class="md-filter-row">
@@ -375,16 +396,22 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="department" placeholder="<?=htmlspecialchars(t($t, 'search_department_placeholder', 'Search departments'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-table-wrap">
-          <table class="md-table">
-            <thead><tr><th>Department</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
+        <div class="md-list">
+          <div class="md-list-head md-list-department"><div>Department</div><div>Slug</div><div>Active</div><div>Actions</div></div>
             <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-              <tr class="md-work-function-row" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-                <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
-                <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
-                <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
-                <td>
+              <div class="md-work-function-row md-list-row md-list-department" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
+                <div class="md-list-col" data-label="Department"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
+                <div class="md-list-col" data-label="Slug"><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></div>
+                <div class="md-list-col" data-label="Active">
+                  <form method="post" class="js-active-toggle-form">
+                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                    <input type="hidden" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>">
+                    <input type="checkbox" aria-label="Toggle active state for department <?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=($record['archived_at'] ?? null) === null ? 'checked' : ''?>>
+                    <span class="md-saving-indicator" aria-live="polite">Saving…</span>
+                  </form>
+                </div>
+                <div class="md-list-col" data-label="Actions">
                   <details>
                     <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
                     <div class="md-inline-editor">
@@ -395,18 +422,11 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                         <label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
                         <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                       </form>
-                      <form method="post">
-                        <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                        <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                        <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'department_archive' : 'department_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
-                      </form>
                     </div>
                   </details>
-                </td>
-              </tr>
+                </div>
+              </div>
             <?php endforeach; ?>
-            </tbody>
-          </table>
         </div>
         <p class="md-search-empty" data-search-empty="department"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
@@ -422,14 +442,22 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="team" placeholder="<?=htmlspecialchars(t($t, 'search_team_placeholder', 'Search teams'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Team</th><th>Department</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        <div class="md-list"><div class="md-list-head md-list-team"><div>Team</div><div>Department</div><div>Slug</div><div>Active</div><div>Actions</div></div>
         <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <tr class="md-work-function-row" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-            <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
-            <td><?=htmlspecialchars((string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
-            <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
-            <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
-            <td>
+          <div class="md-work-function-row md-list-row md-list-team" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
+            <div class="md-list-col" data-label="Team"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
+            <div class="md-list-col" data-label="Department"><?=htmlspecialchars((string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? '—'), ENT_QUOTES, 'UTF-8')?></div>
+            <div class="md-list-col" data-label="Slug"><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></div>
+            <div class="md-list-col" data-label="Active">
+              <form method="post" class="js-active-toggle-form">
+                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                <input type="hidden" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>">
+                <input type="checkbox" aria-label="Toggle active state for team <?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=($record['archived_at'] ?? null) === null ? 'checked' : ''?>>
+                <span class="md-saving-indicator" aria-live="polite">Saving…</span>
+              </form>
+            </div>
+            <div class="md-list-col" data-label="Actions">
               <details>
                 <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
                 <div class="md-inline-editor">
@@ -441,17 +469,12 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                     <label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
                     <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                   </form>
-                  <form method="post">
-                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                    <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'team_archive' : 'team_activate'?>"><?=($record['archived_at'] ?? null) === null ? t($t,'archive','Archive') : t($t,'save','Activate')?></button>
-                  </form>
                 </div>
               </details>
-            </td>
-          </tr>
+            </div>
+          </div>
         <?php endforeach; ?>
-        </tbody></table></div>
+        </div>
         <p class="md-search-empty" data-search-empty="team"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
     </section>
@@ -465,13 +488,21 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="role" placeholder="<?=htmlspecialchars(t($t, 'search_work_role_placeholder', 'Search work roles'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-table-wrap"><table class="md-table"><thead><tr><th>Work role</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        <div class="md-list"><div class="md-list-head md-list-role"><div>Work role</div><div>Slug</div><div>Active</div><div>Actions</div></div>
         <?php foreach ($workRoles as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
-          <tr class="md-work-function-row" data-search-group="role" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-            <td><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></td>
-            <td><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></td>
-            <td><span class="md-status-chip <?=($record['archived_at'] ?? null) === null ? 'active' : 'inactive'?>"><?=($record['archived_at'] ?? null) === null ? 'Active' : 'Inactive'?></span></td>
-            <td>
+          <div class="md-work-function-row md-list-row md-list-role" data-search-group="role" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
+            <div class="md-list-col" data-label="Work role"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
+            <div class="md-list-col" data-label="Slug"><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></div>
+            <div class="md-list-col" data-label="Active">
+              <form method="post" class="js-active-toggle-form">
+                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                <input type="hidden" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>">
+                <input type="checkbox" aria-label="Toggle active state for work role <?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>" <?=($record['archived_at'] ?? null) === null ? 'checked' : ''?> <?=($record['archived_at'] ?? null) === null ? "data-confirm=\"".htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')."\"" : ''?>>
+                <span class="md-saving-indicator" aria-live="polite">Saving…</span>
+              </form>
+            </div>
+            <div class="md-list-col" data-label="Actions">
               <details>
                 <summary><?=htmlspecialchars(t($t,'manage','Manage'), ENT_QUOTES, 'UTF-8')?></summary>
                 <div class="md-inline-editor">
@@ -482,17 +513,12 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                     <label class="md-field"><span><?=t($t,'work_function_label_name','Work function name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
                     <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                   </form>
-                  <form method="post">
-                    <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-                    <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
-                    <button type="submit" class="md-button md-outline" name="mode" value="<?=($record['archived_at'] ?? null) === null ? 'role_archive' : 'role_activate'?>" <?=($record['archived_at'] ?? null) === null ? "onclick=\"return confirm('<?=htmlspecialchars(t($t,'work_function_archive_confirm','Archive this work function? Existing assignments will be removed.'), ENT_QUOTES, 'UTF-8')?>');\"" : ''?>><?=($record['archived_at'] ?? null) === null ? t($t,'work_function_archive','Archive') : t($t,'save','Activate')?></button>
-                  </form>
                 </div>
               </details>
-            </td>
-          </tr>
+            </div>
+          </div>
         <?php endforeach; ?>
-        </tbody></table></div>
+        </div>
         <p class="md-search-empty" data-search-empty="role"><?=htmlspecialchars(t($t, 'search_no_results', 'No matching items found.'), ENT_QUOTES, 'UTF-8')?></p>
       </div>
     </section>
@@ -559,22 +585,33 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var activePaneId = 'departments';
     var tabLinks = document.querySelectorAll('.md-tab-chip');
     var panes = document.querySelectorAll('[data-pane]');
-    function showPane(hash) {
-      panes.forEach(function (pane) { pane.classList.toggle('is-active', '#' + pane.id === hash); });
-      tabLinks.forEach(function (link) { link.classList.toggle('is-active', link.getAttribute('href') === hash); });
+    function showPaneById(paneId) {
+      var hasMatch = false;
+      panes.forEach(function (pane) {
+        var isMatch = pane.id === paneId;
+        pane.classList.toggle('is-active', isMatch);
+        if (isMatch) hasMatch = true;
+      });
+      tabLinks.forEach(function (link) { link.classList.toggle('is-active', link.getAttribute('data-tab-target') === paneId); });
+      activePaneId = paneId;
+      return hasMatch;
     }
     tabLinks.forEach(function (link) {
       link.addEventListener('click', function (e) {
-        var hash = link.getAttribute('href');
-        if (!hash || hash.charAt(0) !== '#') return;
         e.preventDefault();
-        showPane(hash);
-        if (history.replaceState) history.replaceState(null, '', hash);
+        var paneId = link.getAttribute('data-tab-target');
+        if (!paneId) return;
+        showPaneById(paneId);
+        if (history.replaceState) history.replaceState(null, '', '#' + paneId);
       });
     });
-    if (window.location.hash) showPane(window.location.hash);
+    var paneFromHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+    if (!paneFromHash || !showPaneById(paneFromHash)) {
+      showPaneById('departments');
+    }
     var searchInputs = document.querySelectorAll('.js-catalog-search');
     searchInputs.forEach(function (input) {
       input.addEventListener('input', function () {
@@ -594,6 +631,36 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         if (emptyState) {
           emptyState.classList.toggle('is-visible', matchCount === 0);
         }
+      });
+    });
+    var activeToggles = document.querySelectorAll('.js-active-toggle-form input[type="checkbox"]');
+    activeToggles.forEach(function (checkbox) {
+      checkbox.addEventListener('change', function (event) {
+        var confirmMsg = checkbox.getAttribute('data-confirm');
+        if (confirmMsg && !window.confirm(confirmMsg)) {
+          event.preventDefault();
+          checkbox.checked = true;
+          return;
+        }
+        checkbox.disabled = true;
+        var row = checkbox.closest('.md-list-row');
+        if (row) {
+          row.classList.add('is-saving');
+        }
+        checkbox.form.submit();
+      });
+    });
+    var postForms = document.querySelectorAll('form[method="post"]');
+    postForms.forEach(function (form) {
+      form.addEventListener('submit', function () {
+        var input = form.querySelector('input[name="current_tab"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'current_tab';
+          form.appendChild(input);
+        }
+        input.value = activePaneId || 'departments';
       });
     });
   });
