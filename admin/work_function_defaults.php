@@ -272,7 +272,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        $metadataErrors[] = $e->getMessage();
+        error_log('work_function_defaults fatal error: ' . $e->getMessage());
+        $metadataErrors[] = t($t, 'work_function_defaults_save_failed', 'Unable to save work function defaults. Please try again.');
     }
 }
 
@@ -306,8 +307,24 @@ if ($assignments === []) {
 
 
 $assignmentCounts = [];
+$assignmentCountStmt = $pdo->query(
+    "SELECT department_slug, COUNT(DISTINCT questionnaire_id) AS selected_count
+     FROM questionnaire_department
+     GROUP BY department_slug"
+);
+if ($assignmentCountStmt) {
+    foreach ($assignmentCountStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $depSlug = trim((string)($row['department_slug'] ?? ''));
+        if ($depSlug === '') {
+            continue;
+        }
+        $assignmentCounts[$depSlug] = (int)($row['selected_count'] ?? 0);
+    }
+}
 foreach ($departmentOptions as $depSlug => $_depLabel) {
-    $assignmentCounts[$depSlug] = isset($assignments[$depSlug]) ? count($assignments[$depSlug]) : 0;
+    if (!isset($assignmentCounts[$depSlug])) {
+        $assignmentCounts[$depSlug] = 0;
+    }
 }
 ?>
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
@@ -350,7 +367,10 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-tab-chip.is-active { background: #1f6feb; color: #fff; }
   .md-pane { display: none; }
   .md-pane.is-active { display: block; }
-  .md-multiselect { width: 100%; min-height: 120px; }
+  .md-assignment-options { width: 100%; max-height: 160px; overflow: auto; padding: .45rem .55rem; border: 1px solid rgba(0,0,0,.22); border-radius: 6px; background: #fff; }
+  .md-assignment-options label { display: flex; gap: .45rem; align-items: flex-start; margin-bottom: .35rem; font-size: .92rem; }
+  .md-assignment-options label:last-child { margin-bottom: 0; }
+  .md-assignment-options input[type="checkbox"] { margin-top: .1rem; }
   .md-inline-editor { margin-top: .4rem; padding-top: .4rem; border-top: 1px dashed rgba(0,0,0,.15); }
   .md-status-chip { display: inline-block; padding: .15rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
   .md-status-chip.active { background: #e7f8ee; color: #136c3a; }
@@ -564,13 +584,16 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                 <tr>
                   <td><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></td>
                   <td>
-                    <select class="md-multiselect" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" multiple>
+                    <div class="md-assignment-options" data-assignment-options>
                       <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
-                        <option value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'selected':''?>><?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></option>
+                        <label>
+                          <input type="checkbox" name="assignments[<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($assignments[$depSlug][$qid])?'checked':''?>>
+                          <span><?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></span>
+                        </label>
                       <?php endforeach; ?>
-                    </select>
+                    </div>
                   </td>
-                  <td><?= (int)($assignmentCounts[$depSlug] ?? 0) ?></td>
+                  <td data-selected-count><?= (int)($assignmentCounts[$depSlug] ?? 0) ?></td>
                 </tr>
               <?php endforeach; ?>
               </tbody>
@@ -667,6 +690,24 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         input.value = activePaneId || 'departments';
       });
     });
+    var assignmentTable = document.querySelector('.md-assignment-picker table');
+    if (assignmentTable) {
+      var syncSelectedCounts = function () {
+        var rows = assignmentTable.querySelectorAll('tbody tr');
+        rows.forEach(function (row) {
+          var countCell = row.querySelector('[data-selected-count]');
+          if (!countCell) return;
+          var checked = row.querySelectorAll('[data-assignment-options] input[type="checkbox"]:checked').length;
+          countCell.textContent = String(checked);
+        });
+      };
+      assignmentTable.addEventListener('change', function (event) {
+        var target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
+        syncSelectedCounts();
+      });
+      syncSelectedCounts();
+    }
   });
 </script>
 </body></html>
