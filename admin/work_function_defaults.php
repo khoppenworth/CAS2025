@@ -583,7 +583,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   </div>
 </section>
 <?php include __DIR__ . '/../templates/footer.php'; ?>
-<script>
+<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   document.addEventListener('DOMContentLoaded', function () {
     var activePaneId = 'departments';
     var tabLinks = document.querySelectorAll('.md-tab-chip');
