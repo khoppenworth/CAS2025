@@ -75,6 +75,17 @@ $pendingUsers = $pdo->query("SELECT * FROM users WHERE account_status='pending' 
 $activeStaffStmt = $pdo->prepare("SELECT u.*, approver.full_name AS approver_name FROM users u LEFT JOIN users approver ON approver.id = u.approved_by WHERE u.account_status='active' AND u.role='staff' ORDER BY (u.next_assessment_date IS NULL), u.next_assessment_date ASC, u.full_name ASC");
 $activeStaffStmt->execute();
 $activeStaff = $activeStaffStmt->fetchAll();
+
+$activeStaffDateMeta = [];
+foreach ($activeStaff as $staffRow) {
+    $id = (int)($staffRow['id'] ?? 0);
+    $nextRaw = (string)($staffRow['next_assessment_date'] ?? '');
+    $approvedRaw = (string)($staffRow['approved_at'] ?? '');
+    $activeStaffDateMeta[$id] = [
+        'next_iso' => $nextRaw !== '' ? $nextRaw . 'T00:00:00' : '',
+        'approved_iso' => $approvedRaw !== '' ? date(DATE_ATOM, strtotime($approvedRaw)) : '',
+    ];
+}
 ?>
 <!doctype html>
 <html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
@@ -162,10 +173,10 @@ $activeStaff = $activeStaffStmt->fetchAll();
         <tr>
           <td><?=htmlspecialchars($staff['full_name'] ?: $staff['username'])?></td>
           <td><?=htmlspecialchars($staff['email'] ?? '')?></td>
-          <td><?=htmlspecialchars($staff['next_assessment_date'] ?? t($t,'not_set','Not set'))?></td>
+          <td data-client-date="<?=htmlspecialchars($activeStaffDateMeta[(int)$staff['id']]['next_iso'] ?? '', ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date"><?=htmlspecialchars($staff['next_assessment_date'] ?? t($t,'not_set','Not set'))?></td>
           <td>
             <?php if (!empty($staff['approved_at'])): ?>
-              <?=htmlspecialchars($staff['approved_at'])?><?php if (!empty($staff['approver_name'])): ?> · <?=htmlspecialchars($staff['approver_name'])?><?php endif; ?>
+              <span data-client-date="<?=htmlspecialchars($activeStaffDateMeta[(int)$staff['id']]['approved_iso'] ?? '', ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars($staff['approved_at'])?></span><?php if (!empty($staff['approver_name'])): ?> · <?=htmlspecialchars($staff['approver_name'])?><?php endif; ?>
             <?php else: ?>
               <?=t($t,'not_applicable','N/A')?>
             <?php endif; ?>
