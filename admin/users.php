@@ -384,12 +384,14 @@ foreach ($rows as $r) {
         $ts = strtotime((string)$nextAssessment);
         $nextAssessmentDisplay = $ts ? date('M j, Y', $ts) : $nextAssessment;
     }
+    $nextAssessmentIso = $nextAssessment !== '' ? ($nextAssessment . 'T00:00:00') : '';
     $createdAt = $r['created_at'] ?? '';
     $createdDisplay = '—';
     if ($createdAt !== '') {
         $ts = strtotime((string)$createdAt);
         $createdDisplay = $ts ? date('M j, Y', $ts) : $createdAt;
     }
+    $createdIso = $createdAt !== '' ? date(DATE_ATOM, strtotime((string)$createdAt)) : '';
     $roleKey = $r['role'] ?? 'staff';
     $roleLabel = $roleLabels[$roleKey] ?? $roleKey;
     $userId = (int)$r['id'];
@@ -472,7 +474,9 @@ foreach ($rows as $r) {
         'team_label' => $teamLabel,
         'next_assessment' => $nextAssessment,
         'next_assessment_display' => $nextAssessmentDisplay,
+        'next_assessment_iso' => $nextAssessmentIso,
         'created_display' => $createdDisplay,
+        'created_iso' => $createdIso,
         'created_at' => $createdAt,
         'role_key' => $roleKey,
         'role_label' => $roleLabel,
@@ -655,11 +659,11 @@ foreach ($rows as $r) {
             </div>
             <div>
               <dt><?=t($t,'next_assessment','Next Assessment')?></dt>
-              <dd><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></dd>
+              <dd data-client-date="<?=htmlspecialchars($record['next_assessment_iso'], ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date"><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
               <dt><?=t($t,'created','Created')?></dt>
-              <dd><?=htmlspecialchars($record['created_display'], ENT_QUOTES, 'UTF-8')?></dd>
+              <dd data-client-date="<?=htmlspecialchars($record['created_iso'], ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars($record['created_display'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
           </dl>
           <div class="md-user-card__footer">
@@ -788,8 +792,8 @@ foreach ($rows as $r) {
               <td><?=htmlspecialchars($record['team_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></td>
               <td><?=htmlspecialchars($record['work_function_label'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
               <td><span class="md-user-chip <?=$record['status_class']?>"><?=htmlspecialchars($record['status_label'], ENT_QUOTES, 'UTF-8')?></span></td>
-              <td><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></td>
-              <td><?=htmlspecialchars($record['created_display'], ENT_QUOTES, 'UTF-8')?></td>
+              <td data-client-date="<?=htmlspecialchars($record['next_assessment_iso'], ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date"><?=htmlspecialchars($record['next_assessment_display'], ENT_QUOTES, 'UTF-8')?></td>
+              <td data-client-date="<?=htmlspecialchars($record['created_iso'], ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars($record['created_display'], ENT_QUOTES, 'UTF-8')?></td>
               <td>
                 <button type="button" class="md-button md-outline md-user-manage md-user-action-button" data-scroll-target="user-card-<?=$record['id']?>"><?=t($t,'manage','Manage')?></button>
               </td>

@@ -93,6 +93,26 @@
 
   installAssessmentContentProtection();
 
+  const formatClientDates = () => {
+    const nodes = document.querySelectorAll('[data-client-date]');
+    if (!nodes.length || typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
+      return;
+    }
+    nodes.forEach((node) => {
+      const isoValue = node.getAttribute('data-client-date');
+      if (!isoValue) return;
+      const mode = node.getAttribute('data-client-date-mode') || 'date';
+      const date = new Date(isoValue);
+      if (Number.isNaN(date.getTime())) return;
+      const options = mode === 'datetime'
+        ? { dateStyle: 'medium', timeStyle: 'short' }
+        : { dateStyle: 'medium' };
+      node.textContent = new Intl.DateTimeFormat(undefined, options).format(date);
+    });
+  };
+
+  formatClientDates();
+
   const applyTheme = (theme) => {
     const next = theme === 'dark' ? 'dark' : 'light';
     document.body.classList.toggle('theme-dark', next === 'dark');
