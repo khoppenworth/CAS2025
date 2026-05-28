@@ -860,5 +860,8 @@
   "stat_total_registered_users": "ጠቅላላ የተመዘገቡ ተጠቃሚዎች",
   "stat_total_submissions": "ጠቅላላ የቀረቡ ግቤቶች",
   "stat_latest_submission_date": "የመጨረሻ ግቤት ቀን",
-  "stat_top_indicator": "80%+ የደረሱ ሰራተኞች (ዋና KPI)"
+  "stat_top_indicator": "80%+ የደረሱ ሰራተኞች (ዋና KPI)",
+  "enable_scheduled_assessments_tile": "የታቀዱ ግምገማዎችን ካርድ አሳይ",
+  "scheduled_assessments_disabled": "የታቀዱ ግምገማዎች በአሁኑ ጊዜ ተዘግተዋል።",
+  "scheduled_assessments_tile_hint": "ይህን ካርድ በማንቃት ሱፐርቫይዘሮችና አስተዳዳሪዎች ለንቁ ሰራተኞች ቀጣይ የግምገማ ቀኖችን እንዲያቅዱ ይፍቀዱ።"
 }

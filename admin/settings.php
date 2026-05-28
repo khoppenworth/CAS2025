@@ -262,6 +262,7 @@ try {
             $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
         } else {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
+        $scheduled_assessments_enabled = isset($_POST['scheduled_assessments_enabled']) ? 1 : 0;
         $qb_danger_zone_enabled = isset($_POST['qb_danger_zone_enabled']) ? 1 : 0;
         $local_login_enabled = isset($_POST['local_login_enabled']) ? 1 : 0;
         $google_oauth_enabled = isset($_POST['google_oauth_enabled']) ? 1 : 0;
@@ -390,6 +391,7 @@ try {
             'smtp_from_name' => $smtp_from_name !== '' ? $smtp_from_name : null,
             'smtp_timeout' => $smtp_timeout,
             'review_enabled' => $review_enabled,
+            'scheduled_assessments_enabled' => $scheduled_assessments_enabled,
             'qb_danger_zone_enabled' => $qb_danger_zone_enabled,
             'email_templates' => encode_email_templates($emailTemplates),
             'ai_enabled' => $ai_enabled,
@@ -589,6 +591,15 @@ $pageHelpKey = 'admin.settings';
           <input type="checkbox" name="review_enabled" value="1" <?=((int)($cfg['review_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
           <span><?=t($t,'enable_review_feature','Enable supervisor review workflow')?></span>
         </label>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="scheduled_assessments_enabled" value="1" <?=((int)($cfg['scheduled_assessments_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'enable_scheduled_assessments_tile','Show Scheduled Assessments tile')?></span>
+        </label>
+        <p class="md-help-note" style="margin: 6px 0 0;">
+          <?=t($t,'scheduled_assessments_tile_hint','Enable this tile for supervisors and administrators to schedule next assessment dates for active staff.')?>
+        </p>
       </div>
       <h3 class="md-subhead">
         <?=t($t,'questionnaire_builder_settings','Questionnaire Builder')?>
