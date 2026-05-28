@@ -173,4 +173,28 @@ if ($normalizedCustom !== [
     exit(1);
 }
 
+update_work_function_label($pdo, 'finance', 'Finance Operations');
+$catalog = work_function_catalog($pdo, true);
+if (($catalog['finance']['label'] ?? '') !== 'Finance Operations') {
+    fwrite(STDERR, "Renaming a built-in work role should persist after catalog refresh.\n");
+    exit(1);
+}
+
+archive_work_function($pdo, 'finance');
+$catalog = work_function_catalog($pdo, true);
+if (($catalog['finance']['archived_at'] ?? null) === null) {
+    fwrite(STDERR, "Archiving a built-in work role should persist after catalog refresh.\n");
+    exit(1);
+}
+
+update_work_function_label($pdo, 'finance', 'Finance & Grants');
+$catalog = work_function_catalog($pdo, true);
+if (($catalog['finance']['label'] ?? '') !== 'Finance & Grants' || ($catalog['finance']['archived_at'] ?? null) === null) {
+    fwrite(STDERR, "Editing an inactive built-in work role should update the label without reactivating it.\n");
+    exit(1);
+}
+
+$pdo->exec("UPDATE work_function_catalog SET archived_at = NULL WHERE slug = 'finance'");
+reset_work_function_caches($pdo);
+
 echo "Work function assignment tests passed.\n";
