@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS site_config (
   color_theme VARCHAR(50) NOT NULL DEFAULT 'light',
   enabled_locales TEXT NULL,
   upgrade_repo VARCHAR(255) NULL,
+  scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1,
   email_templates LONGTEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- Ensure optional site_config columns exist without relying on ADD COLUMN IF NOT EXISTS.
@@ -798,6 +799,22 @@ PREPARE stmt FROM @sc_upgrade_repo_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @sc_scheduled_assessments_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'scheduled_assessments_enabled'
+);
+SET @sc_scheduled_assessments_enabled_sql = IF(
+  @sc_scheduled_assessments_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER upgrade_repo',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_scheduled_assessments_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @sc_email_templates_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -807,7 +824,7 @@ SET @sc_email_templates_exists = (
 );
 SET @sc_email_templates_sql = IF(
   @sc_email_templates_exists = 0,
-  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER upgrade_repo',
+  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER scheduled_assessments_enabled',
   'DO 1'
 );
 PREPARE stmt FROM @sc_email_templates_sql;
@@ -854,6 +871,7 @@ INSERT IGNORE INTO site_config (
   smtp_timeout,
   enabled_locales,
   upgrade_repo,
+  scheduled_assessments_enabled,
   email_templates
 ) VALUES (
   1,
@@ -895,6 +913,7 @@ INSERT IGNORE INTO site_config (
   20,
   '["en","fr","am"]',
   'khoppenworth/HRassessv300',
+  1,
   '{}'
 );
 

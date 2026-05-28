@@ -345,6 +345,7 @@ INSERT INTO site_config (
   landing_metric_completion,
   landing_metric_adoption,
   logo_path,
+  landing_background_path,
   footer_org_name,
   footer_org_short,
   footer_website_label,
