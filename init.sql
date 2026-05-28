@@ -58,6 +58,7 @@ CREATE TABLE site_config (
   smtp_timeout INT NULL,
   upgrade_repo VARCHAR(255) NULL,
   review_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1,
   email_templates LONGTEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -344,6 +345,7 @@ INSERT INTO site_config (
   landing_metric_completion,
   landing_metric_adoption,
   logo_path,
+  landing_background_path,
   footer_org_name,
   footer_org_short,
   footer_website_label,
@@ -374,6 +376,7 @@ INSERT INTO site_config (
   smtp_timeout,
   upgrade_repo,
   review_enabled,
+  scheduled_assessments_enabled,
   email_templates
 ) VALUES (
   1,
@@ -415,6 +418,7 @@ INSERT INTO site_config (
   NULL,
   20,
   'khoppenworth/HRassessv300',
+  1,
   1,
   '{}'
 );
