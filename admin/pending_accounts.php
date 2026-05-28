@@ -6,6 +6,7 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$scheduledAssessmentsEnabled = (int)($cfg['scheduled_assessments_enabled'] ?? 1) === 1;
 
 $message = '';
 $error = '';
@@ -57,6 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare('UPDATE users SET account_status = "disabled" WHERE id = ?')->execute([$userId]);
                 $message = t($t, 'user_disabled', 'Account disabled.');
             } elseif (!$error && $action === 'set-date') {
+                $isActiveStaffSchedule = ($target['account_status'] ?? '') === 'active' && ($target['role'] ?? '') === 'staff';
+                if ($isActiveStaffSchedule && !$scheduledAssessmentsEnabled) {
+                    $error = t($t, 'scheduled_assessments_disabled', 'Scheduled assessments are currently disabled.');
+                }
+            }
+
+            if (!$error && $action === 'set-date') {
                 $pdo->prepare('UPDATE users SET next_assessment_date = ? WHERE id = ?')->execute([$nextAssessment, $userId]);
                 $message = t($t, 'next_assessment_updated', 'Next assessment date updated.');
                 if ($nextAssessment) {
@@ -72,9 +80,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pendingUsers = $pdo->query("SELECT * FROM users WHERE account_status='pending' ORDER BY created_at ASC")->fetchAll();
-$activeStaffStmt = $pdo->prepare("SELECT u.*, approver.full_name AS approver_name FROM users u LEFT JOIN users approver ON approver.id = u.approved_by WHERE u.account_status='active' AND u.role='staff' ORDER BY (u.next_assessment_date IS NULL), u.next_assessment_date ASC, u.full_name ASC");
-$activeStaffStmt->execute();
-$activeStaff = $activeStaffStmt->fetchAll();
+$activeStaff = [];
+if ($scheduledAssessmentsEnabled) {
+    $activeStaffStmt = $pdo->prepare("SELECT u.*, approver.full_name AS approver_name FROM users u LEFT JOIN users approver ON approver.id = u.approved_by WHERE u.account_status='active' AND u.role='staff' ORDER BY (u.next_assessment_date IS NULL), u.next_assessment_date ASC, u.full_name ASC");
+    $activeStaffStmt->execute();
+    $activeStaff = $activeStaffStmt->fetchAll();
+}
 
 $activeStaffDateMeta = [];
 foreach ($activeStaff as $staffRow) {
@@ -153,6 +164,7 @@ foreach ($activeStaff as $staffRow) {
     <?php endif; ?>
   </div>
 
+  <?php if ($scheduledAssessmentsEnabled): ?>
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'scheduled_assessments','Scheduled Assessments')?></h2>
     <?php if (!$activeStaff): ?>
@@ -195,6 +207,7 @@ foreach ($activeStaff as $staffRow) {
     </table>
     <?php endif; ?>
   </div>
+  <?php endif; ?>
 </section>
 <?php include __DIR__.'/../templates/footer.php'; ?>
 </body>

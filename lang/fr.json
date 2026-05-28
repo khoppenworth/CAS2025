@@ -861,5 +861,8 @@
   "stat_total_registered_users": "Nombre total d’utilisateurs inscrits",
   "stat_total_submissions": "Nombre total de soumissions",
   "stat_latest_submission_date": "Date de la dernière soumission",
-  "stat_top_indicator": "Personnel atteignant 80 % et plus (KPI principal)"
+  "stat_top_indicator": "Personnel atteignant 80 % et plus (KPI principal)",
+  "enable_scheduled_assessments_tile": "Afficher la tuile Évaluations planifiées",
+  "scheduled_assessments_disabled": "Les évaluations planifiées sont actuellement désactivées.",
+  "scheduled_assessments_tile_hint": "Activez cette tuile pour permettre aux superviseurs et administrateurs de planifier les prochaines dates d’évaluation du personnel actif."
 }
