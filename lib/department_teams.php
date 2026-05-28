@@ -160,8 +160,8 @@ function ensure_department_catalog(PDO $pdo): void
         }
 
         $insert = $pdo->prepare('INSERT INTO department_catalog (slug, label, sort_order, archived_at) VALUES (?, ?, ?, NULL)');
-        $updateSort = $pdo->prepare('UPDATE department_catalog SET sort_order = ?, archived_at = NULL WHERE slug = ?');
-        $updateMissingLabel = $pdo->prepare('UPDATE department_catalog SET label = ?, sort_order = ?, archived_at = NULL WHERE slug = ?');
+        $updateSort = $pdo->prepare('UPDATE department_catalog SET sort_order = ? WHERE slug = ?');
+        $updateMissingLabel = $pdo->prepare('UPDATE department_catalog SET label = ?, sort_order = ? WHERE slug = ?');
 
         $sort = 1;
         foreach (built_in_department_definitions() as $slug => $label) {

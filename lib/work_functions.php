@@ -72,13 +72,17 @@ function ensure_work_function_catalog(PDO $pdo): void
     $defaults = built_in_work_function_definitions();
     try {
         $insert = $pdo->prepare('INSERT INTO work_function_catalog (slug, label, sort_order, archived_at) VALUES (?, ?, ?, NULL)');
-        $update = $pdo->prepare('UPDATE work_function_catalog SET label = ?, sort_order = ?, archived_at = NULL WHERE slug = ?');
+        $updateSort = $pdo->prepare('UPDATE work_function_catalog SET sort_order = ? WHERE slug = ?');
+        $updateMissingLabel = $pdo->prepare(
+            "UPDATE work_function_catalog SET label = ?, sort_order = ? WHERE slug = ? AND (label IS NULL OR TRIM(label) = '')"
+        );
         $sort = 1;
         foreach ($defaults as $slug => $label) {
             $check = $pdo->prepare('SELECT COUNT(*) FROM work_function_catalog WHERE slug = ?');
             $check->execute([$slug]);
             if ((int)$check->fetchColumn() > 0) {
-                $update->execute([$label, $sort, $slug]);
+                $updateSort->execute([$sort, $slug]);
+                $updateMissingLabel->execute([$label, $sort, $slug]);
             } else {
                 $insert->execute([$slug, $label, $sort]);
             }
@@ -318,7 +322,7 @@ function update_work_function_label(PDO $pdo, string $slug, string $label): void
     }
 
     $catalog = work_function_catalog($pdo);
-    if (!isset($catalog[$slug]) || $catalog[$slug]['archived_at'] !== null) {
+    if (!isset($catalog[$slug])) {
         throw new InvalidArgumentException('Work function does not exist');
     }
 
