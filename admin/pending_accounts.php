@@ -93,8 +93,8 @@ foreach ($activeStaff as $staffRow) {
     $nextRaw = (string)($staffRow['next_assessment_date'] ?? '');
     $approvedRaw = (string)($staffRow['approved_at'] ?? '');
     $activeStaffDateMeta[$id] = [
-        'next_iso' => $nextRaw !== '' ? $nextRaw . 'T00:00:00' : '',
-        'approved_iso' => $approvedRaw !== '' ? date(DATE_ATOM, strtotime($approvedRaw)) : '',
+        'next_iso' => $nextRaw !== '' ? $nextRaw : '',
+        'approved_iso' => $approvedRaw !== '' ? app_format_machine_datetime($approvedRaw) : '',
     ];
 }
 ?>

@@ -97,13 +97,10 @@ try {
 }
 
 $latestSubmissionDisplay = '—';
+$latestSubmissionIso = '';
 if ($latestSubmission) {
-    try {
-        $dt = new DateTime((string)$latestSubmission);
-        $latestSubmissionDisplay = $dt->format('M j, Y g:i a');
-    } catch (Throwable $ignored) {
-        $latestSubmissionDisplay = (string)$latestSubmission;
-    }
+    $latestSubmissionDisplay = app_format_display_datetime($latestSubmission, $locale, $cfg);
+    $latestSubmissionIso = app_format_machine_datetime($latestSubmission);
 }
 ?>
 <!doctype html>
@@ -125,7 +122,7 @@ if ($latestSubmission) {
     <p><?=t($t, 'export_assessments_intro', 'Download all recorded assessment responses as a CSV file for offline analysis or archival.')?></p>
     <ul class="md-stat-list">
       <li class="md-stat-item"><span class="md-stat-label"><?=t($t, 'responses_available', 'Responses available')?>: </span><span class="md-stat-value"><?=$totalResponses?></span></li>
-      <li class="md-stat-item"><span class="md-stat-label"><?=t($t, 'latest_submission', 'Latest submission')?>: </span><span class="md-stat-value"><?=htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8')?></span></li>
+      <li class="md-stat-item"><span class="md-stat-label"><?=t($t, 'latest_submission', 'Latest submission')?>: </span><span class="md-stat-value" data-client-date="<?=htmlspecialchars($latestSubmissionIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8')?></span></li>
     </ul>
     <div class="md-form-actions md-form-actions--center md-form-actions--stack">
       <a class="md-button md-primary md-elev-2" href="<?=htmlspecialchars($csvDownloadUrl, ENT_QUOTES, 'UTF-8')?>">

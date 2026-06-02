@@ -451,8 +451,7 @@ $minScoreDisplay = $minScoreRaw !== null ? number_format((float)$minScoreRaw, 0)
 $latestSubmissionDisplay = '—';
 if ($latestSubmissionRaw) {
     try {
-        $dt = new DateTime($latestSubmissionRaw);
-        $latestSubmissionDisplay = $dt->format('M j, Y g:i a');
+        $latestSubmissionDisplay = app_format_display_datetime($latestSubmissionRaw, $locale, $cfg);
     } catch (Exception $e) {
         $latestSubmissionDisplay = $latestSubmissionRaw;
     }
@@ -478,12 +477,9 @@ if ($currentVersionName && $currentVersionName !== $currentVersionDisplay) {
 }
 $currentVersionInstalledAtDisplay = null;
 if ($currentVersionInstalledAt) {
-    $parsedInstalledAt = strtotime($currentVersionInstalledAt);
-    $currentVersionInstalledAtDisplay = $parsedInstalledAt
-        ? date('M j, Y g:i a', $parsedInstalledAt)
-        : $currentVersionInstalledAt;
+    $currentVersionInstalledAtDisplay = app_format_display_datetime($currentVersionInstalledAt, $locale, $cfg);
 }
-$lastCheckDisplay = !empty($upgradeState['last_check']) ? date('M j, Y g:i a', (int)$upgradeState['last_check']) : null;
+$lastCheckDisplay = !empty($upgradeState['last_check']) ? app_format_display_datetime('@' . (int)$upgradeState['last_check'], $locale, $cfg) : null;
 $upgradeRepoDisplay = $upgradeState['upgrade_repo'] ?? $upgradeRepo;
 $upgradeRepoLink = '';
 if (is_string($upgradeRepoDisplay) && preg_match('#^https?://#i', (string)$upgradeRepoDisplay)) {
@@ -507,7 +503,7 @@ foreach ($upgradeBackups as $index => $backupMeta) {
     if ($timestamp !== '') {
         $parsed = strtotime($timestamp);
         if ($parsed !== false) {
-            $displayTime = date('M j, Y g:i a', $parsed);
+            $displayTime = app_format_display_datetime('@' . $parsed, $locale, $cfg);
         }
     }
 
@@ -684,7 +680,7 @@ $pageHelpKey = 'admin.dashboard';
         <h3 class="md-upgrade-heading"><?=t($t,'upgrade_log_heading','Recent upgrade activity')?></h3>
         <?php if ($upgradeLog): ?>
           <?php if (!empty($upgradeLog['timestamp'])): ?>
-            <p class="md-upgrade-meta"><?=t($t,'upgrade_log_timestamp','Run at:')?> <?=htmlspecialchars(date('M j, Y g:i a', (int)$upgradeLog['timestamp']), ENT_QUOTES, 'UTF-8')?></p>
+            <p class="md-upgrade-meta"><?=t($t,'upgrade_log_timestamp','Run at:')?> <?=htmlspecialchars(app_format_display_datetime('@' . (int)$upgradeLog['timestamp'], $locale, $cfg), ENT_QUOTES, 'UTF-8')?></p>
           <?php endif; ?>
           <?php if (!empty($upgradeLog['command'])): ?>
             <p class="md-upgrade-meta"><strong><?=t($t,'upgrade_command_label','Executed command')?>:</strong> <code><?=htmlspecialchars($upgradeLog['command'], ENT_QUOTES, 'UTF-8')?></code></p>

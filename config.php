@@ -14,6 +14,7 @@ require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/lib/path.php';
 require_once __DIR__ . '/lib/security.php';
 require_once __DIR__ . '/lib/mailer.php';
+require_once __DIR__ . '/lib/date_format.php';
 require_once __DIR__ . '/lib/notifications.php';
 
 

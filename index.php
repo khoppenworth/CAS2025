@@ -132,19 +132,17 @@ $topIndicatorRaw = $landingFetchScalar(
 $registeredUsersDisplay = $registeredUsersRaw !== null ? number_format((int)$registeredUsersRaw) : '—';
 $totalSubmissionsDisplay = $totalSubmissionsRaw !== null ? number_format((int)$totalSubmissionsRaw) : '—';
 $latestSubmissionDisplay = '—';
+$latestSubmissionIso = '';
 if (is_string($latestSubmissionRaw) && trim($latestSubmissionRaw) !== '') {
-    try {
-        $latestSubmissionDisplay = (new DateTime($latestSubmissionRaw))->format('M j, Y');
-    } catch (Throwable $e) {
-        $latestSubmissionDisplay = trim($latestSubmissionRaw);
-    }
+    $latestSubmissionDisplay = app_format_display_date($latestSubmissionRaw, $locale, $cfg);
+    $latestSubmissionIso = app_format_machine_datetime($latestSubmissionRaw);
 }
 $topIndicatorDisplay = $topIndicatorRaw !== null ? number_format((float)$topIndicatorRaw, 1) . '%' : '—';
 
 $statTiles = [
     ['value' => htmlspecialchars($registeredUsersDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_registered_users', 'Total registered users'), ENT_QUOTES, 'UTF-8')],
     ['value' => htmlspecialchars($totalSubmissionsDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_submissions', 'Total submissions'), ENT_QUOTES, 'UTF-8')],
-    ['value' => htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_latest_submission_date', 'Latest submission date'), ENT_QUOTES, 'UTF-8')],
+    ['value' => htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_latest_submission_date', 'Latest submission date'), ENT_QUOTES, 'UTF-8'), 'date' => htmlspecialchars($latestSubmissionIso, ENT_QUOTES, 'UTF-8'), 'date_mode' => 'date'],
     ['value' => htmlspecialchars($topIndicatorDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_top_indicator', 'Staff reaching 80%+ (top KPI)'), ENT_QUOTES, 'UTF-8')],
 ];
 
@@ -214,7 +212,7 @@ $statTiles = [
         <div class="landing-stats-grid">
           <?php foreach ($statTiles as $tile): ?>
             <article class="landing-stat-card">
-              <h3><?= $tile['value'] ?></h3>
+              <h3<?= !empty($tile['date']) ? ' data-client-date="' . $tile['date'] . '" data-client-date-mode="' . htmlspecialchars($tile['date_mode'] ?? 'date', ENT_QUOTES, 'UTF-8') . '"' : '' ?>><?= $tile['value'] ?></h3>
               <p><?= $tile['label'] ?></p>
             </article>
           <?php endforeach; ?>
@@ -266,5 +264,6 @@ $statTiles = [
       </div>
     </footer>
   </div>
+  <script src="<?= asset_url('assets/js/app.js') ?>"></script>
 </body>
 </html>

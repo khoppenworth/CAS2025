@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/path.php';
 require_once __DIR__ . '/email_templates.php';
+require_once __DIR__ . '/date_format.php';
 
 function notification_resolve_template(array $cfg, string $key, array $variables): array
 {
@@ -66,7 +67,7 @@ function notify_supervisors_of_pending_user(PDO $pdo, array $cfg, array $user): 
     $template = notification_resolve_template($cfg, 'pending_user', [
         'user_display' => $display,
         'user_email' => (string)($user['email'] ?? 'not provided'),
-        'submitted_at' => date('Y-m-d H:i'),
+        'submitted_at' => app_format_display_datetime(new DateTimeImmutable('now'), null, $cfg, 'medium', 'short', true),
         'pending_accounts_url' => $profileUrl,
     ]);
 
@@ -87,8 +88,9 @@ function notify_user_account_approved(array $cfg, array $user, ?string $nextAsse
     $nextAssessmentBlock = '';
     $nextAssessmentText = '';
     if ($nextAssessmentDate) {
-        $nextAssessmentBlock = '<p>Your next assessment has been scheduled for ' . htmlspecialchars($nextAssessmentDate, ENT_QUOTES, 'UTF-8') . '.</p>';
-        $nextAssessmentText = 'Your next assessment has been scheduled for: ' . $nextAssessmentDate;
+        $nextAssessmentDisplay = app_format_display_date($nextAssessmentDate, null, $cfg, 'long');
+        $nextAssessmentBlock = '<p>Your next assessment has been scheduled for ' . htmlspecialchars($nextAssessmentDisplay, ENT_QUOTES, 'UTF-8') . '.</p>';
+        $nextAssessmentText = 'Your next assessment has been scheduled for: ' . $nextAssessmentDisplay;
     }
 
     $template = notification_resolve_template($cfg, 'account_approved', [
