@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 /**
  * @param array<string, mixed> $filters
- * @return array{business_role:string,directorate:string,user_id:int,work_function:string}
+ * @return array{business_role:string,department:string,directorate:string,team:string,user_id:int,work_function:string}
  */
 function analytics_data_viewer_normalize_filters(array $filters): array
 {
     return [
         'business_role' => trim((string)($filters['business_role'] ?? '')),
+        'department' => trim((string)($filters['department'] ?? '')),
         'directorate' => trim((string)($filters['directorate'] ?? '')),
+        'team' => trim((string)($filters['team'] ?? '')),
         'user_id' => isset($filters['user_id']) ? max(0, (int)$filters['user_id']) : 0,
         'work_function' => trim((string)($filters['work_function'] ?? '')),
     ];
@@ -21,7 +23,7 @@ function analytics_data_viewer_normalize_filters(array $filters): array
  *
  * @param array<string, mixed> $viewer
  * @param array<string, mixed> $filters
- * @return array{business_role:string,directorate:string,user_id:int,work_function:string}
+ * @return array{business_role:string,department:string,directorate:string,team:string,user_id:int,work_function:string}
  */
 function analytics_data_viewer_apply_scope(array $viewer, array $filters): array
 {
@@ -40,6 +42,22 @@ function analytics_data_viewer_apply_scope(array $viewer, array $filters): array
     }
 
     return $normalized;
+}
+
+function analytics_data_viewer_valid_date_string(string $value): string
+{
+    $value = trim($value);
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : '';
+}
+
+function analytics_data_viewer_next_day_start(string $date): string
+{
+    $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    if (!$dt instanceof DateTimeImmutable) {
+        return $date . ' 23:59:59';
+    }
+
+    return $dt->modify('+1 day')->format('Y-m-d 00:00:00');
 }
 
 function analytics_data_viewer_csv_safe_cell(string $value): string
@@ -63,7 +81,7 @@ function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, in
     $workFunctionExpr = 'COALESCE(NULLIF(u.work_function, \'\'), NULLIF(u.department, \'\'), \'Unspecified\')';
 
     $sql = 'SELECT qr.id AS response_id, qr.questionnaire_id, q.title AS questionnaire_title, '
-        . 'u.id AS user_id, u.username, u.full_name, u.department, '
+        . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre AS team, '
         . $directorateExpr . ' AS directorate, '
         . $workFunctionExpr . ' AS work_function, '
         . 'COALESCE(NULLIF(u.business_role, \'\'), NULLIF(u.profile_role, \'\'), \'Unspecified\') AS business_role, '
@@ -86,6 +104,14 @@ function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, in
         $where[] = $directorateExpr . ' = ?';
         $params[] = $scopeFilters['directorate'];
     }
+    if ($scopeFilters['department'] !== '') {
+        $where[] = 'u.department = ?';
+        $params[] = $scopeFilters['department'];
+    }
+    if ($scopeFilters['team'] !== '') {
+        $where[] = 'u.cadre = ?';
+        $params[] = $scopeFilters['team'];
+    }
     if ($scopeFilters['work_function'] !== '') {
         $where[] = $workFunctionExpr . ' = ?';
         $params[] = $scopeFilters['work_function'];
@@ -98,13 +124,15 @@ function analytics_data_viewer_query(PDO $pdo, array $viewer, array $filters, in
         $where[] = 'qr.status = ?';
         $params[] = $statusFilter;
     }
+    $dateFrom = analytics_data_viewer_valid_date_string($dateFrom);
+    $dateTo = analytics_data_viewer_valid_date_string($dateTo);
     if ($dateFrom !== '') {
-        $where[] = 'DATE(qr.created_at) >= ?';
-        $params[] = $dateFrom;
+        $where[] = 'qr.created_at >= ?';
+        $params[] = $dateFrom . ' 00:00:00';
     }
     if ($dateTo !== '') {
-        $where[] = 'DATE(qr.created_at) <= ?';
-        $params[] = $dateTo;
+        $where[] = 'qr.created_at < ?';
+        $params[] = analytics_data_viewer_next_day_start($dateTo);
     }
     if ($where) {
         $sql .= 'WHERE ' . implode(' AND ', $where) . ' ';

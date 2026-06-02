@@ -203,6 +203,122 @@ function analytics_compute_response_score(array $items, array $answers): ?float
     return round(($correctCount / $totalCount) * 100, 1);
 }
 
+function analytics_completed_statuses(): array
+{
+    return ['submitted', 'approved', 'approved_late'];
+}
+
+function analytics_response_is_completed(array $row): bool
+{
+    return in_array(strtolower((string)($row['status'] ?? '')), analytics_completed_statuses(), true);
+}
+
+function analytics_resolved_response_score(array $row, array $computedResponseScores): ?float
+{
+    $rid = (int)($row['id'] ?? 0);
+    $score = $row['score'] ?? null;
+    if ($score === null && $rid > 0 && isset($computedResponseScores[$rid])) {
+        $score = $computedResponseScores[$rid];
+    } elseif ($score !== null) {
+        $score = (float)$score;
+    }
+
+    return $score === null ? null : max(0.0, min(100.0, (float)$score));
+}
+
+function analytics_valid_date_string(string $value): string
+{
+    $value = trim($value);
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : '';
+}
+
+function analytics_dashboard_filter_conditions(array $filters, string $responseAlias = 'qr', string $userAlias = 'u'): array
+{
+    $where = [];
+    $params = [];
+
+    if (($filters['questionnaire_id'] ?? 0) > 0) {
+        $where[] = $responseAlias . '.questionnaire_id = ?';
+        $params[] = (int)$filters['questionnaire_id'];
+    }
+    if (($filters['year'] ?? '') !== '') {
+        $year = (int)$filters['year'];
+        $where[] = $responseAlias . '.created_at >= ?';
+        $params[] = sprintf('%04d-01-01 00:00:00', $year);
+        $where[] = $responseAlias . '.created_at < ?';
+        $params[] = sprintf('%04d-01-01 00:00:00', $year + 1);
+    }
+    if (($filters['date_from'] ?? '') !== '') {
+        $where[] = $responseAlias . '.created_at >= ?';
+        $params[] = (string)$filters['date_from'] . ' 00:00:00';
+    }
+    if (($filters['date_to'] ?? '') !== '') {
+        $dateTo = DateTimeImmutable::createFromFormat('!Y-m-d', (string)$filters['date_to']);
+        $where[] = $responseAlias . '.created_at < ?';
+        $params[] = ($dateTo ?: new DateTimeImmutable((string)$filters['date_to']))->modify('+1 day')->format('Y-m-d 00:00:00');
+    }
+    if (($filters['department'] ?? '') !== '') {
+        $where[] = $userAlias . '.department = ?';
+        $params[] = (string)$filters['department'];
+    }
+    if (($filters['team'] ?? '') !== '') {
+        $where[] = $userAlias . '.cadre = ?';
+        $params[] = (string)$filters['team'];
+    }
+    if (($filters['work_function'] ?? '') !== '') {
+        $where[] = $userAlias . '.work_function = ?';
+        $params[] = (string)$filters['work_function'];
+    }
+
+    return [$where, $params];
+}
+
+function analytics_build_level_summary(array $scoresByEntity): array
+{
+    $bands = competency_default_level_bands();
+    $summary = [];
+    foreach ($bands as $band) {
+        $name = (string)($band['name'] ?? '');
+        if ($name !== '') {
+            $summary[$name] = [
+                'level' => $name,
+                'count' => 0,
+                'percent' => 0.0,
+            ];
+        }
+    }
+
+    foreach ($scoresByEntity as $score) {
+        $level = questionnaire_competency_level($score);
+        if ($level === '') {
+            continue;
+        }
+        if (!isset($summary[$level])) {
+            $summary[$level] = ['level' => $level, 'count' => 0, 'percent' => 0.0];
+        }
+        $summary[$level]['count']++;
+    }
+
+    $total = count($scoresByEntity);
+    foreach ($summary as &$row) {
+        $row['percent'] = $total > 0 ? round(((int)$row['count'] / $total) * 100, 1) : 0.0;
+    }
+    unset($row);
+
+    return array_values($summary);
+}
+
+function analytics_dominant_level(array $levelRows): array
+{
+    $dominant = ['level' => '—', 'count' => 0, 'percent' => 0.0];
+    foreach ($levelRows as $row) {
+        if ((int)($row['count'] ?? 0) > (int)$dominant['count']) {
+            $dominant = $row;
+        }
+    }
+    return $dominant;
+}
+
 /**
  * Compute fallback scores and averages for analytics visualisations.
  *
@@ -302,6 +418,41 @@ $cfg = get_site_config($pdo);
 $user = current_user();
 $userId = (int)($user['id'] ?? 0);
 
+$dashboardFilters = [
+    'questionnaire_id' => max(0, (int)($_GET['questionnaire_id'] ?? 0)),
+    'year' => preg_match('/^\d{4}$/', (string)($_GET['year'] ?? '')) === 1 ? (string)$_GET['year'] : '',
+    'date_from' => analytics_valid_date_string((string)($_GET['date_from'] ?? '')),
+    'date_to' => analytics_valid_date_string((string)($_GET['date_to'] ?? '')),
+    'department' => trim((string)($_GET['department'] ?? '')),
+    'team' => trim((string)($_GET['team'] ?? '')),
+    'work_function' => trim((string)($_GET['work_function'] ?? '')),
+];
+$dashboardFilterQuery = array_filter($dashboardFilters, static function ($value) {
+    if (is_int($value)) {
+        return $value > 0;
+    }
+    return $value !== '';
+});
+[$dashboardWhere, $dashboardParams] = analytics_dashboard_filter_conditions($dashboardFilters);
+$dashboardWhereSql = $dashboardWhere ? ' WHERE ' . implode(' AND ', $dashboardWhere) . ' ' : ' ';
+$dashboardContextParts = [];
+if ($dashboardFilters['year'] !== '') {
+    $dashboardContextParts[] = $dashboardFilters['year'];
+}
+if ($dashboardFilters['date_from'] !== '' || $dashboardFilters['date_to'] !== '') {
+    $dashboardContextParts[] = trim(($dashboardFilters['date_from'] ?: '…') . ' → ' . ($dashboardFilters['date_to'] ?: '…'));
+}
+if ($dashboardFilters['department'] !== '') {
+    $dashboardContextParts[] = $dashboardFilters['department'];
+}
+if ($dashboardFilters['team'] !== '') {
+    $dashboardContextParts[] = $dashboardFilters['team'];
+}
+if ($dashboardFilters['work_function'] !== '') {
+    $dashboardContextParts[] = $dashboardFilters['work_function'];
+}
+$dashboardContextLabel = $dashboardContextParts ? implode(' · ', $dashboardContextParts) : t($t, 'analytics_all_dashboard_data', 'All dashboard data');
+
 $reportMessage = '';
 $reportError = '';
 
@@ -323,23 +474,26 @@ $downloadQuestionnaires = [];
 $responseMetaRows = [];
 $questionnaireFamilyExpr = "COALESCE(NULLIF(q.family_key, ''), CONCAT('questionnaire-', q.id))";
 try {
-    $summaryStmt = $pdo->query(
-        "SELECT COUNT(*) AS total_responses, "
-        . "SUM(status='approved') AS approved_count, "
-        . "SUM(status='submitted') AS submitted_count, "
-        . "SUM(status='draft') AS draft_count, "
-        . "SUM(status='rejected') AS rejected_count, "
-        . "AVG(score) AS avg_score, "
-        . "MAX(created_at) AS latest_at "
-        . "FROM questionnaire_response"
-    );
+    $summarySql = "SELECT COUNT(*) AS total_responses, "
+        . "SUM(qr.status='approved') AS approved_count, "
+        . "SUM(qr.status='submitted') AS submitted_count, "
+        . "SUM(qr.status='draft') AS draft_count, "
+        . "SUM(qr.status='rejected') AS rejected_count, "
+        . "AVG(qr.score) AS avg_score, "
+        . "MAX(qr.created_at) AS latest_at "
+        . "FROM questionnaire_response qr "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql;
+    $summaryStmt = $pdo->prepare($summarySql);
+    $summaryStmt->execute($dashboardParams);
     $summary = $summaryStmt ? $summaryStmt->fetch(PDO::FETCH_ASSOC) : [];
 
-    $participantStmt = $pdo->query('SELECT COUNT(DISTINCT user_id) FROM questionnaire_response');
+    $participantSql = 'SELECT COUNT(DISTINCT qr.user_id) FROM questionnaire_response qr JOIN users u ON u.id = qr.user_id' . $dashboardWhereSql;
+    $participantStmt = $pdo->prepare($participantSql);
+    $participantStmt->execute($dashboardParams);
     $totalParticipants = (int)($participantStmt ? $participantStmt->fetchColumn() : 0);
 
-    $questionnaireStmt = $pdo->query(
-        "SELECT MIN(q.id) AS id, " . $questionnaireFamilyExpr . " AS family_key, MIN(q.title) AS title, MAX(q.id) AS latest_questionnaire_id, COUNT(*) AS total_responses, "
+    $questionnaireSql = "SELECT MIN(q.id) AS id, " . $questionnaireFamilyExpr . " AS family_key, MIN(q.title) AS title, MAX(q.id) AS latest_questionnaire_id, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "SUM(qr.status='submitted') AS submitted_count, "
         . "SUM(qr.status='draft') AS draft_count, "
@@ -347,9 +501,12 @@ try {
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
         . "JOIN questionnaire q ON q.id = qr.questionnaire_id "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql
         . "GROUP BY " . $questionnaireFamilyExpr . " "
-        . "ORDER BY MIN(q.title)"
-    );
+        . "ORDER BY MIN(q.title)";
+    $questionnaireStmt = $pdo->prepare($questionnaireSql);
+    $questionnaireStmt->execute($dashboardParams);
     $questionnaires = $questionnaireStmt ? $questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
     $downloadQuestionnaireStmt = $pdo->query(
@@ -361,12 +518,13 @@ try {
     );
     $downloadQuestionnaires = $downloadQuestionnaireStmt ? $downloadQuestionnaireStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-    $responseMetaStmt = $pdo->query(
-        'SELECT qr.id, qr.questionnaire_id, COALESCE(q.family_key, CONCAT(\'questionnaire-\', q.id)) AS family_key, qr.user_id, qr.score, qr.status, u.work_function '
+    $responseMetaSql = "SELECT qr.id, qr.questionnaire_id, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS family_key, qr.user_id, qr.score, qr.status, qr.created_at, u.department, u.cadre, u.work_function "
         . 'FROM questionnaire_response qr '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'JOIN questionnaire q ON q.id = qr.questionnaire_id'
-    );
+        . $dashboardWhereSql;
+    $responseMetaStmt = $pdo->prepare($responseMetaSql);
+    $responseMetaStmt->execute($dashboardParams);
     $responseMetaRows = $responseMetaStmt ? $responseMetaStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (PDOException $e) {
     error_log('analytics base summary queries failed: ' . $e->getMessage());
@@ -382,6 +540,12 @@ if (($summary['avg_score'] ?? null) === null && $overallFallbackAverage !== null
 
 $overallKpiTracker = [];
 $questionnaireKpiTracker = [];
+$dimensionScoreTrackers = [
+    'department' => [],
+    'team' => [],
+    'work_function' => [],
+];
+$departmentRoleKpiTracker = [];
 foreach ($responseMetaRows as $row) {
     $rid = (int)($row['id'] ?? 0);
     $familyKey = analytics_questionnaire_family_key($row);
@@ -389,16 +553,10 @@ foreach ($responseMetaRows as $row) {
     if ($rid <= 0 || $familyKey === '' || $userId <= 0) {
         continue;
     }
-    $status = strtolower((string)($row['status'] ?? ''));
-    if ($status === 'draft') {
+    if (!analytics_response_is_completed($row)) {
         continue;
     }
-    $score = $row['score'];
-    if ($score === null && isset($computedResponseScores[$rid])) {
-        $score = $computedResponseScores[$rid];
-    } elseif ($score !== null) {
-        $score = (float)$score;
-    }
+    $score = analytics_resolved_response_score($row, $computedResponseScores);
     if ($score === null) {
         continue;
     }
@@ -408,6 +566,34 @@ foreach ($responseMetaRows as $row) {
     if (!isset($questionnaireKpiTracker[$familyKey][$userId]) || $score > $questionnaireKpiTracker[$familyKey][$userId]) {
         $questionnaireKpiTracker[$familyKey][$userId] = $score;
     }
+    foreach ([
+        'department' => (string)($row['department'] ?? ''),
+        'team' => (string)($row['cadre'] ?? ''),
+        'work_function' => (string)($row['work_function'] ?? ''),
+    ] as $dimension => $key) {
+        $key = $key !== '' ? $key : '__unknown__';
+        if (!isset($dimensionScoreTrackers[$dimension][$key][$userId]) || $score > $dimensionScoreTrackers[$dimension][$key][$userId]) {
+            $dimensionScoreTrackers[$dimension][$key][$userId] = $score;
+        }
+    }
+    $departmentKey = (string)($row['department'] ?? '');
+    $workFunctionKey = (string)($row['work_function'] ?? '');
+    $departmentKey = $departmentKey !== '' ? $departmentKey : '__unknown__';
+    $workFunctionKey = $workFunctionKey !== '' ? $workFunctionKey : '__unknown__';
+    if (!isset($departmentRoleKpiTracker[$departmentKey][$workFunctionKey][$userId]) || $score > $departmentRoleKpiTracker[$departmentKey][$workFunctionKey][$userId]) {
+        $departmentRoleKpiTracker[$departmentKey][$workFunctionKey][$userId] = $score;
+    }
+}
+
+$overallLevelSummary = analytics_build_level_summary($overallKpiTracker);
+$dominantOverallLevel = analytics_dominant_level($overallLevelSummary);
+$questionnaireLevelStats = [];
+foreach ($questionnaireKpiTracker as $familyKey => $userScores) {
+    $levelRows = analytics_build_level_summary($userScores);
+    $questionnaireLevelStats[$familyKey] = [
+        'levels' => $levelRows,
+        'dominant' => analytics_dominant_level($levelRows),
+    ];
 }
 
 $overallKpiStats = [
@@ -479,6 +665,9 @@ foreach ($questionnaires as &$questionnaireRow) {
     $questionnaireRow['kpi_total_users'] = $questionnaireKpiStats[$familyKey]['total'] ?? 0;
     $questionnaireRow['kpi_hit_users'] = $questionnaireKpiStats[$familyKey]['hit'] ?? 0;
     $questionnaireRow['kpi_percent'] = $questionnaireKpiStats[$familyKey]['percent'] ?? null;
+    $questionnaireRow['dominant_level'] = $questionnaireLevelStats[$familyKey]['dominant']['level'] ?? '—';
+    $questionnaireRow['dominant_level_count'] = $questionnaireLevelStats[$familyKey]['dominant']['count'] ?? 0;
+    $questionnaireRow['dominant_level_percent'] = $questionnaireLevelStats[$familyKey]['dominant']['percent'] ?? 0.0;
 }
 unset($questionnaireRow);
 
@@ -568,6 +757,10 @@ foreach ($downloadQuestionnaires as $qRow) {
 if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
     try {
     $supportsSectionIncludeInScoring = analytics_supports_section_include_in_scoring($pdo);
+    $detailFilters = $dashboardFilters;
+    $detailFilters['questionnaire_id'] = 0;
+    [$detailWhere, $detailParams] = analytics_dashboard_filter_conditions($detailFilters);
+    $detailWhereSql = $detailWhere ? ' AND ' . implode(' AND ', $detailWhere) . ' ' : ' ';
     $responseStmt = $pdo->prepare(
         'SELECT qr.id, qr.status, qr.score, qr.created_at, qr.review_comment, '
         . 'u.id AS user_id, u.username, u.full_name, u.department, u.cadre, u.work_function, pp.label AS period_label '
@@ -576,9 +769,10 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
         . 'JOIN users u ON u.id = qr.user_id '
         . 'LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id '
         . 'WHERE ' . $questionnaireFamilyExpr . ' = ? '
+        . $detailWhereSql
         . 'ORDER BY qr.created_at DESC'
     );
-    $responseStmt->execute([$selectedQuestionnaireFamilyKey]);
+    $responseStmt->execute(array_merge([$selectedQuestionnaireFamilyKey], $detailParams));
     $selectedResponses = $responseStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $userStmt = $pdo->prepare(
@@ -590,10 +784,11 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
         . 'JOIN questionnaire q ON q.id = qr.questionnaire_id '
         . 'JOIN users u ON u.id = qr.user_id '
         . 'WHERE ' . $questionnaireFamilyExpr . ' = ? '
+        . $detailWhereSql
         . 'GROUP BY u.id, u.username, u.full_name, u.department, u.cadre, u.work_function '
         . 'ORDER BY avg_score DESC'
     );
-    $userStmt->execute([$selectedQuestionnaireFamilyKey]);
+    $userStmt->execute(array_merge([$selectedQuestionnaireFamilyKey], $detailParams));
     $selectedUserBreakdown = $userStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($selectedResponses) {
@@ -783,65 +978,167 @@ $workFunctionOptions = work_function_choices($pdo);
 $departmentOptions = department_options($pdo);
 $teamCatalog = department_team_catalog($pdo);
 $workFunctionSummary = [];
+$teamOptions = [];
+foreach ($teamCatalog as $departmentTeams) {
+    foreach ($departmentTeams as $team) {
+        $slug = (string)($team['slug'] ?? '');
+        if ($slug !== '') {
+            $teamOptions[$slug] = (string)($team['label'] ?? $slug);
+        }
+    }
+}
+$dimensionLabels = [
+    'department' => t($t, 'department', 'Department'),
+    'team' => t($t, 'cadre', 'Team in the Department'),
+    'work_function' => t($t, 'work_function', 'Work Role'),
+];
+$dimensionLabelResolvers = [
+    'department' => static function (string $key) use ($departmentOptions, $t): string {
+        return $key === '__unknown__' ? t($t, 'unknown', 'Unknown') : (string)($departmentOptions[$key] ?? $key);
+    },
+    'team' => static function (string $key) use ($pdo, $t): string {
+        return $key === '__unknown__' ? t($t, 'unknown', 'Unknown') : team_label($pdo, $key);
+    },
+    'work_function' => static function (string $key) use ($workFunctionOptions, $t): string {
+        return $key === '__unknown__' ? t($t, 'unknown', 'Unknown') : (string)($workFunctionOptions[$key] ?? $key);
+    },
+];
+$dimensionCompletionRows = [];
+foreach ($dimensionScoreTrackers as $dimension => $groups) {
+    $resolver = $dimensionLabelResolvers[$dimension];
+    foreach ($groups as $key => $scores) {
+        $levelRows = analytics_build_level_summary($scores);
+        $targetCount = 0;
+        foreach ($scores as $score) {
+            if ((float)$score >= 80.0) {
+                $targetCount++;
+            }
+        }
+        $total = count($scores);
+        $dimensionCompletionRows[] = [
+            'dimension' => $dimension,
+            'dimension_label' => $dimensionLabels[$dimension] ?? $dimension,
+            'label' => $resolver((string)$key),
+            'levels' => $levelRows,
+            'dominant' => analytics_dominant_level($levelRows),
+            'target_count' => $targetCount,
+            'total' => $total,
+            'target_percent' => $total > 0 ? round(($targetCount / $total) * 100, 1) : null,
+        ];
+    }
+}
+usort($dimensionCompletionRows, static function (array $a, array $b): int {
+    $aPercent = $a['target_percent'] ?? -1;
+    $bPercent = $b['target_percent'] ?? -1;
+    if ($aPercent === $bPercent) {
+        return strcasecmp((string)$a['label'], (string)$b['label']);
+    }
+    return $aPercent <=> $bPercent;
+});
+if (count($dimensionCompletionRows) > 12) {
+    $dimensionCompletionRows = array_slice($dimensionCompletionRows, 0, 12);
+}
+$completionLevelPalette = [
+    'Below Basics' => '#dc2626',
+    'Introductory' => '#f97316',
+    'Essential' => '#facc15',
+    'Advanced' => '#60a5fa',
+    'Strategic' => '#16a34a',
+];
+$heatPercentColor = static function (?float $percent): string {
+    if ($percent === null) {
+        return '#f3f4f6';
+    }
+    $value = max(0.0, min(100.0, $percent));
+    if ($value < 40.0) {
+        return 'rgba(220, 38, 38, 0.82)';
+    }
+    if ($value < 60.0) {
+        return 'rgba(249, 115, 22, 0.82)';
+    }
+    if ($value < 80.0) {
+        return 'rgba(250, 204, 21, 0.82)';
+    }
+    return 'rgba(22, 163, 74, 0.82)';
+};
+$explorerQuery = $dashboardFilterQuery;
+if (($explorerQuery['year'] ?? '') !== '') {
+    $year = (string)$explorerQuery['year'];
+    if (($explorerQuery['date_from'] ?? '') === '') {
+        $explorerQuery['date_from'] = $year . '-01-01';
+    }
+    if (($explorerQuery['date_to'] ?? '') === '') {
+        $explorerQuery['date_to'] = $year . '-12-31';
+    }
+    unset($explorerQuery['year']);
+}
+$reportExplorerHref = url_for('admin/analytics_data_viewer.php') . ($explorerQuery ? '?' . http_build_query($explorerQuery) : '');
+$reportExplorerExportHref = url_for('admin/analytics_data_viewer_export.php') . ($explorerQuery ? '?' . http_build_query($explorerQuery) : '');
+
 $departmentSummary = [];
 $teamSummary = [];
 $departmentRoleSummary = [];
 try {
-    $trainingRecommendationStmt = $pdo->query(
-        'SELECT cc.id AS course_id, cc.title AS course_title, '
+    $trainingSql = 'SELECT cc.id AS course_id, cc.title AS course_title, '
         . 'COUNT(DISTINCT qr.user_id) AS recommended_staff_count, '
         . "GROUP_CONCAT(DISTINCT CONCAT_WS(' ', NULLIF(u.full_name, ''), CONCAT('(', u.username, ')')) ORDER BY u.full_name, u.username SEPARATOR '; ') AS recommended_staff "
         . 'FROM training_recommendation tr '
         . 'JOIN course_catalogue cc ON cc.id = tr.course_id '
         . 'JOIN questionnaire_response qr ON qr.id = tr.questionnaire_response_id '
-        . 'JOIN users u ON u.id = qr.user_id '
+        . 'JOIN users u ON u.id = qr.user_id'
+        . $dashboardWhereSql
         . 'GROUP BY cc.id, cc.title '
-        . 'ORDER BY recommended_staff_count DESC, cc.title ASC'
-    );
+        . 'ORDER BY recommended_staff_count DESC, cc.title ASC';
+    $trainingRecommendationStmt = $pdo->prepare($trainingSql);
+    $trainingRecommendationStmt->execute($dashboardParams);
     $trainingRecommendationReport = $trainingRecommendationStmt ? $trainingRecommendationStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-    $workFunctionStmt = $pdo->query(
-        "SELECT u.work_function, COUNT(*) AS total_responses, "
+    $workFunctionSql = "SELECT u.work_function, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
-        . "JOIN users u ON u.id = qr.user_id "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql
         . "GROUP BY u.work_function "
-        . "ORDER BY total_responses DESC"
-    );
+        . "ORDER BY total_responses DESC";
+    $workFunctionStmt = $pdo->prepare($workFunctionSql);
+    $workFunctionStmt->execute($dashboardParams);
     $workFunctionSummary = $workFunctionStmt ? $workFunctionStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-    $departmentSummaryStmt = $pdo->query(
-        "SELECT u.department, COUNT(*) AS total_responses, "
+    $departmentSummarySql = "SELECT u.department, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
-        . "JOIN users u ON u.id = qr.user_id "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql
         . "GROUP BY u.department "
-        . "ORDER BY total_responses DESC"
-    );
+        . "ORDER BY total_responses DESC";
+    $departmentSummaryStmt = $pdo->prepare($departmentSummarySql);
+    $departmentSummaryStmt->execute($dashboardParams);
     $departmentSummary = $departmentSummaryStmt ? $departmentSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-    $teamSummaryStmt = $pdo->query(
-        "SELECT u.cadre, COUNT(*) AS total_responses, "
+    $teamSummarySql = "SELECT u.cadre, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
-        . "JOIN users u ON u.id = qr.user_id "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql
         . "GROUP BY u.cadre "
-        . "ORDER BY total_responses DESC"
-    );
+        . "ORDER BY total_responses DESC";
+    $teamSummaryStmt = $pdo->prepare($teamSummarySql);
+    $teamSummaryStmt->execute($dashboardParams);
     $teamSummary = $teamSummaryStmt ? $teamSummaryStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-    $departmentRoleStmt = $pdo->query(
-        "SELECT u.department, u.work_function, COUNT(*) AS total_responses, "
+    $departmentRoleSql = "SELECT u.department, u.work_function, COUNT(*) AS total_responses, "
         . "SUM(qr.status='approved') AS approved_count, "
         . "AVG(qr.score) AS avg_score "
         . "FROM questionnaire_response qr "
-        . "JOIN users u ON u.id = qr.user_id "
+        . "JOIN users u ON u.id = qr.user_id"
+        . $dashboardWhereSql
         . "GROUP BY u.department, u.work_function "
-        . "ORDER BY u.department ASC, u.work_function ASC"
-    );
+        . "ORDER BY u.department ASC, u.work_function ASC";
+    $departmentRoleStmt = $pdo->prepare($departmentRoleSql);
+    $departmentRoleStmt->execute($dashboardParams);
     $departmentRoleSummary = $departmentRoleStmt ? $departmentRoleStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (PDOException $e) {
     error_log('analytics summary queries failed: ' . $e->getMessage());
@@ -867,10 +1164,19 @@ foreach ($departmentRoleSummary as $row) {
         ?? ($departmentKey !== '' ? $departmentKey : t($t, 'unknown', 'Unknown'));
     $departmentRoleFunctions[$workFunctionKey] = $workFunctionOptions[$workFunctionKey]
         ?? ($workFunctionKey !== '' ? $workFunctionKey : t($t, 'unknown', 'Unknown'));
+    $scores = $departmentRoleKpiTracker[$departmentKey !== '' ? $departmentKey : '__unknown__'][$workFunctionKey !== '' ? $workFunctionKey : '__unknown__'] ?? [];
+    $targetCount = 0;
+    foreach ($scores as $score) {
+        if ((float)$score >= 80.0) {
+            $targetCount++;
+        }
+    }
+    $totalUsers = count($scores);
     $departmentRoleMap[$departmentKey][$workFunctionKey] = [
-        'score' => $row['avg_score'] !== null ? (float)$row['avg_score'] : null,
+        'percent' => $totalUsers > 0 ? round(($targetCount / $totalUsers) * 100, 1) : null,
+        'target' => $targetCount,
+        'users' => $totalUsers,
         'responses' => (int)($row['total_responses'] ?? 0),
-        'approved' => (int)($row['approved_count'] ?? 0),
     ];
 }
 asort($departmentRoleDepartments, SORT_NATURAL | SORT_FLAG_CASE);
@@ -1153,6 +1459,123 @@ $pageHelpKey = 'team.analytics';
       font-size: 1.25rem;
       margin-bottom: 0.35rem;
     }
+    .md-analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .md-analytics-grid > .md-card {
+      margin: 0;
+    }
+    .md-focus-panel {
+      border: 1px solid rgba(25, 118, 210, 0.22);
+      background: linear-gradient(135deg, rgba(25, 118, 210, 0.08), rgba(255, 255, 255, 0.95));
+    }
+    .md-focus-actions,
+    .md-filter-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    .md-dashboard-filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+    }
+    .md-dashboard-filters label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-weight: 600;
+    }
+    .md-dashboard-filters input,
+    .md-dashboard-filters select {
+      width: 100%;
+    }
+    .md-level-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .md-level-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: center;
+    }
+    .md-level-row strong {
+      display: block;
+    }
+    .md-level-row small {
+      color: var(--app-text-secondary, #555);
+    }
+    .md-level-bar {
+      height: 0.55rem;
+      margin-top: 0.35rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+    .md-level-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+    .md-stacked-levels {
+      display: flex;
+      height: 0.65rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+      margin-top: 0.5rem;
+    }
+    .md-stacked-levels span {
+      min-width: 2px;
+    }
+    .md-dimension-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .md-dimension-row {
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .md-dimension-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .md-dimension-row__header {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: start;
+    }
+    .md-heatmap-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 0.75rem 0;
+      font-size: 0.85rem;
+    }
+    .md-heatmap-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .md-heatmap-legend i {
+      display: inline-block;
+      width: 0.85rem;
+      height: 0.85rem;
+      border-radius: 3px;
+    }
     .md-insight-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1421,6 +1844,9 @@ $pageHelpKey = 'team.analytics';
       z-index: 1;
     }
     @media (max-width: 860px) {
+      .md-analytics-grid {
+        grid-template-columns: 1fr;
+      }
       .md-analytics-top-nav {
         top: 0;
       }
@@ -1476,7 +1902,8 @@ $pageHelpKey = 'team.analytics';
       <a href="#overview"><?=t($t, 'analytics_overview', 'Analytics overview')?></a>
       <a href="#questionnaire-performance"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></a>
       <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></a>
-      <a href="#training-recommendations"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></a>
+      <a href="#report-explorer-focus"><?=t($t, 'analytics_report_explorer_title', 'Report Explorer')?></a>
+      <a href="#disaggregated-completion"><?=t($t, 'disaggregated_completion', 'Completion by department/team')?></a>
       <a href="#downloads-tools"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></a>
     <?php elseif ($selectedQuestionnaireId): ?>
       <a href="#questionnaire-drilldown"><?=t($t, 'questionnaire_drilldown', 'Questionnaire drilldown')?></a>
@@ -1497,6 +1924,17 @@ $pageHelpKey = 'team.analytics';
           <?php else: ?>
             <?=t($t, 'epss_kpi_meta_empty', 'No completed questionnaire scores yet.')?>
           <?php endif; ?>
+        </p>
+        <p class="md-kpi-hero__meta">
+          <?=htmlspecialchars($dashboardContextLabel, ENT_QUOTES, 'UTF-8')?>
+        </p>
+        <p class="md-focus-actions">
+          <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($reportExplorerHref, ENT_QUOTES, 'UTF-8')?>">
+            <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
+          </a>
+          <a class="md-button md-outline" href="<?=htmlspecialchars($reportExplorerExportHref, ENT_QUOTES, 'UTF-8')?>">
+            <?=t($t, 'export_csv', 'Export CSV')?>
+          </a>
         </p>
       </div>
       <?php if ($overallKpiStats['percent'] !== null): ?>
@@ -1550,159 +1988,153 @@ $pageHelpKey = 'team.analytics';
     <?php endif; ?>
   </div>
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_overview', 'Analytics overview')?></h2>
-    <div class="md-summary-grid">
-      <div class="md-summary-card">
-        <strong><?= (int)($summary['total_responses'] ?? 0) ?></strong>
-        <span><?=t($t, 'total_responses', 'Total responses recorded')?></span>
+    <h2 class="md-card-title"><?=t($t, 'dashboard_filters', 'Dashboard filters')?></h2>
+    <p class="md-upgrade-meta"><?=t($t, 'dashboard_filters_hint', 'Filter the dashboard by year, date range, department, team, work role, and questionnaire.')?></p>
+    <form method="get" class="md-dashboard-filters">
+      <input type="hidden" name="view" value="<?=htmlspecialchars($analyticsViewMode, ENT_QUOTES, 'UTF-8')?>">
+      <label>
+        <?=t($t, 'year', 'Year')?>
+        <input type="number" name="year" min="2000" max="2100" step="1" value="<?=htmlspecialchars($dashboardFilters['year'], ENT_QUOTES, 'UTF-8')?>" placeholder="<?=htmlspecialchars((string)date('Y'), ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label>
+        <?=t($t, 'from_date', 'From date')?>
+        <input type="date" name="date_from" value="<?=htmlspecialchars($dashboardFilters['date_from'], ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label>
+        <?=t($t, 'to_date', 'To date')?>
+        <input type="date" name="date_to" value="<?=htmlspecialchars($dashboardFilters['date_to'], ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label>
+        <?=t($t, 'department', 'Department')?>
+        <select name="department">
+          <option value=""><?=t($t, 'all_departments', 'All departments')?></option>
+          <?php foreach ($departmentOptions as $value => $label): ?>
+            <option value="<?=htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8')?>" <?=$dashboardFilters['department'] === (string)$value ? 'selected' : ''?>><?=htmlspecialchars((string)$label, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>
+        <?=t($t, 'cadre', 'Team in the Department')?>
+        <select name="team">
+          <option value=""><?=t($t, 'all_teams', 'All teams')?></option>
+          <?php foreach ($teamOptions as $value => $label): ?>
+            <option value="<?=htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8')?>" <?=$dashboardFilters['team'] === (string)$value ? 'selected' : ''?>><?=htmlspecialchars((string)$label, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>
+        <?=t($t, 'work_function', 'Work Role')?>
+        <select name="work_function">
+          <option value=""><?=t($t, 'all_work_roles', 'All work roles')?></option>
+          <?php foreach ($workFunctionOptions as $value => $label): ?>
+            <option value="<?=htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8')?>" <?=$dashboardFilters['work_function'] === (string)$value ? 'selected' : ''?>><?=htmlspecialchars((string)$label, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>
+        <?=t($t, 'questionnaire', 'Questionnaire')?>
+        <select name="questionnaire_id">
+          <option value="0"><?=t($t, 'all_questionnaires', 'All questionnaires')?></option>
+          <?php foreach ($downloadQuestionnaires as $qRow): $qid = (int)($qRow['id'] ?? 0); ?>
+            <option value="<?=$qid?>" <?=$dashboardFilters['questionnaire_id'] === $qid ? 'selected' : ''?>><?=htmlspecialchars((string)($qRow['title'] ?? ''), ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <div class="md-filter-actions">
+        <button class="md-button md-primary md-elev-1" type="submit"><?=t($t, 'apply_filters', 'Apply filters')?></button>
+        <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'reset_filters', 'Reset filters')?></a>
       </div>
-      <div class="md-summary-card">
-        <strong><?= $formatScore($summary['avg_score'] ?? null, 1) ?></strong>
-        <span><?=t($t, 'average_score_all', 'Average score across all questionnaires')?></span>
-      </div>
-      <div class="md-summary-card">
-        <strong><?= (int)($summary['approved_count'] ?? 0) ?></strong>
-        <span><?=t($t, 'approved_responses', 'Approved responses')?></span>
-      </div>
-      <div class="md-summary-card">
-        <strong><?= $totalParticipants ?></strong>
-        <span><?=t($t, 'unique_participants', 'Unique participants')?></span>
-      </div>
-    </div>
-    <?php if (!empty($summary['latest_at'])): ?>
-      <p class="md-analytics-meta"><?=t($t, 'latest_submission', 'Latest submission:')?> <?=htmlspecialchars($summary['latest_at'], ENT_QUOTES, 'UTF-8')?></p>
-    <?php endif; ?>
-    <div class="md-insight-strip">
-      <div class="md-insight">
-        <strong><?=t($t, 'insight_lowest_questionnaire', 'Lowest questionnaire')?></strong>
-        <?php if ($lowestQuestionnaire): ?>
-          <?=htmlspecialchars((string)($lowestQuestionnaire['title'] ?? t($t, 'unknown', 'Unknown')), ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars($formatScore($lowestQuestionnaire['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?>%
-        <?php else: ?>
-          <?=t($t, 'not_available', 'N/A')?>
-        <?php endif; ?>
-      </div>
-      <div class="md-insight">
-        <strong><?=t($t, 'insight_best_work_role', 'Best work role')?></strong>
-        <?php if ($highestWorkFunction): ?>
-          <?php $bestWfKey = (string)($highestWorkFunction['work_function'] ?? ''); ?>
-          <?=htmlspecialchars((string)($workFunctionOptions[$bestWfKey] ?? ($bestWfKey !== '' ? $bestWfKey : t($t, 'unknown', 'Unknown'))), ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars($formatScore($highestWorkFunction['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?>%
-        <?php else: ?>
-          <?=t($t, 'not_available', 'N/A')?>
-        <?php endif; ?>
-      </div>
-      <div class="md-insight">
-        <strong><?=t($t, 'insight_training_recommendations', 'Training recommendations')?></strong>
-        <?=sprintf(t($t, 'insight_training_recommendations_value', '%d staff recommendations'), $totalRecommendedStaff)?>
-      </div>
-    </div>
+    </form>
   </div>
 
   <?php if ($analyticsViewMode === 'overview'): ?>
-  <div class="md-card md-elev-2" id="downloads-tools">
-    <h2 class="md-card-title"><?=t($t, 'analytics_download_reports', 'Download default reports')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_download_reports', 'Show download reports')?></summary>
-      <p><?=t($t, 'analytics_download_reports_hint', 'Quickly download PDF snapshots for offline sharing.')?></p>
-      <p>
-        <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_data_viewer.php'), ENT_QUOTES, 'UTF-8')?>">
-          <?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?>
-        </a>
-      </p>
-      <h3><?=t($t, 'analytics_download_summary_section', 'Main overview report')?></h3>
-      <div class="md-download-grid">
-        <?php foreach ($overviewReportDownloads as $download): ?>
-          <div class="md-download-card">
-            <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
-            <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
-            <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
-              <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
-          </div>
-        <?php endforeach; ?>
+  <div class="md-analytics-grid">
+    <div class="md-card md-elev-2 md-focus-panel" id="report-explorer-focus">
+      <h2 class="md-card-title"><?=t($t, 'analytics_report_explorer_title', 'Report Explorer')?></h2>
+      <p><?=t($t, 'analytics_report_explorer_focus_hint', 'Use the Report Explorer for drill-down analysis by date range, department/team, work role, questionnaire, and individual, then export the filtered result for review.')?></p>
+      <div class="md-summary-grid">
+        <div class="md-summary-card">
+          <strong><?= (int)($summary['total_responses'] ?? 0) ?></strong>
+          <span><?=t($t, 'total_responses', 'Total responses recorded')?></span>
+        </div>
+        <div class="md-summary-card">
+          <strong><?= $totalParticipants ?></strong>
+          <span><?=t($t, 'unique_participants', 'Unique participants')?></span>
+        </div>
       </div>
-      <h3><?=t($t, 'analytics_download_detailed_section', 'Detailed reports')?></h3>
-      <div class="md-download-grid">
-        <?php foreach ($detailedReportDownloads as $download): ?>
-          <div class="md-download-card">
-            <h3><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></h3>
-            <p><?=htmlspecialchars($download['description'], ENT_QUOTES, 'UTF-8')?></p>
-            <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>">
-              <?=t($t, 'analytics_download_button', 'Download PDF')?></a>
-          </div>
-        <?php endforeach; ?>
-      </div>
-    </details>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_tools', 'Analytics tools')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_analytics_tools', 'Show analytics tools')?></summary>
-      <p><?=t($t, 'analytics_tools_hint', 'Manage automation and external BI resources from dedicated workspaces.')?></p>
-      <p>
-        <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars(url_for('admin/analytics_automation.php'), ENT_QUOTES, 'UTF-8')?>">
-          <?=t($t, 'analytics_open_automation', 'Open automation workspace')?>
-        </a>
-        <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/analytics_looker.php'), ENT_QUOTES, 'UTF-8')?>">
-          <?=t($t, 'analytics_open_looker_resources', 'Open Looker resources')?>
-        </a>
+      <?php if (!empty($summary['latest_at'])): ?>
+        <?php $latestSubmissionIso = app_format_machine_datetime($summary['latest_at'] ?? ''); ?>
+        <p class="md-analytics-meta">
+          <?=t($t, 'latest_submission', 'Latest submission:')?>
+          <span data-client-date="<?=htmlspecialchars($latestSubmissionIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime">
+            <?=htmlspecialchars(app_format_display_datetime($summary['latest_at'] ?? '', $locale, $cfg), ENT_QUOTES, 'UTF-8')?>
+          </span>
+        </p>
+      <?php endif; ?>
+      <p class="md-focus-actions">
+        <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($reportExplorerHref, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'analytics_report_explorer_open', 'Open report explorer')?></a>
+        <a class="md-button md-outline" href="<?=htmlspecialchars($reportExplorerExportHref, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'export_csv', 'Export CSV')?></a>
       </p>
-    </details>
-  </div>
+    </div>
 
+    <div class="md-card md-elev-2">
+      <h2 class="md-card-title"><?=t($t, 'completion_level_summary', 'Completion level summary')?></h2>
+      <p class="md-upgrade-meta"><?=t($t, 'completion_level_summary_hint', 'Completion levels are shown as name, number, and percentage for the active dashboard filters.')?></p>
+      <?php if ($overallLevelSummary): ?>
+        <ul class="md-level-list">
+          <?php foreach ($overallLevelSummary as $levelRow): ?>
+            <?php $levelName = (string)($levelRow['level'] ?? ''); $levelPercent = (float)($levelRow['percent'] ?? 0); ?>
+            <li class="md-level-row">
+              <div>
+                <strong><?=htmlspecialchars($levelName, ENT_QUOTES, 'UTF-8')?></strong>
+                <small><?=sprintf(t($t, 'completion_level_count_percent', '%1$d staff · %2$s%%'), (int)($levelRow['count'] ?? 0), number_format($levelPercent, 1))?></small>
+                <div class="md-level-bar"><span style="width: <?=max(0, min(100, $levelPercent))?>%; background: <?=htmlspecialchars($completionLevelPalette[$levelName] ?? '#1976d2', ENT_QUOTES, 'UTF-8')?>;"></span></div>
+              </div>
+              <strong><?=number_format($levelPercent, 1)?>%</strong>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      <?php else: ?>
+        <p class="md-upgrade-meta"><?=t($t, 'completion_level_summary_empty', 'No completed scores match the active filters yet.')?></p>
+      <?php endif; ?>
+    </div>
+  </div>
+  <div class="md-analytics-grid">
   <div class="md-card md-elev-2" id="questionnaire-performance">
     <h2 class="md-card-title"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></h2>
     <?php if ($questionnaires): ?>
       <p class="md-upgrade-meta"><?=t($t, 'questionnaire_drilldown_hint', 'Select a questionnaire to drill into individual responses.')?></p>
+      <p class="md-upgrade-meta"><?=t($t, 'questionnaire_completion_hint', 'Questionnaire rows now show the dominant completion level, count, and percentage. Open a row for detailed drill-down or use the Report Explorer for exports.')?></p>
       <div class="md-table-toolbar">
         <label>
           <?=t($t, 'filter_questionnaires', 'Filter questionnaires')?>
           <input type="search" data-table-filter="questionnaires" placeholder="<?=htmlspecialchars(t($t, 'search', 'Search'), ENT_QUOTES, 'UTF-8')?>">
         </label>
-        <label>
-          <?=t($t, 'minimum_score', 'Minimum score')?>
-          <input type="number" min="0" max="100" step="1" data-score-filter="questionnaires" placeholder="0-100">
-        </label>
       </div>
-      <?php if ($questionnaireChartData): ?>
-        <div
-          class="md-chart-container"
-          data-chart-target="questionnaire-performance-heatmap"
-          data-has-data="true"
-          data-empty-message="<?= htmlspecialchars(t($t, 'questionnaire_heatmap_empty', 'Questionnaire performance data will appear here once submissions include scores.'), ENT_QUOTES, 'UTF-8') ?>"
-        >
-          <canvas id="questionnaire-performance-heatmap" role="img" aria-label="<?=htmlspecialchars(t($t, 'questionnaire_heatmap_alt', 'Horizontal bar chart highlighting questionnaire averages with heatmap colours.'), ENT_QUOTES, 'UTF-8')?>"></canvas>
-        </div>
-        <p class="md-analytics-meta md-analytics-meta--hint"><?=t($t, 'performance_heatmap_hint', 'Heatmap colours shift from red to green so low scores stand out for follow-up.')?></p>
-      <?php endif; ?>
       <table class="md-table md-table--interactive" data-filter-target="questionnaires" data-row-limit="10" data-mobile-cards="true" data-compact-table="questionnaires">
         <thead>
           <tr>
             <th><?=t($t, 'questionnaire', 'Questionnaire')?></th>
             <th><?=t($t, 'count', 'Responses')?></th>
-            <th><?=t($t, 'approved', 'Approved')?></th>
-            <th><?=t($t, 'status_submitted', 'Submitted')?></th>
-            <th><?=t($t, 'status_draft', 'Draft')?></th>
-            <th><?=t($t, 'status_rejected', 'Rejected')?></th>
-            <th><?=t($t, 'average_score', 'Average score (%)')?></th>
-            <th><?=t($t, 'proficiency_level', 'Competency level')?></th>
+            <th><?=t($t, 'completion_level', 'Completion level')?></th>
+            <th><?=t($t, 'number', 'Number')?></th>
+            <th><?=t($t, 'percentage', 'Percentage')?></th>
+            <th><?=t($t, 'view', 'View')?></th>
           </tr>
         </thead>
         <tbody>
           <?php foreach ($questionnaires as $row): ?>
             <?php $isSelected = ((int)$row['id'] === $selectedQuestionnaireId); ?>
             <tr class="<?= $isSelected ? 'is-selected' : '' ?>">
+              <?php $drilldownQuery = array_merge($dashboardFilterQuery, ['questionnaire_id' => (int)$row['id'], 'view' => 'drilldown']); ?>
               <td>
-                <a class="md-row-link" href="<?=htmlspecialchars(url_for('admin/analytics.php') . '?questionnaire_id=' . (int)$row['id'], ENT_QUOTES, 'UTF-8')?>">
-                  <?=htmlspecialchars($row['title'] ?? '', ENT_QUOTES, 'UTF-8')?>
-                </a>
+                <?=htmlspecialchars($row['title'] ?? '', ENT_QUOTES, 'UTF-8')?>
               </td>
               <td><?= (int)$row['total_responses'] ?></td>
-              <td><?= (int)$row['approved_count'] ?></td>
-              <td><?= (int)$row['submitted_count'] ?></td>
-              <td><?= (int)$row['draft_count'] ?></td>
-              <td><?= (int)$row['rejected_count'] ?></td>
-              <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
-              <td><?=htmlspecialchars($formatCompetencyLevel($row['avg_score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
+              <td><?=htmlspecialchars((string)($row['dominant_level'] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
+              <td><?= (int)($row['dominant_level_count'] ?? 0) ?></td>
+              <td><?=number_format((float)($row['dominant_level_percent'] ?? 0), 1)?>%</td>
+              <td><a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics.php') . '?' . http_build_query($drilldownQuery), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'drill_down', 'Drill down')?></a></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -1714,10 +2146,46 @@ $pageHelpKey = 'team.analytics';
     <?php endif; ?>
   </div>
 
+  <div class="md-card md-elev-2" id="disaggregated-completion">
+    <h2 class="md-card-title"><?=t($t, 'disaggregated_completion', 'Completion by department/team')?></h2>
+    <p class="md-upgrade-meta"><?=t($t, 'disaggregated_completion_hint', 'Lowest completion groups are shown first across departments, teams, and work roles using completion-level distribution.')?></p>
+    <?php if ($dimensionCompletionRows): ?>
+      <div class="md-dimension-list">
+        <?php foreach ($dimensionCompletionRows as $dimensionRow): ?>
+          <div class="md-dimension-row">
+            <div class="md-dimension-row__header">
+              <div>
+                <strong><?=htmlspecialchars((string)$dimensionRow['label'], ENT_QUOTES, 'UTF-8')?></strong>
+                <br><small><?=htmlspecialchars((string)$dimensionRow['dimension_label'], ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars((string)($dimensionRow['dominant']['level'] ?? '—'), ENT_QUOTES, 'UTF-8')?> <?=t($t, 'dominant_level', 'dominant level')?></small>
+              </div>
+              <strong><?= $dimensionRow['target_percent'] !== null ? number_format((float)$dimensionRow['target_percent'], 1) . '%' : '—' ?></strong>
+            </div>
+            <div class="md-stacked-levels" aria-hidden="true">
+              <?php foreach ($dimensionRow['levels'] as $levelRow): ?>
+                <?php $levelName = (string)($levelRow['level'] ?? ''); $width = max(0.0, min(100.0, (float)($levelRow['percent'] ?? 0))); ?>
+                <span title="<?=htmlspecialchars($levelName . ': ' . number_format($width, 1) . '%', ENT_QUOTES, 'UTF-8')?>" style="width: <?=$width?>%; background: <?=htmlspecialchars($completionLevelPalette[$levelName] ?? '#1976d2', ENT_QUOTES, 'UTF-8')?>;"></span>
+              <?php endforeach; ?>
+            </div>
+            <small><?=sprintf(t($t, 'completion_target_meta', '%1$d of %2$d staff at or above target'), (int)$dimensionRow['target_count'], (int)$dimensionRow['total'])?></small>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <p class="md-upgrade-meta"><?=t($t, 'disaggregated_completion_empty', 'No completed scores match the active filters yet.')?></p>
+    <?php endif; ?>
+  </div>
+
   <div class="md-card md-elev-2" id="org-heatmap">
     <h2 class="md-card-title"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></h2>
-    <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_hint', 'Average score by department (rows) and work role (columns). Darker green indicates stronger performance.')?></p>
+    <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_hint', 'Completion percentage by department (rows) and work role (columns). Colours move from red to green as the percentage at or above target improves.')?></p>
     <?php if ($departmentRoleDepartments && $departmentRoleFunctions): ?>
+      <p class="md-analytics-meta"><?=t($t, 'year', 'Year')?>: <?=htmlspecialchars($dashboardFilters['year'] !== '' ? $dashboardFilters['year'] : t($t, 'all_years', 'All years'), ENT_QUOTES, 'UTF-8')?></p>
+      <div class="md-heatmap-legend" aria-label="<?=htmlspecialchars(t($t, 'heatmap_legend', 'Heatmap legend'), ENT_QUOTES, 'UTF-8')?>">
+        <span><i style="background: rgba(220, 38, 38, 0.82);"></i>0–39%</span>
+        <span><i style="background: rgba(249, 115, 22, 0.82);"></i>40–59%</span>
+        <span><i style="background: rgba(250, 204, 21, 0.82);"></i>60–79%</span>
+        <span><i style="background: rgba(22, 163, 74, 0.82);"></i>80–100%</span>
+      </div>
       <div class="md-matrix-wrapper">
         <table class="md-matrix-table" aria-label="<?=htmlspecialchars(t($t, 'department_role_heatmap', 'Department × Role heatmap'), ENT_QUOTES, 'UTF-8')?>">
           <thead>
@@ -1734,11 +2202,11 @@ $pageHelpKey = 'team.analytics';
                 <th><?=htmlspecialchars((string)$departmentLabel, ENT_QUOTES, 'UTF-8')?></th>
                 <?php foreach ($departmentRoleFunctions as $workFunctionKey => $workFunctionLabel): ?>
                   <?php $cell = $departmentRoleMap[$departmentKey][$workFunctionKey] ?? null; ?>
-                  <?php $score = $cell['score'] ?? null; ?>
+                  <?php $percent = $cell['percent'] ?? null; ?>
                   <?php if ($cell): ?>
-                    <td class="md-matrix-cell" style="background: <?=htmlspecialchars($heatColorForScore($score), ENT_QUOTES, 'UTF-8')?>;">
-                      <?= $score !== null ? htmlspecialchars(number_format((float)$score, 1), ENT_QUOTES, 'UTF-8') . '%' : '—' ?>
-                      <small><?=sprintf(t($t, 'responses_short', 'n=%d'), (int)($cell['responses'] ?? 0))?></small>
+                    <td class="md-matrix-cell" style="background: <?=htmlspecialchars($heatPercentColor($percent !== null ? (float)$percent : null), ENT_QUOTES, 'UTF-8')?>;">
+                      <?= $percent !== null ? htmlspecialchars(number_format((float)$percent, 1), ENT_QUOTES, 'UTF-8') . '%' : '—' ?>
+                      <small><?=sprintf(t($t, 'completion_heatmap_cell_meta', '%1$d/%2$d staff'), (int)($cell['target'] ?? 0), (int)($cell['users'] ?? 0))?></small>
                     </td>
                   <?php else: ?>
                     <td class="md-matrix-cell md-matrix-cell--empty">—</td>
@@ -1753,6 +2221,42 @@ $pageHelpKey = 'team.analytics';
       <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_empty', 'Complete submissions to populate the department and role heatmap.')?></p>
     <?php endif; ?>
   </div>
+  </div>
+  <div class="md-analytics-grid">
+    <div class="md-card md-elev-2">
+      <h2 class="md-card-title"><?=t($t, 'priority_gaps', 'Priority gaps')?></h2>
+      <p class="md-upgrade-meta"><?=t($t, 'priority_gaps_hint', 'Groups with the lowest at-target completion percentages are listed first for follow-up.')?></p>
+      <?php if ($dimensionCompletionRows): ?>
+        <ul class="md-level-list">
+          <?php foreach (array_slice($dimensionCompletionRows, 0, 5) as $gapRow): ?>
+            <li class="md-level-row">
+              <div>
+                <strong><?=htmlspecialchars((string)$gapRow['label'], ENT_QUOTES, 'UTF-8')?></strong>
+                <small><?=htmlspecialchars((string)$gapRow['dimension_label'], ENT_QUOTES, 'UTF-8')?> · <?=sprintf(t($t, 'completion_target_meta', '%1$d of %2$d staff at or above target'), (int)$gapRow['target_count'], (int)$gapRow['total'])?></small>
+              </div>
+              <strong><?= $gapRow['target_percent'] !== null ? number_format((float)$gapRow['target_percent'], 1) . '%' : '—' ?></strong>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      <?php else: ?>
+        <p class="md-upgrade-meta"><?=t($t, 'priority_gaps_empty', 'No priority gaps are available for the active filters yet.')?></p>
+      <?php endif; ?>
+    </div>
+
+    <div class="md-card md-elev-2" id="downloads-tools">
+      <h2 class="md-card-title"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></h2>
+      <p><?=t($t, 'analytics_download_tools_hint', 'Download executive reports, export the filtered explorer dataset, or open dedicated analytics workspaces.')?></p>
+      <p class="md-focus-actions">
+        <?php foreach ($overviewReportDownloads as $download): ?>
+          <a class="md-button md-primary md-elev-1" href="<?=htmlspecialchars($download['url'], ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($download['title'], ENT_QUOTES, 'UTF-8')?></a>
+        <?php endforeach; ?>
+        <a class="md-button md-outline" href="<?=htmlspecialchars($reportExplorerExportHref, ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'export_csv', 'Export CSV')?></a>
+        <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_automation.php'), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'analytics_open_automation', 'Open automation workspace')?></a>
+        <a class="md-button" href="<?=htmlspecialchars(url_for('admin/analytics_looker.php'), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'analytics_open_looker_resources', 'Open Looker resources')?></a>
+      </p>
+    </div>
+  </div>
+
   <?php endif; ?>
 
   <?php if ($selectedQuestionnaireId && $analyticsViewMode === 'drilldown'): ?>
@@ -1808,7 +2312,8 @@ $pageHelpKey = 'team.analytics';
                 <td><?=htmlspecialchars($statusLabels[$statusKey] ?? ucfirst((string)$statusKey), ENT_QUOTES, 'UTF-8')?></td>
                 <td><?= isset($row['score']) && $row['score'] !== null ? (int)$row['score'] : '—' ?></td>
                 <td><?=htmlspecialchars($formatCompetencyLevel($row['score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
-                <td><?=htmlspecialchars($row['created_at'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
+                <?php $submittedIso = app_format_machine_datetime($row['created_at'] ?? ''); ?>
+                <td><span data-client-date="<?=htmlspecialchars($submittedIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars(app_format_display_datetime($row['created_at'] ?? '', $locale, $cfg), ENT_QUOTES, 'UTF-8')?></span></td>
                 <td><?=htmlspecialchars($row['review_comment'] ?? '', ENT_QUOTES, 'UTF-8')?></td>
                 <td><a class="md-button" href="<?=htmlspecialchars(url_for('admin/view_submission.php?id=' . (int)$row['id']), ENT_QUOTES, 'UTF-8')?>"><?=t($t, 'open', 'Open')?></a></td>
               </tr>
@@ -1939,118 +2444,6 @@ $pageHelpKey = 'team.analytics';
     </div>
   <?php endif; ?>
 
-  <?php if ($analyticsViewMode === 'overview'): ?>
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'analytics_quick_filters', 'Quick filters')?></h2>
-    <div class="md-table-toolbar">
-      <label>
-        <?=t($t, 'filter_org_tables', 'Filter org tables')?>
-        <input type="search" data-table-filter="org-tables" placeholder="<?=htmlspecialchars(t($t, 'search', 'Search'), ENT_QUOTES, 'UTF-8')?>">
-      </label>
-    </div>
-    <p class="md-upgrade-meta"><?=t($t, 'filter_org_tables_hint', 'Applies to training, department, team, and work role performance tables.')?></p>
-  </div>
-  <div class="md-card md-elev-2" id="training-recommendations">
-    <h2 class="md-card-title"><?=t($t, 'training_recommendation_report', 'Training recommendations by staff')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_training_recommendations', 'Show training recommendations')?></summary>
-      <?php if ($trainingRecommendationReport): ?>
-        <table class="md-table" data-filter-target="training-recommendation" data-row-limit="8" data-mobile-cards="true" data-filter-group="org-tables">
-          <thead>
-            <tr>
-              <th><?=t($t, 'training_course', 'Training')?></th>
-              <th><?=t($t, 'recommended_staff_count', 'Recommended staff')?></th>
-              <th><?=t($t, 'staff_members', 'Staff members')?></th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($trainingRecommendationReport as $row): ?>
-              <tr>
-                <td><?=htmlspecialchars($row['course_title'] ?? t($t, 'unknown', 'Unknown'), ENT_QUOTES, 'UTF-8')?></td>
-                <td><?= (int)($row['recommended_staff_count'] ?? 0) ?></td>
-                <td><?=htmlspecialchars((string)($row['recommended_staff'] ?? '—'), ENT_QUOTES, 'UTF-8')?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-        <button type="button" class="md-button md-row-toggle" data-table-toggle="training-recommendation"><?=t($t, 'show_more', 'Show more')?></button>
-      <?php else: ?>
-        <p class="md-upgrade-meta"><?=t($t, 'training_recommendation_report_empty', 'No training recommendations have been recorded yet.')?></p>
-      <?php endif; ?>
-    </details>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'department_performance', 'Department Performance')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_department_performance', 'Show department performance')?></summary>
-      <?php if ($departmentSummary): ?>
-        <table class="md-table" data-filter-target="department-performance" data-row-limit="8" data-mobile-cards="true" data-filter-group="org-tables"><thead><tr><th><?=t($t,'department','Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
-        <?php foreach ($departmentSummary as $row): ?>
-          <tr><td><?=htmlspecialchars($departmentOptions[$row['department'] ?? ''] ?? ($row['department'] ?: t($t,'unknown','Unknown')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
-        <?php endforeach; ?></tbody></table>
-        <button type="button" class="md-button md-row-toggle" data-table-toggle="department-performance"><?=t($t, 'show_more', 'Show more')?></button>
-      <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
-    </details>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'team_performance', 'Team Performance')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_team_performance', 'Show team performance')?></summary>
-      <?php if ($teamSummary): ?>
-        <table class="md-table" data-filter-target="team-performance" data-row-limit="8" data-mobile-cards="true" data-filter-group="org-tables"><thead><tr><th><?=t($t,'cadre','Team in the Department')?></th><th><?=t($t,'count','Responses')?></th><th><?=t($t,'approved','Approved')?></th><th><?=t($t,'average_score','Average score (%)')?></th></tr></thead><tbody>
-        <?php foreach ($teamSummary as $row): ?>
-          <tr><td><?=htmlspecialchars(team_label($pdo, (string)($row['cadre'] ?? '')), ENT_QUOTES, 'UTF-8')?></td><td><?= (int)$row['total_responses'] ?></td><td><?= (int)$row['approved_count'] ?></td><td><?= $formatScore($row['avg_score'] ?? null) ?></td></tr>
-        <?php endforeach; ?></tbody></table>
-        <button type="button" class="md-button md-row-toggle" data-table-toggle="team-performance"><?=t($t, 'show_more', 'Show more')?></button>
-      <?php else: ?><p class="md-upgrade-meta">—</p><?php endif; ?>
-    </details>
-  </div>
-
-  <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'work_function_performance', 'Work Role Performance')?></h2>
-    <details class="md-disclosure">
-      <summary><?=t($t, 'show_work_role_performance', 'Show work role performance')?></summary>
-      <?php if ($workFunctionSummary): ?>
-        <?php if ($workFunctionChartData): ?>
-          <div
-            class="md-chart-container"
-            data-chart-target="work-function-heatmap"
-            data-has-data="true"
-            data-empty-message="<?= htmlspecialchars(t($t, 'work_function_heatmap_empty', 'Performance by work function will display after a few submissions are recorded.'), ENT_QUOTES, 'UTF-8') ?>"
-          >
-            <canvas id="work-function-heatmap" role="img" aria-label="<?=htmlspecialchars(t($t, 'work_function_heatmap_alt', 'Horizontal bar chart comparing work function averages using heatmap colours.'), ENT_QUOTES, 'UTF-8')?>"></canvas>
-          </div>
-        <?php endif; ?>
-        <table class="md-table" data-filter-target="work-role-performance" data-row-limit="8" data-mobile-cards="true" data-filter-group="org-tables">
-          <thead>
-            <tr>
-              <th><?=t($t, 'work_function', 'Work Role')?></th>
-              <th><?=t($t, 'count', 'Responses')?></th>
-              <th><?=t($t, 'approved', 'Approved')?></th>
-              <th><?=t($t, 'average_score', 'Average score (%)')?></th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($workFunctionSummary as $row): ?>
-              <?php $wfKey = $row['work_function'] ?? ''; ?>
-              <tr>
-                <td><?=htmlspecialchars($workFunctionOptions[$wfKey] ?? ($wfKey !== '' ? $wfKey : t($t, 'unknown', 'Unknown')), ENT_QUOTES, 'UTF-8')?></td>
-                <td><?= (int)$row['total_responses'] ?></td>
-                <td><?= (int)$row['approved_count'] ?></td>
-                <td><?= $formatScore($row['avg_score'] ?? null) ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-        <button type="button" class="md-button md-row-toggle" data-table-toggle="work-role-performance"><?=t($t, 'show_more', 'Show more')?></button>
-      <?php else: ?>
-        <p class="md-upgrade-meta"><?=t($t, 'work_function_empty', 'Assign questionnaires to teams to see benchmarks populate here.')?></p>
-      <?php endif; ?>
-    </details>
-  </div>
-  <?php endif; ?>
   <p><a class="md-button md-outline" href="#top"><?=t($t, 'back_to_top', 'Back to top')?></a></p>
 </section>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
@@ -2132,27 +2525,20 @@ $pageHelpKey = 'team.analytics';
 
     const questionnairesTable = document.querySelector('[data-filter-target="questionnaires"]');
     const questionnaireSearch = document.querySelector('[data-table-filter="questionnaires"]');
-    const questionnaireMinScore = document.querySelector('[data-score-filter="questionnaires"]');
     const applyQuestionnaireFilters = () => {
       if (!questionnairesTable) {
         return;
       }
       const term = (questionnaireSearch?.value || '').trim().toLowerCase();
-      const minScore = Number.parseFloat(questionnaireMinScore?.value || '');
-      const useMinScore = !Number.isNaN(minScore);
       const rows = questionnairesTable.querySelectorAll('tbody tr');
       rows.forEach((row) => {
         const text = (row.textContent || '').toLowerCase();
-        const scoreCell = row.children[6];
-        const scoreValue = Number.parseFloat((scoreCell?.textContent || '').replace(/[^\d.-]/g, ''));
-        const scoreMatch = !useMinScore || (!Number.isNaN(scoreValue) && scoreValue >= minScore);
         const termMatch = term === '' || text.includes(term);
-        row.classList.toggle('is-hidden-by-filter', !(scoreMatch && termMatch));
+        row.classList.toggle('is-hidden-by-filter', !termMatch);
       });
       setupRowLimit('questionnaires');
     };
     questionnaireSearch?.addEventListener('input', applyQuestionnaireFilters);
-    questionnaireMinScore?.addEventListener('input', applyQuestionnaireFilters);
     applyQuestionnaireFilters();
 
     const orgSearch = document.querySelector('[data-table-filter="org-tables"]');
