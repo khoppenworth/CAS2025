@@ -51,6 +51,16 @@ $baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
 $langAttr = htmlspecialchars($locale, ENT_QUOTES, 'UTF-8');
 $loginUrl = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
 $homeUrl = htmlspecialchars(url_for(''), ENT_QUOTES, 'UTF-8');
+$currentLocale = $locale ?: $defaultLocale;
+$localeCount = count($availableLocales);
+$localeIndex = $localeCount > 0 ? array_search($currentLocale, $availableLocales, true) : false;
+$nextLocale = $localeCount > 0
+    ? $availableLocales[(($localeIndex === false ? 0 : $localeIndex) + 1) % $localeCount]
+    : $currentLocale;
+$currentLocaleBadge = htmlspecialchars(strtoupper((string)$currentLocale), ENT_QUOTES, 'UTF-8');
+$currentLocaleFlag = htmlspecialchars(asset_url('assets/images/flags/flag-' . $currentLocale . '.svg'), ENT_QUOTES, 'UTF-8');
+$languageSwitchLabel = htmlspecialchars(t($t, 'language_switch', 'Switch language'), ENT_QUOTES, 'UTF-8');
+$languageSwitchUrl = htmlspecialchars(url_for('set_lang.php?lang=' . $nextLocale), ENT_QUOTES, 'UTF-8');
 $primaryCta = htmlspecialchars(t($t, 'sign_in', 'Sign In'), ENT_QUOTES, 'UTF-8');
 $heroEyebrow = htmlspecialchars(t($t, 'hero_eyebrow', 'National performance excellence platform'), ENT_QUOTES, 'UTF-8');
 $heroTitle = htmlspecialchars(t($t, 'hero_title', 'Bring every performance conversation into one vibrant workspace'), ENT_QUOTES, 'UTF-8');
@@ -97,9 +107,6 @@ $footerHotlineLabel = htmlspecialchars($footerHotlineLabelRaw, ENT_QUOTES, 'UTF-
 $footerHotlineNumber = htmlspecialchars($footerHotlineNumberRaw, ENT_QUOTES, 'UTF-8');
 $address = htmlspecialchars($addressRaw, ENT_QUOTES, 'UTF-8');
 $contact = htmlspecialchars($contactRaw, ENT_QUOTES, 'UTF-8');
-$heroBadgeOne = htmlspecialchars(t($t, 'hero_badge_one', 'Goal alignment'), ENT_QUOTES, 'UTF-8');
-$heroBadgeTwo = htmlspecialchars(t($t, 'hero_badge_two', '360° feedback'), ENT_QUOTES, 'UTF-8');
-$heroBadgeThree = htmlspecialchars(t($t, 'hero_badge_three', 'Learning insights'), ENT_QUOTES, 'UTF-8');
 
 $landingFetchScalar = static function (PDO $pdo, string $sql) {
     try {
@@ -184,11 +191,22 @@ $statTiles = [
   <div class="landing-page">
     <header class="landing-topbar" id="home">
       <div class="landing-topbar__inner">
-        <a class="landing-brand" href="#home">
-          <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-brand__logo">
-          <span class="landing-brand__name"><?= $siteName ?></span>
+        <a class="landing-topbar__logo-link" href="#home" aria-label="<?= $siteName ?>">
+          <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="landing-topbar__logo">
         </a>
-        <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
+        <div class="landing-topbar__title"><?= $siteName ?></div>
+        <div class="landing-topbar__actions">
+          <a
+            href="<?= $languageSwitchUrl ?>"
+            class="landing-language-button"
+            aria-label="<?= $languageSwitchLabel ?>"
+            title="<?= $languageSwitchLabel ?>"
+          >
+            <img src="<?= $currentLocaleFlag ?>" alt="" width="24" height="24" loading="lazy" decoding="async">
+            <span><?= $currentLocaleBadge ?></span>
+          </a>
+          <a class="landing-button landing-button--primary" href="<?= $loginUrl ?>"><?= $primaryCta ?></a>
+        </div>
       </div>
     </header>
 
@@ -199,11 +217,6 @@ $statTiles = [
             <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
             <h1 class="landing-hero-copy__title"><?= $heroTitle ?></h1>
             <p class="landing-hero-copy__subtitle"><?= $heroSubtitle ?></p>
-          </div>
-          <div class="landing-hero-badges" aria-label="<?= htmlspecialchars(t($t, 'hero_badges_label', 'Platform highlights'), ENT_QUOTES, 'UTF-8') ?>">
-            <span><?= $heroBadgeOne ?></span>
-            <span><?= $heroBadgeTwo ?></span>
-            <span><?= $heroBadgeThree ?></span>
           </div>
         </div>
       </section>
@@ -222,10 +235,16 @@ $statTiles = [
     </main>
 
     <footer class="landing-footer" id="contact">
-      <div class="landing-footer__meta">
+      <div class="landing-footer__meta landing-footer__company">
         <p class="landing-footer__org"><?= $organizationNameEscaped ?></p>
         <?php if ($organizationShort !== ''): ?>
           <p class="landing-footer__secondary-link"><?= $organizationShortEscaped ?></p>
+        <?php endif; ?>
+        <?php if ($footerWebsiteUrlRaw !== ''): ?>
+          <div class="landing-footer__links">
+            <h3><?= htmlspecialchars(t($t, 'further_information', 'Further Information'), ENT_QUOTES, 'UTF-8') ?></h3>
+            <a href="<?= $footerWebsiteUrl ?>" target="_blank" rel="noopener noreferrer"><?= $footerWebsiteLabel !== '' ? $footerWebsiteLabel : $footerWebsiteUrl ?></a>
+          </div>
         <?php endif; ?>
         <?php if ($footerRightsEscaped !== ''): ?>
           <p class="landing-footer__secondary-link"><?= $footerRightsEscaped ?></p>
@@ -238,29 +257,6 @@ $statTiles = [
         <?php if ($footerPhoneRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'footer_phone_label', 'Phone Number'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="tel:<?= htmlspecialchars(preg_replace('/\s+/', '', $footerPhoneRaw), ENT_QUOTES, 'UTF-8') ?>"><?= $footerPhone ?></a></p><?php endif; ?>
         <?php if ($footerEmailRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'footer_email_label', 'Contact Email'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="mailto:<?= $footerEmail ?>"><?= $footerEmail ?></a></p><?php endif; ?>
         <?php if ($footerHotlineNumberRaw !== ''): ?><p><strong><?= $footerHotlineLabel !== '' ? $footerHotlineLabel : htmlspecialchars(t($t, 'footer_hotline_label_label', 'Hotline'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="tel:<?= htmlspecialchars(preg_replace('/\s+/', '', $footerHotlineNumberRaw), ENT_QUOTES, 'UTF-8') ?>"><?= $footerHotlineNumber ?></a></p><?php endif; ?>
-      </div>
-      <?php if ($footerWebsiteUrlRaw !== ''): ?>
-        <div class="landing-footer__meta">
-          <h3><?= htmlspecialchars(t($t, 'gallery_heading', 'Resources and highlights'), ENT_QUOTES, 'UTF-8') ?></h3>
-          <div class="landing-footer__links">
-            <a href="<?= $footerWebsiteUrl ?>" target="_blank" rel="noopener noreferrer"><?= $footerWebsiteLabel !== '' ? $footerWebsiteLabel : $footerWebsiteUrl ?></a>
-          </div>
-        </div>
-      <?php endif; ?>
-      <div class="landing-footer__meta">
-        <h3><?= htmlspecialchars(t($t, 'languages', 'Languages'), ENT_QUOTES, 'UTF-8') ?></h3>
-        <div class="landing-footer__languages" aria-label="<?= htmlspecialchars(t($t, 'language_switch_label', 'Change language'), ENT_QUOTES, 'UTF-8') ?>">
-          <?php
-          $links = [];
-          foreach ($availableLocales as $loc) {
-              $url = htmlspecialchars(url_for('set_lang.php?lang=' . $loc), ENT_QUOTES, 'UTF-8');
-              $label = htmlspecialchars(strtoupper($loc), ENT_QUOTES, 'UTF-8');
-              $flag = htmlspecialchars(asset_url('assets/images/flags/flag-' . $loc . '.svg'), ENT_QUOTES, 'UTF-8');
-              $links[] = "<a href='" . $url . "' class='landing-language-link' aria-label='" . $label . "'><img src='" . $flag . "' alt='' width='28' height='28' loading='lazy' decoding='async' /><span>" . $label . "</span></a>";
-          }
-          echo implode('', $links);
-          ?>
-        </div>
       </div>
     </footer>
   </div>
