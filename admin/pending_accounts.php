@@ -102,7 +102,7 @@ foreach ($activeStaff as $staffRow) {
 <html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>" data-base-url="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
 <head>
   <meta charset="utf-8">
-  <title><?=htmlspecialchars(t($t,'pending_accounts','Pending Approvals'), ENT_QUOTES, 'UTF-8')?></title>
+  <title><?=htmlspecialchars(t($t,'pending_accounts','User Approval'), ENT_QUOTES, 'UTF-8')?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="app-base-url" content="<?=htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8')?>">
   <link rel="manifest" href="<?=asset_url('manifest.php')?>">
@@ -113,7 +113,7 @@ foreach ($activeStaff as $staffRow) {
 <?php include __DIR__.'/../templates/header.php'; ?>
 <section class="md-section">
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t,'pending_accounts','Pending Approvals')?></h2>
+    <h2 class="md-card-title"><?=t($t,'pending_accounts','User Approval')?></h2>
     <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if ($error): ?><div class="md-alert error"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php if (!$pendingUsers): ?>

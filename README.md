@@ -147,7 +147,7 @@ Provide the client ID, client secret, and (for Microsoft) the tenant identifier.
 
 When a user signs in with SSO and no account exists, the platform auto-provisions a pending profile that is limited to the
 Profile page until a supervisor approves it. Supervisors (and admins) can review and approve accounts at
-**Team & Reviews → Pending Approvals**. A banner on the profile and login pages explains the pending status to the end user.
+**Team & Reviews → User Approval**. A banner on the profile and login pages explains the pending status to the end user.
 Supervisors can also set the user's next assessment date during approval.
 
 ### Email delivery

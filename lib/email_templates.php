@@ -59,7 +59,7 @@ HTML,
                 ],
                 'pending_accounts_url' => [
                     'key' => 'email_template_pending_user_placeholder_url',
-                    'fallback' => 'Link to the pending approvals page',
+                    'fallback' => 'Link to the user approval page',
                 ],
             ],
         ],
