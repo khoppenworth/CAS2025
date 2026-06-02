@@ -81,12 +81,7 @@ foreach ($rows as $row) {
 $nextAssessmentDisplay = '';
 $nextAssessmentRaw = (string) ($user['next_assessment_date'] ?? '');
 if ($nextAssessmentRaw !== '') {
-    $timestamp = strtotime($nextAssessmentRaw);
-    if ($timestamp) {
-        $nextAssessmentDisplay = date('F j, Y', $timestamp);
-    } else {
-        $nextAssessmentDisplay = $nextAssessmentRaw;
-    }
+    $nextAssessmentDisplay = app_format_display_date($nextAssessmentRaw, $locale, $cfg, 'long');
 }
 
 $departmentLabel = '';
@@ -175,7 +170,7 @@ $pdf->addHeading(t($t, 'my_performance', 'My Performance'));
 $pdf->addParagraph(sprintf(
     '%s %s',
     t($t, 'my_performance_pdf_intro', 'Generated on'),
-    $generatedAt->format('Y-m-d H:i')
+    app_format_display_datetime($generatedAt, $locale, $cfg, 'medium', 'short', true)
 ));
 
 $summaryRows = [

@@ -381,17 +381,15 @@ foreach ($rows as $r) {
     $nextAssessment = $r['next_assessment_date'] ?? '';
     $nextAssessmentDisplay = '—';
     if ($nextAssessment !== '') {
-        $ts = strtotime((string)$nextAssessment);
-        $nextAssessmentDisplay = $ts ? date('M j, Y', $ts) : $nextAssessment;
+        $nextAssessmentDisplay = app_format_display_date($nextAssessment, $locale, $cfg);
     }
-    $nextAssessmentIso = $nextAssessment !== '' ? ($nextAssessment . 'T00:00:00') : '';
+    $nextAssessmentIso = $nextAssessment !== '' ? (string)$nextAssessment : '';
     $createdAt = $r['created_at'] ?? '';
     $createdDisplay = '—';
     if ($createdAt !== '') {
-        $ts = strtotime((string)$createdAt);
-        $createdDisplay = $ts ? date('M j, Y', $ts) : $createdAt;
+        $createdDisplay = app_format_display_datetime($createdAt, $locale, $cfg);
     }
-    $createdIso = $createdAt !== '' ? date(DATE_ATOM, strtotime((string)$createdAt)) : '';
+    $createdIso = $createdAt !== '' ? app_format_machine_datetime($createdAt) : '';
     $roleKey = $r['role'] ?? 'staff';
     $roleLabel = $roleLabels[$roleKey] ?? $roleKey;
     $userId = (int)$r['id'];

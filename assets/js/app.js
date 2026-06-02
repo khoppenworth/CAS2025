@@ -93,6 +93,23 @@
 
   installAssessmentContentProtection();
 
+  const parseClientDateValue = (value, mode) => {
+    if (!value) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    if (mode === 'date') {
+      const calendarMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00(?::00)?(?:\.000)?(?:Z)?)?$/);
+      if (calendarMatch) {
+        return new Date(
+          Number(calendarMatch[1]),
+          Number(calendarMatch[2]) - 1,
+          Number(calendarMatch[3])
+        );
+      }
+    }
+    return new Date(normalized);
+  };
+
   const formatClientDates = () => {
     const nodes = document.querySelectorAll('[data-client-date]');
     if (!nodes.length || typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -102,11 +119,14 @@
       const isoValue = node.getAttribute('data-client-date');
       if (!isoValue) return;
       const mode = node.getAttribute('data-client-date-mode') || 'date';
-      const date = new Date(isoValue);
-      if (Number.isNaN(date.getTime())) return;
+      const date = parseClientDateValue(isoValue, mode);
+      if (!date || Number.isNaN(date.getTime())) return;
+      const dateStyle = node.getAttribute('data-client-date-style') || 'medium';
+      const timeStyle = node.getAttribute('data-client-time-style') || 'short';
+      const timeZone = node.getAttribute('data-client-time-zone') || undefined;
       const options = mode === 'datetime'
-        ? { dateStyle: 'medium', timeStyle: 'short' }
-        : { dateStyle: 'medium' };
+        ? { dateStyle, timeStyle, timeZone }
+        : { dateStyle, timeZone };
       node.textContent = new Intl.DateTimeFormat(undefined, options).format(date);
     });
   };

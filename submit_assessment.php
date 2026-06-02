@@ -864,7 +864,7 @@ if ($qid) {
             $currentAnswers[$answerRow['linkId']] = is_array($decoded) ? $decoded : [];
         }
         if ($flashNotice === '' && !empty($currentResponse['created_at'])) {
-            $savedAt = date('F j, Y g:i a', strtotime($currentResponse['created_at']));
+            $savedAt = app_format_display_datetime($currentResponse['created_at'], $locale, $cfg, 'long', 'short');
             $template = t($t, 'editing_draft_from', 'You are editing a saved draft from %s.');
             $flashNotice = sprintf($template, $savedAt);
         }

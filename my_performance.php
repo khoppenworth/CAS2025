@@ -150,13 +150,10 @@ while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
 }
 $nextAssessmentRaw = $user['next_assessment_date'] ?? null;
 $nextAssessmentDisplay = null;
+$nextAssessmentIso = '';
 if ($nextAssessmentRaw) {
-    $dt = DateTime::createFromFormat('Y-m-d', (string)$nextAssessmentRaw);
-    if ($dt instanceof DateTime) {
-        $nextAssessmentDisplay = $dt->format('F j, Y');
-    } else {
-        $nextAssessmentDisplay = $nextAssessmentRaw;
-    }
+    $nextAssessmentDisplay = app_format_display_date($nextAssessmentRaw, $locale, $cfg, 'long');
+    $nextAssessmentIso = (string)$nextAssessmentRaw;
 }
 
 $sectionBreakdowns = compute_section_breakdowns($pdo, array_values($latestScores), $t);
@@ -250,7 +247,7 @@ $pageHelpKey = 'workspace.my_performance';
       <p><?=t($t,'no_submissions_yet','No submissions recorded yet. Complete your first assessment to see insights.')?></p>
     <?php endif; ?>
     <?php if ($nextAssessmentDisplay): ?>
-      <p><?=t($t,'next_assessment_scheduled','Next assessment scheduled:')?> <?=htmlspecialchars($nextAssessmentDisplay)?></p>
+      <p><?=t($t,'next_assessment_scheduled','Next assessment scheduled:')?> <span data-client-date="<?=htmlspecialchars($nextAssessmentIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date" data-client-date-style="long"><?=htmlspecialchars($nextAssessmentDisplay, ENT_QUOTES, 'UTF-8')?></span></p>
     <?php else: ?>
       <p class="md-muted"><?=t($t,'next_assessment_not_set','Your next assessment date has not been scheduled yet.')?></p>
     <?php endif; ?>

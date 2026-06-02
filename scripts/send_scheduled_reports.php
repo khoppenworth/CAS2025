@@ -55,11 +55,11 @@ foreach ($schedules as $schedule) {
         $generatedAt = $snapshot['generated_at'];
         $filename = analytics_report_filename($snapshot['selected_questionnaire_id'], $generatedAt);
         $siteName = trim((string)($cfg['site_name'] ?? 'HR Assessment'));
-        $subject = ($siteName !== '' ? $siteName : 'HR Assessment') . ' analytics report - ' . $generatedAt->format('Y-m-d');
+        $subject = ($siteName !== '' ? $siteName : 'HR Assessment') . ' analytics report - ' . app_format_display_date($generatedAt, $locale ?? null, $cfg);
         $bodyLines = [
             'Hello,',
             '',
-            'Attached is the scheduled analytics report generated on ' . $generatedAt->format('Y-m-d H:i') . '.',
+            'Attached is the scheduled analytics report generated on ' . app_format_display_datetime($generatedAt, $locale ?? null, $cfg, 'medium', 'short', true) . '.',
         ];
         if ($includeDetails && !empty($snapshot['selected_questionnaire_title'])) {
             $bodyLines[] = 'Questionnaire focus: ' . $snapshot['selected_questionnaire_title'];

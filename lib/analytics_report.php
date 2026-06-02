@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/simple_pdf.php';
+require_once __DIR__ . '/date_format.php';
 require_once __DIR__ . '/performance_sections.php';
 require_once __DIR__ . '/scoring.php';
 
@@ -426,7 +427,8 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
     /** @var DateTimeImmutable $generatedAt */
     $generatedAt = $snapshot['generated_at'];
-    $pdf->addParagraph('Generated on ' . $generatedAt->format('Y-m-d H:i'));
+    $locale = function_exists('ensure_locale') ? ensure_locale() : null;
+    $pdf->addParagraph('Generated on ' . app_format_display_datetime($generatedAt, $locale, $cfg, 'medium', 'short', true));
 
     $summary = $snapshot['summary'];
     $isFullCompetencyReport = !empty($snapshot['include_details']);
@@ -447,7 +449,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addParagraph('Assessment Period: ' . $assessmentPeriod);
     $pdf->addParagraph('Total Participants: ' . analytics_report_format_number($snapshot['total_participants'] ?? 0));
     $pdf->addParagraph('Departments Covered: ' . analytics_report_format_number($departmentsCovered));
-    $pdf->addParagraph('Assessment Date: ' . $generatedAt->format('Y-m-d'));
+    $pdf->addParagraph('Assessment Date: ' . app_format_display_date($generatedAt, $locale, $cfg));
     $pdf->addParagraph('Overall Organizational Competency Score: ' . analytics_report_format_score($avgScore));
     $pdf->addParagraph('Competency Level Classification: ' . $competencyLevel);
     $pdf->addBulletList([
@@ -2025,12 +2027,9 @@ function analytics_report_format_date($value): string
     if (!$value) {
         return '-';
     }
-    try {
-        $dt = new DateTimeImmutable((string)$value);
-        return $dt->format('Y-m-d H:i');
-    } catch (Throwable $e) {
-        return (string)$value;
-    }
+
+    $locale = function_exists('ensure_locale') ? ensure_locale() : null;
+    return app_format_display_datetime($value, $locale, null, 'medium', 'short', true, '-');
 }
 
 function analytics_report_filename(?int $questionnaireId, DateTimeInterface $generatedAt): string
