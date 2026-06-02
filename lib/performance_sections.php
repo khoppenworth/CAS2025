@@ -79,7 +79,7 @@ function performance_sections_supports_item_conditions(PDO $pdo): bool
     return false;
 }
 
-function compute_section_breakdowns(PDO $pdo, array $responses, array $translations): array
+function compute_section_breakdowns(PDO $pdo, array $responses, array $translations, bool $keyByResponse = false): array
 {
     if (!$responses) {
         return [];
@@ -102,6 +102,8 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             'title' => (string)($response['title'] ?? ''),
             'period' => $response['period_label'] ?? null,
             'score' => $response['score'] ?? null,
+            'family_key' => (string)($response['questionnaire_family_key'] ?? ''),
+            'created_at' => (string)($response['created_at'] ?? ''),
         ];
     }
 
@@ -369,9 +371,15 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             if ($title === '') {
                 $title = $questionnaireFallback;
             }
-            $sectionBreakdowns[$qid] = [
+            $breakdownKey = $keyByResponse ? $responseId : $qid;
+            $sectionBreakdowns[$breakdownKey] = [
+                'response_id' => $responseId,
+                'questionnaire_id' => $qid,
+                'family_key' => $meta['family_key'] !== '' ? $meta['family_key'] : 'questionnaire-' . $qid,
                 'title' => $title,
                 'period' => $meta['period'] ? (string)$meta['period'] : null,
+                'score' => $meta['score'],
+                'created_at' => $meta['created_at'],
                 'sections' => $sections,
             ];
         }
