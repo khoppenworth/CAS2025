@@ -35,6 +35,33 @@ function analytics_supports_section_include_in_scoring(PDO $pdo): bool
     return false;
 }
 
+
+function analytics_supports_item_conditions(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    try {
+        $stmt = $pdo->query('SHOW COLUMNS FROM questionnaire_item');
+        $columns = [];
+        foreach ($stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
+            $field = (string)($row['Field'] ?? '');
+            if ($field !== '') {
+                $columns[$field] = true;
+            }
+        }
+        $cached = isset($columns['condition_source_linkid'], $columns['condition_operator'], $columns['condition_value']);
+        return $cached;
+    } catch (Throwable $e) {
+        error_log('analytics condition schema lookup failed: ' . $e->getMessage());
+    }
+
+    $cached = false;
+    return false;
+}
+
 function analytics_questionnaire_family_key(array $row): string
 {
     $familyKey = trim((string)($row['family_key'] ?? ''));
@@ -82,7 +109,11 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
     $includeSelect = analytics_supports_section_include_in_scoring($pdo)
         ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
         : '1 AS include_in_scoring ';
+    $conditionSelect = analytics_supports_item_conditions($pdo)
+        ? 'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, '
+        : 'NULL AS condition_source_linkid, NULL AS condition_operator, NULL AS condition_value, ';
     $sql = 'SELECT qi.id, qi.questionnaire_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, '
+        . $conditionSelect
         . $includeSelect
         . 'FROM questionnaire_item qi '
         . 'LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
@@ -104,6 +135,9 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
             'type' => (string)($row['type'] ?? ''),
             'allow_multiple' => !empty($row['allow_multiple']),
             'requires_correct' => !empty($row['requires_correct']),
+            'condition_source_linkid' => (string)($row['condition_source_linkid'] ?? ''),
+            'condition_operator' => (string)($row['condition_operator'] ?? ''),
+            'condition_value' => (string)($row['condition_value'] ?? ''),
             'include_in_scoring' => !empty($row['include_in_scoring']),
         ];
         if ($itemId > 0) {
@@ -142,6 +176,9 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
             $itemsByQuestionnaire[$qid][] = [
                 'linkId' => (string)($item['linkId'] ?? ''),
                 'correct_value' => $correctValue,
+                'condition_source_linkid' => (string)($item['condition_source_linkid'] ?? ''),
+                'condition_operator' => (string)($item['condition_operator'] ?? ''),
+                'condition_value' => (string)($item['condition_value'] ?? ''),
             ];
         }
     }
@@ -186,7 +223,11 @@ function analytics_compute_response_score(array $items, array $answers): ?float
 {
     $correctCount = 0;
     $totalCount = 0;
+    $conditionValues = questionnaire_collect_condition_values_from_answers($answers);
     foreach ($items as $item) {
+        if (!questionnaire_item_matches_condition($item, $conditionValues)) {
+            continue;
+        }
         $correctValue = (string)($item['correct_value'] ?? '');
         if ($correctValue === '') {
             continue;
@@ -618,8 +659,11 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
         $itemIncludeSelect = $supportsSectionIncludeInScoring
             ? 'COALESCE(qs.include_in_scoring,1) AS include_in_scoring '
             : '1 AS include_in_scoring ';
+        $itemConditionSelect = analytics_supports_item_conditions($pdo)
+            ? 'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, '
+            : 'NULL AS condition_source_linkid, NULL AS condition_operator, NULL AS condition_value, ';
         $itemStmt = $pdo->prepare(
-            'SELECT qi.id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, ' . $itemIncludeSelect
+            'SELECT qi.id, qi.section_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, ' . $itemConditionSelect . $itemIncludeSelect
             . 'FROM questionnaire_item qi LEFT JOIN questionnaire_section qs ON qs.id = qi.section_id '
             . 'WHERE qi.questionnaire_id=? ORDER BY qi.order_index, qi.id'
         );
@@ -685,6 +729,9 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
                 'section_key' => $sectionKey,
                 'linkId' => (string)($itemRow['linkId'] ?? ''),
                 'correct_value' => $correctValue,
+                'condition_source_linkid' => (string)($itemRow['condition_source_linkid'] ?? ''),
+                'condition_operator' => (string)($itemRow['condition_operator'] ?? ''),
+                'condition_value' => (string)($itemRow['condition_value'] ?? ''),
             ];
         }
         if ($hasUnassignedIncluded) {
@@ -717,6 +764,7 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
             foreach ($selectedResponses as $row) {
                 $responseId = (int)($row['id'] ?? 0);
                 $answers = $answersByResponse[$responseId] ?? [];
+                $conditionValues = questionnaire_collect_condition_values_from_answers($answers);
 
                 $sectionStats = [];
                 foreach ($sectionColumns as $col) {
@@ -724,6 +772,9 @@ if ($selectedQuestionnaireId && $selectedQuestionnaireFamilyKey !== '') {
                 }
 
                 foreach ($scoringItems as $item) {
+                    if (!questionnaire_item_matches_condition($item, $conditionValues)) {
+                        continue;
+                    }
                     $sectionKey = $item['section_key'];
                     if (!isset($sectionStats[$sectionKey])) {
                         continue;

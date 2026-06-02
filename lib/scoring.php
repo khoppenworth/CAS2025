@@ -214,6 +214,140 @@ function questionnaire_answer_is_correct(array $answerSet, string $correctValue)
     return false;
 }
 
+
+/**
+ * Normalize a questionnaire condition linkId or HTML field name.
+ */
+function questionnaire_normalize_condition_link_id(string $value): string
+{
+    $normalized = trim($value);
+    if ($normalized === '') {
+        return '';
+    }
+    if (str_starts_with(strtolower($normalized), 'item_')) {
+        $normalized = substr($normalized, 5);
+    }
+    if (str_ends_with($normalized, '[]')) {
+        $normalized = substr($normalized, 0, -2);
+    }
+    return strtolower(trim($normalized));
+}
+
+/**
+ * Extract condition-comparable values from stored QuestionnaireResponse answers.
+ *
+ * @param array<string, array<int, mixed>> $answersByLinkId
+ * @return array<string, array<int, string>>
+ */
+function questionnaire_collect_condition_values_from_answers(array $answersByLinkId): array
+{
+    $valuesByLinkId = [];
+    foreach ($answersByLinkId as $linkId => $answerEntries) {
+        if (!is_string($linkId)) {
+            continue;
+        }
+        $normalizedLinkId = questionnaire_normalize_condition_link_id($linkId);
+        if ($normalizedLinkId === '' || !is_array($answerEntries)) {
+            continue;
+        }
+        $values = [];
+        foreach ($answerEntries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            foreach (['valueString', 'valueInteger', 'valueBoolean'] as $key) {
+                if (!array_key_exists($key, $entry)) {
+                    continue;
+                }
+                $raw = $entry[$key];
+                if ($key === 'valueBoolean') {
+                    $text = !empty($raw) ? 'true' : 'false';
+                } elseif (is_scalar($raw) || $raw === null) {
+                    $text = trim((string)$raw);
+                } else {
+                    $text = '';
+                }
+                if ($text !== '') {
+                    $values[] = $text;
+                }
+            }
+            if (isset($entry['valueCoding']) && is_array($entry['valueCoding'])) {
+                foreach (['code', 'display'] as $codingKey) {
+                    if (isset($entry['valueCoding'][$codingKey]) && is_scalar($entry['valueCoding'][$codingKey])) {
+                        $text = trim((string)$entry['valueCoding'][$codingKey]);
+                        if ($text !== '') {
+                            $values[] = $text;
+                        }
+                    }
+                }
+            }
+        }
+        if ($values) {
+            $valuesByLinkId[$normalizedLinkId] = $values;
+        }
+    }
+    return $valuesByLinkId;
+}
+
+/**
+ * Determine whether a questionnaire item is visible for a submitted answer set.
+ *
+ * @param array<string, mixed> $item
+ * @param array<string, array<int, string>> $valuesByLinkId
+ */
+function questionnaire_item_matches_condition(array $item, array $valuesByLinkId): bool
+{
+    $source = questionnaire_normalize_condition_link_id((string)($item['condition_source_linkid'] ?? ''));
+    if ($source === '') {
+        return true;
+    }
+
+    $operator = strtolower(trim((string)($item['condition_operator'] ?? 'equals')));
+    if ($operator === '') {
+        $operator = 'equals';
+    }
+
+    $expected = trim((string)($item['condition_value'] ?? ''));
+    if ($expected === '') {
+        return true;
+    }
+    $expectedLower = function_exists('mb_strtolower') ? mb_strtolower($expected, 'UTF-8') : strtolower($expected);
+
+    if (!array_key_exists($source, $valuesByLinkId)) {
+        return false;
+    }
+
+    $candidateValues = [];
+    foreach (($valuesByLinkId[$source] ?? []) as $value) {
+        $candidateValues[] = trim((string)$value);
+    }
+
+    if ($operator === 'contains') {
+        if ($expectedLower === '') {
+            return false;
+        }
+        foreach ($candidateValues as $candidate) {
+            $candidateLower = function_exists('mb_strtolower') ? mb_strtolower($candidate, 'UTF-8') : strtolower($candidate);
+            if ($candidateLower !== '' && str_contains($candidateLower, $expectedLower)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    $normalizedCandidates = [];
+    foreach ($candidateValues as $candidate) {
+        $normalizedCandidates[] = function_exists('mb_strtolower')
+            ? mb_strtolower((string)$candidate, 'UTF-8')
+            : strtolower((string)$candidate);
+    }
+    $equals = in_array($expectedLower, $normalizedCandidates, true);
+    if ($operator === 'not_equals') {
+        return !$equals;
+    }
+    return $equals;
+}
+
 /**
  * Resolve a competency level label from a score percentage.
  */
