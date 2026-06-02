@@ -511,7 +511,7 @@
   "password_too_short": "Password must be at least 8 characters and include at least one number or symbol.",
   "pause": "Pause",
   "pending_account_notice": "Your account is pending supervisor approval. You can update your profile while you wait.",
-  "pending_accounts": "Pending approvals",
+  "pending_accounts": "User Approval",
   "pending_accounts_summary": "Approve or reject incoming access requests.",
   "pending_reviews": "Pending reviews",
   "pending_submissions": "Pending Submissions",

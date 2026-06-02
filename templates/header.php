@@ -411,7 +411,7 @@ if ($profileInitials === '') {
           <li>
             <a href="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.pending_accounts')?>>
               <span class="md-topnav-link-content">
-                <span class="md-topnav-link-title"><?=t($t, 'pending_accounts', 'Pending Approvals')?></span>
+                <span class="md-topnav-link-title"><?=t($t, 'pending_accounts', 'User Approval')?></span>
               </span>
               <span class="md-topnav-link-icon" aria-hidden="true">&rsaquo;</span>
             </a>
