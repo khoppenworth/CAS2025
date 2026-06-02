@@ -148,15 +148,116 @@ while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
         'order' => count($timelinePoints),
     ];
 }
-$nextAssessmentRaw = $user['next_assessment_date'] ?? null;
-$nextAssessmentDisplay = null;
-$nextAssessmentIso = '';
-if ($nextAssessmentRaw) {
-    $nextAssessmentDisplay = app_format_display_date($nextAssessmentRaw, $locale, $cfg, 'long');
-    $nextAssessmentIso = (string)$nextAssessmentRaw;
+$latestSubmissionRaw = $latestEntry['created_at'] ?? null;
+$latestSubmissionDisplay = null;
+$latestSubmissionIso = '';
+if ($latestSubmissionRaw) {
+    $latestSubmissionDate = DateTime::createFromFormat('Y-m-d H:i:s', (string)$latestSubmissionRaw) ?: new DateTime((string)$latestSubmissionRaw);
+    if ($latestSubmissionDate instanceof DateTime) {
+        $latestSubmissionDisplay = app_format_display_date($latestSubmissionDate->format('Y-m-d'), $locale, $cfg, 'long');
+        $latestSubmissionIso = $latestSubmissionDate->format('Y-m-d');
+    }
 }
 
-$sectionBreakdowns = compute_section_breakdowns($pdo, array_values($latestScores), $t);
+$nextAssessmentDisplay = null;
+$nextAssessmentIso = '';
+if ($latestSubmissionRaw) {
+    $nextAssessmentDate = DateTime::createFromFormat('Y-m-d H:i:s', (string)$latestSubmissionRaw) ?: new DateTime((string)$latestSubmissionRaw);
+    if ($nextAssessmentDate instanceof DateTime) {
+        $nextAssessmentDate->modify('+1 year');
+        $nextAssessmentIso = $nextAssessmentDate->format('Y-m-d');
+        $nextAssessmentDisplay = app_format_display_date($nextAssessmentIso, $locale, $cfg, 'long');
+    }
+}
+
+$departmentDisplay = '';
+if (function_exists('department_label')) {
+    $departmentDisplay = department_label($pdo, (string)($user['department'] ?? ''));
+}
+if ($departmentDisplay === '') {
+    $departmentDisplay = (string)($user['department'] ?? '');
+}
+$positionDisplay = $userWorkFunctionLabel !== '' ? $userWorkFunctionLabel : (string)($user['work_function'] ?? '');
+if ($positionDisplay === '') {
+    $positionDisplay = (string)($user['profile_role'] ?? '');
+}
+$overviewTitle = $latestEntry ? (string)($latestEntry['title'] ?? '') : t($t, 'performance_overview', 'My Overview');
+
+$sectionBreakdownHistory = compute_section_breakdowns($pdo, $responses, $t, true);
+$radarCards = [];
+foreach ($sectionBreakdownHistory as $breakdown) {
+    if (empty($breakdown['sections']) || !is_array($breakdown['sections'])) {
+        continue;
+    }
+    $familyKey = (string)($breakdown['family_key'] ?? '');
+    if ($familyKey === '') {
+        $familyKey = 'questionnaire-' . (int)($breakdown['questionnaire_id'] ?? 0);
+    }
+    $createdAt = (string)($breakdown['created_at'] ?? '');
+    $createdTime = $createdAt !== '' ? strtotime($createdAt) : false;
+    $submissionLabel = resolve_timeline_label([
+        'period_start' => null,
+        'period_label' => $breakdown['period'] ?? '',
+        'created_at' => $createdAt,
+    ]);
+    if ($submissionLabel === '' && $createdTime) {
+        $submissionLabel = date('Y', $createdTime);
+    }
+    if ($submissionLabel === '') {
+        $submissionLabel = t($t, 'submission', 'Submission');
+    }
+
+    if (!isset($radarCards[$familyKey])) {
+        $radarCards[$familyKey] = [
+            'id' => preg_replace('/[^A-Za-z0-9_-]+/', '-', $familyKey),
+            'title' => (string)($breakdown['title'] ?? ''),
+            'latest_period' => $breakdown['period'] ?? null,
+            'latest_created_at' => $createdAt,
+            'latest_time' => $createdTime ?: 0,
+            'labels' => [],
+            'layers' => [],
+        ];
+    }
+
+    if (($createdTime ?: 0) >= (int)($radarCards[$familyKey]['latest_time'] ?? 0)) {
+        $radarCards[$familyKey]['title'] = (string)($breakdown['title'] ?? $radarCards[$familyKey]['title']);
+        $radarCards[$familyKey]['latest_period'] = $breakdown['period'] ?? null;
+        $radarCards[$familyKey]['latest_created_at'] = $createdAt;
+        $radarCards[$familyKey]['latest_time'] = $createdTime ?: 0;
+        $latestLabels = array_map(static fn($section) => (string)($section['label'] ?? ''), $breakdown['sections']);
+        foreach ($radarCards[$familyKey]['labels'] as $existingLabel) {
+            if ($existingLabel !== '' && !in_array($existingLabel, $latestLabels, true)) {
+                $latestLabels[] = $existingLabel;
+            }
+        }
+        $radarCards[$familyKey]['labels'] = $latestLabels;
+    }
+
+    $scoresByLabel = [];
+    foreach ($breakdown['sections'] as $section) {
+        $label = (string)($section['label'] ?? '');
+        if ($label === '') {
+            continue;
+        }
+        $scoresByLabel[$label] = isset($section['score']) ? (float)$section['score'] : null;
+        if (!in_array($label, $radarCards[$familyKey]['labels'], true)) {
+            $radarCards[$familyKey]['labels'][] = $label;
+        }
+    }
+
+    $radarCards[$familyKey]['layers'][] = [
+        'label' => $submissionLabel,
+        'period' => $breakdown['period'] ?? null,
+        'created_at' => $createdAt,
+        'time' => $createdTime ?: 0,
+        'score' => $breakdown['score'] ?? null,
+        'scores' => $scoresByLabel,
+    ];
+}
+foreach ($radarCards as &$radarCard) {
+    usort($radarCard['layers'], static fn($a, $b) => ((int)($a['time'] ?? 0)) <=> ((int)($b['time'] ?? 0)));
+}
+unset($radarCard);
 $chartDataFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 if (defined('JSON_THROW_ON_ERROR')) {
     $chartDataFlags |= JSON_THROW_ON_ERROR;
@@ -240,17 +341,35 @@ $pageHelpKey = 'workspace.my_performance';
         <?=t($t,'download_performance_pdf','Download PDF')?>
       </a>
     </div>
-    <p><?=t($t,'current_work_function','Current work function:')?> <?=htmlspecialchars($userWorkFunctionLabel !== '' ? $userWorkFunctionLabel : (string)($user['work_function'] ?? ''), ENT_QUOTES, 'UTF-8')?></p>
-    <?php if ($latestEntry): ?>
-      <p><?=t($t,'latest_submission','Latest submission:')?> <?=htmlspecialchars($latestEntry['period_label'])?> · <?=htmlspecialchars($latestEntry['title'])?> (<?= is_null($latestEntry['score']) ? '-' : (int)$latestEntry['score'] ?>%)</p>
-    <?php else: ?>
-      <p><?=t($t,'no_submissions_yet','No submissions recorded yet. Complete your first assessment to see insights.')?></p>
-    <?php endif; ?>
-    <?php if ($nextAssessmentDisplay): ?>
-      <p><?=t($t,'next_assessment_scheduled','Next assessment scheduled:')?> <span data-client-date="<?=htmlspecialchars($nextAssessmentIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date" data-client-date-style="long"><?=htmlspecialchars($nextAssessmentDisplay, ENT_QUOTES, 'UTF-8')?></span></p>
-    <?php else: ?>
-      <p class="md-muted"><?=t($t,'next_assessment_not_set','Your next assessment date has not been scheduled yet.')?></p>
-    <?php endif; ?>
+    <div class="md-overview-card" aria-label="<?=htmlspecialchars(t($t,'performance_overview','My Overview'), ENT_QUOTES, 'UTF-8')?>">
+      <dl class="md-overview-details">
+        <div>
+          <dt><?=t($t,'title','Title')?></dt>
+          <dd><?=htmlspecialchars($overviewTitle !== '' ? $overviewTitle : '—', ENT_QUOTES, 'UTF-8')?></dd>
+        </div>
+        <div>
+          <dt><?=t($t,'name_position','Name / Position')?></dt>
+          <dd><?=htmlspecialchars(trim((string)($user['full_name'] ?? '')) !== '' ? trim((string)($user['full_name'] ?? '')) : (string)($user['email'] ?? '—'), ENT_QUOTES, 'UTF-8')?><?= $positionDisplay !== '' ? ' / ' . htmlspecialchars($positionDisplay, ENT_QUOTES, 'UTF-8') : '' ?></dd>
+        </div>
+        <div>
+          <dt><?=t($t,'department','Department')?></dt>
+          <dd><?=htmlspecialchars($departmentDisplay !== '' ? $departmentDisplay : '—', ENT_QUOTES, 'UTF-8')?></dd>
+        </div>
+        <div>
+          <dt><?=t($t,'last_submission_date','Last submission date')?></dt>
+          <dd><?php if ($latestSubmissionDisplay): ?><span data-client-date="<?=htmlspecialchars($latestSubmissionIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date" data-client-date-style="long"><?=htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8')?></span><?php else: ?>—<?php endif; ?></dd>
+        </div>
+        <div>
+          <dt><?=t($t,'next_assessment_date','Next assessment date')?></dt>
+          <dd><?php if ($nextAssessmentDisplay): ?><span data-client-date="<?=htmlspecialchars($nextAssessmentIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="date" data-client-date-style="long"><?=htmlspecialchars($nextAssessmentDisplay, ENT_QUOTES, 'UTF-8')?></span><?php else: ?>—<?php endif; ?></dd>
+        </div>
+      </dl>
+      <?php if ($latestEntry): ?>
+        <p class="md-overview-footnote"><?=t($t,'latest_submission','Latest submission:')?> <?=htmlspecialchars($latestEntry['period_label'])?> · <?=htmlspecialchars($latestEntry['title'])?> (<?= is_null($latestEntry['score']) ? '-' : (int)$latestEntry['score'] ?>%)</p>
+      <?php else: ?>
+        <p class="md-overview-footnote"><?=t($t,'no_submissions_yet','No submissions recorded yet. Complete your first assessment to see insights.')?></p>
+      <?php endif; ?>
+    </div>
     <?php if ($draftResponses): ?>
       <div class="md-alert warning md-draft-alert">
         <strong><?=t($t,'draft_pending_title','Saved drafts awaiting submission')?>:</strong>
@@ -266,19 +385,23 @@ $pageHelpKey = 'workspace.my_performance';
       </div>
     <?php endif; ?>
   </div>
-  <?php if ($sectionBreakdowns): ?>
+  <?php if ($radarCards): ?>
     <div class="md-card md-elev-2">
       <h2 class="md-card-title"><?=t($t,'section_breakdown','Section score radar')?></h2>
-      <p><?=t($t,'section_breakdown_hint','Each radar shows how your latest submission performed across questionnaire sections.')?></p>
+      <p><?=t($t,'section_breakdown_hint','Each radar shows the latest section scores, with earlier submissions layered when available to illustrate progress.')?></p>
       <div class="md-radar-grid">
-        <?php foreach ($sectionBreakdowns as $qid => $radar): ?>
+        <?php foreach ($radarCards as $radar): ?>
           <div class="md-radar-card">
             <h3 class="md-radar-title"><?=htmlspecialchars($radar['title'], ENT_QUOTES, 'UTF-8')?></h3>
-            <?php if (!empty($radar['period'])): ?>
-              <p class="md-radar-meta"><?=htmlspecialchars($radar['period'], ENT_QUOTES, 'UTF-8')?></p>
-            <?php endif; ?>
+            <p class="md-radar-meta">
+              <?=t($t,'latest_submission','Latest submission:')?>
+              <?=htmlspecialchars((string)($radar['latest_period'] ?? ''), ENT_QUOTES, 'UTF-8')?>
+              <?php if (!empty($radar['latest_created_at'])): ?>
+                · <?=htmlspecialchars((string)$radar['latest_created_at'], ENT_QUOTES, 'UTF-8')?>
+              <?php endif; ?>
+            </p>
             <div class="md-radar-canvas">
-              <canvas id="radar-chart-<?=$qid?>" role="img" aria-label="<?=htmlspecialchars(sprintf(t($t,'section_score_chart_alt','Section scores for %s'), $radar['title']), ENT_QUOTES, 'UTF-8')?>"></canvas>
+              <canvas id="radar-chart-<?=htmlspecialchars($radar['id'], ENT_QUOTES, 'UTF-8')?>" role="img" aria-label="<?=htmlspecialchars(sprintf(t($t,'section_score_chart_alt','Section scores for %s'), $radar['title']), ENT_QUOTES, 'UTF-8')?>"></canvas>
             </div>
           </div>
         <?php endforeach; ?>
@@ -358,7 +481,7 @@ $pageHelpKey = 'workspace.my_performance';
     <?php endif; ?>
   </div>
 </section>
-<?php $hasChartJs = !empty($chartLabels) || !empty($sectionBreakdowns); ?>
+<?php $hasChartJs = !empty($chartLabels) || !empty($radarCards); ?>
 <?php if ($hasChartJs): ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   (function () {
@@ -367,7 +490,7 @@ $pageHelpKey = 'workspace.my_performance';
       'scores' => array_map(static fn($score) => $score === null ? null : (float)$score, $chartScores),
       'points' => $timelinePoints,
     ], $chartDataFlags)?>;
-    const radarData = <?=json_encode($sectionBreakdowns, $chartDataFlags)?>;
+    const radarData = <?=json_encode(array_values($radarCards), $chartDataFlags)?>;
     const rootStyles = getComputedStyle(document.documentElement);
 
     const cssVar = (name, fallback) => {
@@ -663,26 +786,41 @@ $pageHelpKey = 'workspace.my_performance';
     }
 
     function renderRadars(chartLib) {
-      if (!radarData) {
+      if (!Array.isArray(radarData) || !radarData.length) {
         return;
       }
-      let paletteIndex = 0;
       const major = parseMajorVersion(chartLib);
       const isModern = major >= 3;
 
-      Object.keys(radarData).forEach((qid) => {
-        const canvas = document.getElementById(`radar-chart-${qid}`);
-        if (!canvas) {
+      radarData.forEach((card) => {
+        const canvas = document.getElementById(`radar-chart-${card.id}`);
+        if (!canvas || !Array.isArray(card.labels) || !card.labels.length || !Array.isArray(card.layers) || !card.layers.length) {
           return;
         }
-        const dataset = radarData[qid];
-        if (!dataset || !Array.isArray(dataset.sections) || !dataset.sections.length) {
-          return;
-        }
-        const labels = dataset.sections.map((section) => section.label);
-        const values = dataset.sections.map((section) => Number(section.score) || 0);
-        const colors = radarPalette[paletteIndex % radarPalette.length];
-        paletteIndex += 1;
+
+        const labels = card.labels.map((label) => String(label || ''));
+        const chartDatasets = card.layers.map((layer, index) => {
+          const colors = radarPalette[index % radarPalette.length];
+          const scores = layer.scores && typeof layer.scores === 'object' ? layer.scores : {};
+          const values = labels.map((label) => {
+            const raw = scores[label];
+            const parsed = typeof raw === 'number' ? raw : Number.parseFloat(raw);
+            return Number.isFinite(parsed) ? parsed : null;
+          });
+          const isLatest = index === card.layers.length - 1;
+          return {
+            label: layer.label || card.title || '',
+            data: values,
+            fill: true,
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            borderWidth: isLatest ? 3 : 1.5,
+            pointBackgroundColor: colors.border,
+            pointBorderColor: cssVar('--app-surface', '--brand-bg'),
+            pointRadius: isLatest ? 4 : 3,
+            pointHoverRadius: 5,
+          };
+        });
 
         const radarOptions = {
           responsive: true,
@@ -691,13 +829,14 @@ $pageHelpKey = 'workspace.my_performance';
 
         if (isModern) {
           radarOptions.plugins = {
-            legend: { display: false },
+            legend: { display: chartDatasets.length > 1, position: 'bottom' },
             tooltip: {
               callbacks: {
                 label: (context) => {
                   const raw = context.parsed && typeof context.parsed.r === 'number' ? context.parsed.r : context.parsed;
                   const rounded = typeof raw === 'number' ? raw.toFixed(1) : raw;
-                  return `${context.label}: ${rounded}%`;
+                  const datasetLabel = context.dataset && context.dataset.label ? `${context.dataset.label} · ` : '';
+                  return `${datasetLabel}${context.label}: ${rounded}%`;
                 },
               },
             },
@@ -716,13 +855,15 @@ $pageHelpKey = 'workspace.my_performance';
             },
           };
         } else {
-          radarOptions.legend = { display: false };
+          radarOptions.legend = { display: chartDatasets.length > 1, position: 'bottom' };
           radarOptions.tooltips = {
             callbacks: {
-              label: (tooltipItem) => {
+              label: (tooltipItem, data) => {
                 const value = typeof tooltipItem.yLabel === 'number' ? tooltipItem.yLabel.toFixed(1) : tooltipItem.yLabel;
                 const label = tooltipItem.label || '';
-                return `${label}: ${value}%`;
+                const dataset = data.datasets && data.datasets[tooltipItem.datasetIndex] ? data.datasets[tooltipItem.datasetIndex] : {};
+                const datasetLabel = dataset.label ? `${dataset.label} · ` : '';
+                return `${datasetLabel}${label}: ${value}%`;
               },
             },
           };
@@ -744,18 +885,7 @@ $pageHelpKey = 'workspace.my_performance';
           type: 'radar',
           data: {
             labels,
-            datasets: [{
-              label: dataset.title,
-              data: values,
-              fill: true,
-              backgroundColor: colors.bg,
-              borderColor: colors.border,
-              borderWidth: 2,
-              pointBackgroundColor: colors.border,
-              pointBorderColor: cssVar('--app-surface', '--brand-bg'),
-              pointRadius: 4,
-              pointHoverRadius: 5,
-            }],
+            datasets: chartDatasets,
           },
           options: radarOptions,
         });
