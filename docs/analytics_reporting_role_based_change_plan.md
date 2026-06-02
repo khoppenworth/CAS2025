@@ -45,7 +45,7 @@ This avoids breaking authorization while enabling the requested role-based repor
 
 Create `competency_level_band`:
 
-- `name` (Not Proficient, Basic, Intermediate, Advanced, Expert)
+- `name` (Below Basics, Introductory, Essential, Advanced, Strategic)
 - `min_pct`, `max_pct`
 - `rank_order`
 - `is_system_default`

@@ -1153,16 +1153,16 @@ function ensure_competency_reporting_schema(PDO $pdo): void
         }
 
         $seedBands = [
-            ['Not Proficient', 0.00, 49.99, 1],
-            ['Basic Proficiency', 50.00, 64.99, 2],
-            ['Intermediate Proficiency', 65.00, 79.99, 3],
-            ['Advanced Proficiency', 80.00, 89.99, 4],
-            ['Expert', 90.00, 100.00, 5],
+            ['Below Basics', 0.00, 49.99, 1],
+            ['Introductory', 50.00, 59.99, 2],
+            ['Essential', 60.00, 69.99, 3],
+            ['Advanced', 70.00, 84.99, 4],
+            ['Strategic', 85.00, 100.00, 5],
         ];
         $bandStmt = $pdo->prepare(
             'INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default) '
             . 'VALUES (?, ?, ?, ?, 1) '
-            . 'ON DUPLICATE KEY UPDATE min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order)'
+            . 'ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order)'
         );
         foreach ($seedBands as $band) {
             $bandStmt->execute($band);
