@@ -412,6 +412,116 @@ function canonical_work_function_key(string $value, ?array $definitions = null):
     return $normalized;
 }
 
+
+/**
+ * Resolve the user's questionnaire access role from the strongest available role metadata.
+ *
+ * @param array<string,mixed> $user
+ */
+function user_questionnaire_work_role(PDO $pdo, array $user): string
+{
+    $definitions = work_function_definitions($pdo);
+    $candidates = [
+        (string)($user['work_function'] ?? ''),
+        (string)($user['business_role'] ?? ''),
+        (string)($user['profile_role'] ?? ''),
+    ];
+
+    foreach ($candidates as $candidate) {
+        $role = canonical_work_function_key($candidate, $definitions);
+        if ($role !== '' && isset($definitions[$role])) {
+            return $role;
+        }
+    }
+
+    $profileRole = canonical_work_function_key((string)($user['profile_role'] ?? ''), $definitions);
+    if ($profileRole === 'director_branch_manager' && isset($definitions['director'])) {
+        return 'director';
+    }
+    if ($profileRole === 'team_leader_coordinator' && isset($definitions['team_lead'])) {
+        return 'team_lead';
+    }
+    if (str_starts_with($profileRole, 'officer_level_') && isset($definitions['expert'])) {
+        return 'expert';
+    }
+
+    $businessRole = canonical_work_function_key((string)($user['business_role'] ?? ''), $definitions);
+    if ($businessRole === 'staff' && isset($definitions['expert'])) {
+        return 'expert';
+    }
+
+    return '';
+}
+
+/**
+ * Keep only questionnaires available to the supplied work role.
+ *
+ * Questionnaires without configured role rows remain visible for backwards compatibility.
+ *
+ * @param array<int,array<string,mixed>> $questionnaires
+ * @return array<int,array<string,mixed>>
+ */
+function filter_questionnaires_by_work_role(PDO $pdo, array $questionnaires, string $workRole): array
+{
+    if ($questionnaires === []) {
+        return [];
+    }
+
+    $questionnairesById = [];
+    foreach ($questionnaires as $questionnaire) {
+        $questionnaireId = (int)($questionnaire['id'] ?? 0);
+        if ($questionnaireId <= 0) {
+            continue;
+        }
+        $questionnairesById[$questionnaireId] = $questionnaire;
+    }
+
+    if ($questionnairesById === []) {
+        return [];
+    }
+
+    $definitions = work_function_definitions($pdo);
+    $canonicalRole = canonical_work_function_key($workRole, $definitions);
+    $roleRowsByQuestionnaire = [];
+
+    try {
+        $questionnaireIds = array_keys($questionnairesById);
+        $placeholders = implode(',', array_fill(0, count($questionnaireIds), '?'));
+        $roleFilterStmt = $pdo->prepare(
+            "SELECT questionnaire_id, work_function FROM questionnaire_work_function WHERE questionnaire_id IN ($placeholders)"
+        );
+        $roleFilterStmt->execute($questionnaireIds);
+        foreach ($roleFilterStmt->fetchAll(PDO::FETCH_ASSOC) as $roleRow) {
+            $questionnaireId = (int)($roleRow['questionnaire_id'] ?? 0);
+            if ($questionnaireId <= 0 || !isset($questionnairesById[$questionnaireId])) {
+                continue;
+            }
+            $allowedRole = canonical_work_function_key((string)($roleRow['work_function'] ?? ''), $definitions);
+            if ($allowedRole === '') {
+                continue;
+            }
+            $roleRowsByQuestionnaire[$questionnaireId][$allowedRole] = true;
+        }
+    } catch (PDOException $e) {
+        error_log('filter_questionnaires_by_work_role: ' . $e->getMessage());
+        return array_values($questionnairesById);
+    }
+
+    $filtered = [];
+    foreach ($questionnairesById as $questionnaireId => $questionnaire) {
+        $allowedRoles = $roleRowsByQuestionnaire[$questionnaireId] ?? [];
+        if ($allowedRoles === []) {
+            $filtered[$questionnaireId] = $questionnaire;
+            continue;
+        }
+        if ($canonicalRole !== '' && isset($allowedRoles[$canonicalRole])) {
+            $filtered[$questionnaireId] = $questionnaire;
+        }
+    }
+
+    return array_values($filtered);
+}
+
 function canonical(string $value, ?array $definitions = null): string
 {
     return canonical_work_function_key($value, $definitions);

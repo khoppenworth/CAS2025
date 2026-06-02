@@ -197,4 +197,49 @@ if (($catalog['finance']['label'] ?? '') !== 'Finance & Grants' || ($catalog['fi
 $pdo->exec("UPDATE work_function_catalog SET archived_at = NULL WHERE slug = 'finance'");
 reset_work_function_caches($pdo);
 
+$pdo->exec("DELETE FROM questionnaire_work_function");
+$pdo->exec("DELETE FROM questionnaire");
+$pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES (1, 'Director Exam', 'published'), (2, 'Officer Exam', 'published'), (3, 'General Exam', 'published')");
+$pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (1, 'director'), (2, 'expert')");
+
+$availableQuestionnaires = [
+    ['id' => 1, 'title' => 'Director Exam'],
+    ['id' => 2, 'title' => 'Officer Exam'],
+    ['id' => 3, 'title' => 'General Exam'],
+];
+
+$directorRole = user_questionnaire_work_role($pdo, [
+    'work_function' => '',
+    'business_role' => '',
+    'profile_role' => 'director_branch_manager',
+]);
+if ($directorRole !== 'director') {
+    fwrite(STDERR, "Director profile role should resolve to director questionnaire role.\n");
+    exit(1);
+}
+
+$directorQuestionnaires = filter_questionnaires_by_work_role($pdo, $availableQuestionnaires, $directorRole);
+$directorQuestionnaireIds = array_map(static fn(array $row): int => (int)$row['id'], $directorQuestionnaires);
+if ($directorQuestionnaireIds !== [1, 3]) {
+    fwrite(STDERR, "Director access should exclude officer-only questionnaires while preserving unscoped questionnaires.\n");
+    exit(1);
+}
+
+$officerRole = user_questionnaire_work_role($pdo, [
+    'work_function' => '',
+    'business_role' => '',
+    'profile_role' => 'officer_level_2',
+]);
+if ($officerRole !== 'expert') {
+    fwrite(STDERR, "Officer profile role should resolve to expert questionnaire role.\n");
+    exit(1);
+}
+
+$officerQuestionnaires = filter_questionnaires_by_work_role($pdo, $availableQuestionnaires, $officerRole);
+$officerQuestionnaireIds = array_map(static fn(array $row): int => (int)$row['id'], $officerQuestionnaires);
+if ($officerQuestionnaireIds !== [2, 3]) {
+    fwrite(STDERR, "Officer access should exclude director-only questionnaires while preserving unscoped questionnaires.\n");
+    exit(1);
+}
+
 echo "Work function assignment tests passed.\n";
