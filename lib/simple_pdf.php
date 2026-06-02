@@ -158,7 +158,8 @@ class SimplePdfDocument
 
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
-        $bulletPrefix = '• ';
+        // Use an ASCII-safe marker so rendered PDFs do not show mojibake for unicode bullets.
+        $bulletPrefix = '- ';
         foreach ($lines as $line) {
             $this->addTextBlock($bulletPrefix . (string)$line, $fontSize, 'F1', 1.35, false);
         }
