@@ -1759,6 +1759,12 @@ body.theme-dark .md-help-bubble::before {
   text-align: center;
 }
 
+.md-sso-btn__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
 .md-sso-btn.google {
   background: var(--app-surface);
   border: 1px solid var(--app-border-strong);
