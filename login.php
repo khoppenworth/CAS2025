@@ -88,8 +88,6 @@ $logoRenderPath = site_logo_url($cfg);
 $logo = htmlspecialchars($logoRenderPath, ENT_QUOTES, 'UTF-8');
 $logoAlt = htmlspecialchars($cfg['site_name'] ?? 'Logo', ENT_QUOTES, 'UTF-8');
 $siteName = htmlspecialchars($cfg['site_name'] ?? 'My Performance', ENT_QUOTES, 'UTF-8');
-$landingTextRaw = $cfg['landing_text'] ?? '';
-$landingText = htmlspecialchars($landingTextRaw, ENT_QUOTES, 'UTF-8');
 $address = htmlspecialchars($cfg['address'] ?? '', ENT_QUOTES, 'UTF-8');
 $contact = htmlspecialchars($cfg['contact'] ?? '', ENT_QUOTES, 'UTF-8');
 $bodyClassRaw = trim(site_body_classes($cfg) . ' md-login-page');
@@ -98,24 +96,8 @@ $bodyStyle = htmlspecialchars(site_body_style($cfg), ENT_QUOTES, 'UTF-8');
 $baseUrl = htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8');
 $langAttr = htmlspecialchars($locale, ENT_QUOTES, 'UTF-8');
 $brandStyle = site_brand_style($cfg);
-$introText = $landingText !== ''
-    ? $landingText
-    : htmlspecialchars(
-        t(
-            $t,
-            'welcome_msg',
-            'Sign in to start your self-assessment and track your performance over time.'
-        ),
-        ENT_QUOTES,
-        'UTF-8'
-    );
 $languageLabel = htmlspecialchars(t($t, 'language_label', 'Language'), ENT_QUOTES, 'UTF-8');
-$signInHeading = t($t, 'sign_in_heading', 'Welcome back');
-$signInSubheading = t(
-    $t,
-    'sign_in_subheading',
-    'Use your credentials to continue to your personalized workspace.'
-);
+$signInHeading = t($t, 'sign_in', 'Sign In');
 $formAction = htmlspecialchars(url_for('login.php'), ENT_QUOTES, 'UTF-8');
 $offlineRedirect = htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8');
 $offlineWarmRoutes = htmlspecialchars(implode(',', [
@@ -127,12 +109,6 @@ $offlineWarmRoutes = htmlspecialchars(implode(',', [
 $offlineUnavailable = htmlspecialchars(t($t, 'offline_login_unavailable', 'Offline login is not available yet. Connect to the internet and sign in once to enable offline access.'), ENT_QUOTES, 'UTF-8');
 $offlineInvalid = htmlspecialchars(t($t, 'offline_login_invalid', 'Offline sign-in failed. Double-check your username and password.'), ENT_QUOTES, 'UTF-8');
 $offlineError = htmlspecialchars(t($t, 'offline_login_error', 'We could not complete offline sign-in. Try again when you have a connection.'), ENT_QUOTES, 'UTF-8');
-$loginHighlights = [
-    htmlspecialchars(t($t, 'login_highlight_one', 'Single, secure access for every role.'), ENT_QUOTES, 'UTF-8'),
-    htmlspecialchars(t($t, 'login_highlight_two', 'Keep your assessments and feedback in sync.'), ENT_QUOTES, 'UTF-8'),
-    htmlspecialchars(t($t, 'login_highlight_three', 'Optimized for fast check-ins on any device.'), ENT_QUOTES, 'UTF-8'),
-];
-
 render_login:
 ?>
 <!doctype html>
@@ -157,30 +133,15 @@ render_login:
         <div class="login-visual__brand">
           <img src="<?= $logo ?>" alt="<?= $logoAlt ?>" class="login-visual__logo">
           <div>
-            <p class="login-visual__tagline"><?= htmlspecialchars(t($t, 'login_tagline', 'Secure staff performance portal'), ENT_QUOTES, 'UTF-8') ?></p>
             <h1 class="login-visual__title"><?= $siteName ?></h1>
           </div>
         </div>
-        <?php if ($introText !== ''): ?>
-          <p class="login-visual__intro"><?= $introText ?></p>
-        <?php endif; ?>
-        <ul class="login-visual__highlights" role="list">
-          <?php foreach ($loginHighlights as $highlight): ?>
-            <li>
-              <span class="login-visual__bullet" aria-hidden="true"></span>
-              <span><?= $highlight ?></span>
-            </li>
-          <?php endforeach; ?>
-        </ul>
       </div>
 
       <div class="login-panel">
         <section class="login-panel__card" aria-labelledby="sign-in-heading">
           <div class="login-panel__header">
             <h2 id="sign-in-heading"><?= htmlspecialchars($signInHeading, ENT_QUOTES, 'UTF-8') ?></h2>
-            <?php if (trim($signInSubheading) !== ''): ?>
-              <p><?= htmlspecialchars($signInSubheading, ENT_QUOTES, 'UTF-8') ?></p>
-            <?php endif; ?>
           </div>
 
           <?php if ($err !== ''): ?>
@@ -193,7 +154,15 @@ render_login:
                 <a
                   class="md-button md-elev-1 md-sso-btn <?= htmlspecialchars($provider, ENT_QUOTES, 'UTF-8') ?>"
                   href="<?= htmlspecialchars(url_for('oauth.php?provider=' . $provider), ENT_QUOTES, 'UTF-8') ?>"
-                ><?= $label ?></a>
+                ><?php if ($provider === 'google'): ?>
+                    <svg class="md-sso-btn__icon" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                      <path fill="#4285f4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/>
+                      <path fill="#34a853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.84.86-3.05.86-2.35 0-4.34-1.58-5.05-3.71H.96v2.33A9 9 0 0 0 9 18z"/>
+                      <path fill="#fbbc05" d="M3.95 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08l2.99-2.33z"/>
+                      <path fill="#ea4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.96l2.99 2.33C4.66 5.16 6.65 3.58 9 3.58z"/>
+                    </svg>
+                  <?php endif; ?>
+                  <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span></a>
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
