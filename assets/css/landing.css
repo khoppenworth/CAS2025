@@ -54,13 +54,16 @@ body.landing-body {
   justify-self: start;
   display: inline-flex;
   align-items: center;
+  max-inline-size: var(--landing-logo-max-width, clamp(96px, 16vw, 132px));
   text-decoration: none;
 }
 
 .landing-topbar__logo {
   display: block;
-  width: clamp(52px, 6vw, 68px);
-  height: clamp(52px, 6vw, 68px);
+  inline-size: auto;
+  block-size: var(--landing-logo-height, clamp(34px, 4vw, 44px));
+  max-inline-size: 100%;
+  max-block-size: var(--landing-logo-max-height, 44px);
   object-fit: contain;
 }
 

@@ -187,6 +187,14 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.md-login-page .md-sso-btn__icon {
+  inline-size: var(--auth-sso-icon-size, 16px);
+  block-size: var(--auth-sso-icon-size, 16px);
+  max-inline-size: var(--auth-sso-icon-size, 16px);
+  max-block-size: var(--auth-sso-icon-size, 16px);
+  flex: 0 0 var(--auth-sso-icon-size, 16px);
+}
+
 @media (max-width: 900px) {
   .md-login-page .login-tile {
     flex-direction: column;
