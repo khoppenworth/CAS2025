@@ -664,6 +664,10 @@ $pageHelpKey = 'admin.settings';
         <?=t($t,'ai_settings_heading','AI Integration')?>
         <?=render_help_icon(t($t,'ai_settings_hint','Connect an AI provider and control which AI capabilities are available in each part of the platform.'))?>
       </h3>
+      <div class="md-alert error" role="alert">
+        <strong><?=t($t,'ai_experimental_warning_title','Experimental AI Features')?></strong>
+        <p><?=t($t,'ai_experimental_warning_body','AI features are experimental and might not work reliably. Outputs can be incomplete, incorrect, unavailable, or fail entirely depending on provider connectivity and model behavior.')?></p>
+      </div>
       <div class="md-control">
         <label>
           <input type="checkbox" name="ai_enabled" value="1" <?=((int)($cfg['ai_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
