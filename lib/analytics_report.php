@@ -451,11 +451,11 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addParagraph('Overall Organizational Competency Score: ' . analytics_report_format_score($avgScore));
     $pdf->addParagraph('Competency Level Classification: ' . $competencyLevel);
     $pdf->addBulletList([
-        'Not Proficient',
-        'Basic Proficiency',
-        'Intermediate Proficiency',
-        'Advanced Proficiency',
-        'Expert Level',
+        'Below Basics (0–49%)',
+        'Introductory (50–59%)',
+        'Essential (60–69%)',
+        'Advanced (70–84%)',
+        'Strategic (85% and above)',
     ]);
 
     $topStrengths = [];

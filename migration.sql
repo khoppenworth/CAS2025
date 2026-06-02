@@ -1467,20 +1467,20 @@ CREATE TABLE IF NOT EXISTS competency_benchmark_policy (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
-SELECT 'Not Proficient', 0.00, 49.99, 1, 1
-WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Not Proficient');
+VALUES ('Below Basics', 0.00, 49.99, 1, 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order), is_system_default = VALUES(is_system_default);
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
-SELECT 'Basic Proficiency', 50.00, 64.99, 2, 1
-WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Basic Proficiency');
+VALUES ('Introductory', 50.00, 59.99, 2, 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order), is_system_default = VALUES(is_system_default);
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
-SELECT 'Intermediate Proficiency', 65.00, 79.99, 3, 1
-WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Intermediate Proficiency');
+VALUES ('Essential', 60.00, 69.99, 3, 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order), is_system_default = VALUES(is_system_default);
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
-SELECT 'Advanced Proficiency', 80.00, 89.99, 4, 1
-WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Advanced Proficiency');
+VALUES ('Advanced', 70.00, 84.99, 4, 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order), is_system_default = VALUES(is_system_default);
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default)
-SELECT 'Expert', 90.00, 100.00, 5, 1
-WHERE NOT EXISTS (SELECT 1 FROM competency_level_band WHERE name = 'Expert');
+VALUES ('Strategic', 85.00, 100.00, 5, 1)
+ON DUPLICATE KEY UPDATE name = VALUES(name), min_pct = VALUES(min_pct), max_pct = VALUES(max_pct), rank_order = VALUES(rank_order), is_system_default = VALUES(is_system_default);
 
 INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by)
 SELECT 'organization', NULL, 80.00, NULL, NULL, NULL

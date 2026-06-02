@@ -51,7 +51,7 @@ if (empty($snapshot['snapshot_id']) || (int)$snapshot['snapshot_id'] <= 0) {
     exit(1);
 }
 
-if (($snapshot['summary']['competency_level'] ?? '') !== 'Basic Proficiency') {
+if (($snapshot['summary']['competency_level'] ?? '') !== 'Introductory') {
     fwrite(STDERR, "Unexpected summary competency level.\n");
     exit(1);
 }

@@ -231,24 +231,24 @@ function questionnaire_competency_details(?float $score): array
 {
     $level = questionnaire_competency_level($score);
     return match ($level) {
-        'Expert' => [
-            'level' => 'Expert',
-            'interpretation' => 'Consistently demonstrates mastery and can guide others.',
+        'Strategic' => [
+            'level' => 'Strategic',
+            'interpretation' => 'Consistently demonstrates strategic capability and can guide others.',
         ],
-        'Advanced Proficiency' => [
-            'level' => 'Advanced Proficiency',
+        'Advanced' => [
+            'level' => 'Advanced',
             'interpretation' => 'Performs independently and consistently exceeds most role expectations.',
         ],
-        'Intermediate Proficiency' => [
-            'level' => 'Intermediate Proficiency',
+        'Essential' => [
+            'level' => 'Essential',
             'interpretation' => 'Shows reliable capability with periodic coaching in complex tasks.',
         ],
-        'Basic Proficiency' => [
-            'level' => 'Basic Proficiency',
+        'Introductory' => [
+            'level' => 'Introductory',
             'interpretation' => 'Has foundational capability and benefits from targeted support.',
         ],
-        'Not Proficient' => [
-            'level' => 'Not Proficient',
+        'Below Basics' => [
+            'level' => 'Below Basics',
             'interpretation' => 'Requires substantial development support and structured learning.',
         ],
         default => [

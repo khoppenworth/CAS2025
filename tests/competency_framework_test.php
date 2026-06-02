@@ -11,11 +11,14 @@ if (count($bands) !== 5) {
 }
 
 $cases = [
-    [49.0, 'Not Proficient'],
-    [50.0, 'Basic Proficiency'],
-    [65.0, 'Intermediate Proficiency'],
-    [80.0, 'Advanced Proficiency'],
-    [95.0, 'Expert'],
+    [49.0, 'Below Basics'],
+    [50.0, 'Introductory'],
+    [59.99, 'Introductory'],
+    [60.0, 'Essential'],
+    [69.99, 'Essential'],
+    [70.0, 'Advanced'],
+    [84.99, 'Advanced'],
+    [85.0, 'Strategic'],
 ];
 
 foreach ($cases as $case) {

@@ -10,11 +10,11 @@ declare(strict_types=1);
 function competency_default_level_bands(): array
 {
     return [
-        ['name' => 'Not Proficient', 'min_pct' => 0.0, 'max_pct' => 49.99, 'rank_order' => 1],
-        ['name' => 'Basic Proficiency', 'min_pct' => 50.0, 'max_pct' => 64.99, 'rank_order' => 2],
-        ['name' => 'Intermediate Proficiency', 'min_pct' => 65.0, 'max_pct' => 79.99, 'rank_order' => 3],
-        ['name' => 'Advanced Proficiency', 'min_pct' => 80.0, 'max_pct' => 89.99, 'rank_order' => 4],
-        ['name' => 'Expert', 'min_pct' => 90.0, 'max_pct' => 100.0, 'rank_order' => 5],
+        ['name' => 'Below Basics', 'min_pct' => 0.0, 'max_pct' => 49.99, 'rank_order' => 1],
+        ['name' => 'Introductory', 'min_pct' => 50.0, 'max_pct' => 59.99, 'rank_order' => 2],
+        ['name' => 'Essential', 'min_pct' => 60.0, 'max_pct' => 69.99, 'rank_order' => 3],
+        ['name' => 'Advanced', 'min_pct' => 70.0, 'max_pct' => 84.99, 'rank_order' => 4],
+        ['name' => 'Strategic', 'min_pct' => 85.0, 'max_pct' => 100.0, 'rank_order' => 5],
     ];
 }
 

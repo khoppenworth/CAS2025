@@ -295,11 +295,11 @@ INSERT INTO work_function_catalog (slug, label, sort_order) VALUES
   ('wim', 'Warehouse & Inventory Management', 18);
 
 INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system_default) VALUES
-  ('Not Proficient', 0.00, 49.99, 1, 1),
-  ('Basic Proficiency', 50.00, 64.99, 2, 1),
-  ('Intermediate Proficiency', 65.00, 79.99, 3, 1),
-  ('Advanced Proficiency', 80.00, 89.99, 4, 1),
-  ('Expert', 90.00, 100.00, 5, 1);
+  ('Below Basics', 0.00, 49.99, 1, 1),
+  ('Introductory', 50.00, 59.99, 2, 1),
+  ('Essential', 60.00, 69.99, 3, 1),
+  ('Advanced', 70.00, 84.99, 4, 1),
+  ('Strategic', 85.00, 100.00, 5, 1);
 
 INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by)
 VALUES ('organization', NULL, 80.00, NULL, NULL, NULL);
