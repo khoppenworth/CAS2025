@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../lib/analytics_data_viewer.php';
+require_once __DIR__ . '/../lib/scoring.php';
 
 auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
@@ -10,7 +11,9 @@ $viewer = current_user();
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;
 $filters = [
     'business_role' => $_GET['business_role'] ?? '',
+    'department' => $_GET['department'] ?? '',
     'directorate' => $_GET['directorate'] ?? '',
+    'team' => $_GET['team'] ?? '',
     'work_function' => $_GET['work_function'] ?? '',
     'user_id' => $_GET['user_id'] ?? 0,
 ];
@@ -29,7 +32,7 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="analytics_report_raw_data.csv"');
 
 $out = fopen('php://output', 'w');
-fputcsv($out, ['response_id', 'questionnaire_id', 'questionnaire_title', 'user_id', 'username', 'full_name', 'business_role', 'directorate', 'department', 'work_function', 'score', 'created_at', 'reviewed_at']);
+fputcsv($out, ['response_id', 'questionnaire_id', 'questionnaire_title', 'user_id', 'username', 'full_name', 'business_role', 'directorate', 'department', 'team', 'work_function', 'completion_level', 'score', 'created_at', 'reviewed_at']);
 foreach ($rows as $row) {
     fputcsv($out, [
         (int)($row['response_id'] ?? 0),
@@ -41,7 +44,9 @@ foreach ($rows as $row) {
         analytics_data_viewer_csv_safe_cell((string)($row['business_role'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['directorate'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['department'] ?? '')),
+        analytics_data_viewer_csv_safe_cell((string)($row['team'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['work_function'] ?? '')),
+        analytics_data_viewer_csv_safe_cell(questionnaire_competency_level(isset($row['score']) && $row['score'] !== null ? (float)$row['score'] : null)),
         analytics_data_viewer_csv_safe_cell(isset($row['score']) ? (string)$row['score'] : ''),
         analytics_data_viewer_csv_safe_cell((string)($row['created_at'] ?? '')),
         analytics_data_viewer_csv_safe_cell((string)($row['reviewed_at'] ?? '')),

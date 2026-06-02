@@ -1,12 +1,14 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../lib/analytics_data_viewer.php';
+require_once __DIR__ . '/../lib/scoring.php';
 
 auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
 $viewer = current_user();
 $viewerRole = (string)($viewer['role'] ?? ($_SESSION['user']['role'] ?? ''));
+$cfg = get_site_config($pdo);
 
 $locale = ensure_locale();
 $t = load_lang($locale);
@@ -16,7 +18,9 @@ $pageTitle = t($t, 'analytics_report_explorer_title', 'Data Explorer');
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;
 $rawFilters = [
     'business_role' => $_GET['business_role'] ?? '',
+    'department' => $_GET['department'] ?? '',
     'directorate' => $_GET['directorate'] ?? '',
+    'team' => $_GET['team'] ?? '',
     'work_function' => $_GET['work_function'] ?? '',
     'user_id' => $_GET['user_id'] ?? 0,
 ];
@@ -33,7 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $requestedPostFilters = [
         'business_role' => $_POST['business_role'] ?? '',
+        'department' => $_POST['department'] ?? '',
         'directorate' => $_POST['directorate'] ?? '',
+        'team' => $_POST['team'] ?? '',
         'work_function' => $_POST['work_function'] ?? '',
         'user_id' => $_POST['user_id'] ?? 0,
     ];
@@ -42,7 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $query = [
         'questionnaire_id' => max(0, (int)($_POST['questionnaire_id'] ?? 0)),
         'business_role' => (string)$effectivePostFilters['business_role'],
+        'department' => (string)$effectivePostFilters['department'],
         'directorate' => (string)$effectivePostFilters['directorate'],
+        'team' => (string)$effectivePostFilters['team'],
         'work_function' => (string)$effectivePostFilters['work_function'],
         'user_id' => max(0, (int)$effectivePostFilters['user_id']),
         'status' => trim((string)($_POST['status'] ?? '')),
@@ -72,7 +80,9 @@ if ($qStmt) {
 }
 
 $businessRoleOptions = [];
+$departmentOptions = [];
 $directorateOptions = [];
+$teamOptions = [];
 $workFunctionOptions = [];
 $userOptions = [];
 $stripPlaceholderOptions = static function (array $options, array $placeholders): array {
@@ -109,6 +119,30 @@ if ($directorateStmt) {
         }
     }
 }
+$departmentStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.department, ''), 'Unknown') AS department_label
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY department_label ASC");
+if ($departmentStmt) {
+    foreach ($departmentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $value = trim((string)($row['department_label'] ?? ''));
+        if ($value !== '') {
+            $departmentOptions[] = $value;
+        }
+    }
+}
+$teamStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.cadre, ''), 'Unknown') AS team_label
+    FROM questionnaire_response qr
+    JOIN users u ON u.id = qr.user_id
+    ORDER BY team_label ASC");
+if ($teamStmt) {
+    foreach ($teamStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $value = trim((string)($row['team_label'] ?? ''));
+        if ($value !== '') {
+            $teamOptions[] = $value;
+        }
+    }
+}
 $workFunctionStmt = $pdo->query("SELECT DISTINCT COALESCE(NULLIF(u.work_function, ''), NULLIF(u.department, ''), 'Unspecified') AS wf_label
     FROM questionnaire_response qr
     JOIN users u ON u.id = qr.user_id
@@ -133,7 +167,9 @@ if ($viewerRole === 'supervisor' && $scopeFilters['directorate'] !== '') {
     $directorateOptions = [$scopeFilters['directorate']];
 }
 $businessRoleOptions = $stripPlaceholderOptions($businessRoleOptions, ['Unspecified']);
+$departmentOptions = $stripPlaceholderOptions($departmentOptions, ['Unknown']);
 $directorateOptions = $stripPlaceholderOptions($directorateOptions, ['Unknown']);
+$teamOptions = $stripPlaceholderOptions($teamOptions, ['Unknown']);
 $workFunctionOptions = $stripPlaceholderOptions($workFunctionOptions, ['Unspecified']);
 
 [$queryParts, $params] = analytics_data_viewer_query($pdo, $viewer, $rawFilters, $questionnaireId, $statusFilter, $dateFrom, $dateTo);
@@ -202,6 +238,8 @@ if ($filtersForExport) {
       </label>
       <label class="md-field"><span><?=t($t, 'role', 'Role')?></span><select name="business_role"><option value=""><?=t($t, 'all_roles', 'All roles')?></option><?php foreach ($businessRoleOptions as $value): ?><option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$scopeFilters['business_role'] === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
       <label class="md-field"><span><?=t($t, 'directorate', 'Directorate')?></span><select name="directorate"><option value=""><?=t($t, 'all_directorates', 'All directorates')?></option><?php foreach ($directorateOptions as $value): ?><option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$scopeFilters['directorate'] === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
+      <label class="md-field"><span><?=t($t, 'department', 'Department')?></span><select name="department"><option value=""><?=t($t, 'all_departments', 'All departments')?></option><?php foreach ($departmentOptions as $value): ?><option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$scopeFilters['department'] === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
+      <label class="md-field"><span><?=t($t, 'cadre', 'Team in the Department')?></span><select name="team"><option value=""><?=t($t, 'all_teams', 'All teams')?></option><?php foreach ($teamOptions as $value): ?><option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$scopeFilters['team'] === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
       <label class="md-field"><span><?=t($t, 'work_function', 'Work Role')?></span><select name="work_function"><option value=""><?=t($t, 'all_work_roles', 'All work roles')?></option><?php foreach ($workFunctionOptions as $value): ?><option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$scopeFilters['work_function'] === $value ? 'selected' : ''?>><?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
       <label class="md-field"><span><?=t($t, 'individual', 'Individual')?></span><select name="user_id"><option value="0"><?=t($t, 'all_individuals', 'All individuals')?></option><?php foreach ($userOptions as $u): $uid = (int)($u['id'] ?? 0); ?><option value="<?=$uid?>" <?=$scopeFilters['user_id'] === $uid ? 'selected' : ''?>><?=htmlspecialchars((string)($u['display_name'] ?? ('#' . $uid)), ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
       <label class="md-field"><span><?=t($t, 'status', 'Status')?></span><select name="status"><option value=""><?=t($t, 'all_statuses', 'All statuses')?></option><?php foreach (['draft', 'submitted', 'approved', 'approved_late', 'rejected'] as $status): ?><option value="<?=$status?>" <?=$statusFilter === $status ? 'selected' : ''?>><?=htmlspecialchars($status, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
@@ -216,8 +254,23 @@ if ($filtersForExport) {
     <h2 class="md-card-title"><?=t($t, 'report_results', 'Report Results')?></h2>
     <p class="md-upgrade-meta"><?=count($rows)?> <?=t($t, 'records', 'records')?> <?=t($t, 'shown', 'shown')?></p>
     <div style="overflow:auto;">
-      <table class="md-table"><thead><tr><th>ID</th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'individual', 'Individual')?></th><th><?=t($t, 'role', 'Role')?></th><th><?=t($t, 'directorate', 'Directorate')?></th><th><?=t($t, 'department', 'Department')?></th><th><?=t($t, 'work_function', 'Work Role')?></th><th><?=t($t, 'score', 'Score')?></th><th><?=t($t, 'created_at', 'Created')?></th></tr></thead>
-      <tbody><?php foreach ($rows as $row): ?><tr><td><?= (int)($row['response_id'] ?? 0) ?></td><td><?=htmlspecialchars((string)($row['questionnaire_title'] ?? ('#' . (int)($row['questionnaire_id'] ?? 0))), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars(trim((string)($row['full_name'] ?? '')) !== '' ? (string)$row['full_name'] : (string)($row['username'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['business_role'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['directorate'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['department'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['work_function'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?= isset($row['score']) && $row['score'] !== null ? htmlspecialchars((string)$row['score'], ENT_QUOTES, 'UTF-8') : '—' ?></td><td><?=htmlspecialchars((string)($row['created_at'] ?? ''), ENT_QUOTES, 'UTF-8')?></td></tr><?php endforeach; ?></tbody>
+      <?php
+        $explorerLevelCounts = [];
+        foreach ($rows as $summaryRow) {
+            $level = questionnaire_competency_level(isset($summaryRow['score']) && $summaryRow['score'] !== null ? (float)$summaryRow['score'] : null);
+            $level = $level !== '' ? $level : t($t, 'not_available', 'N/A');
+            $explorerLevelCounts[$level] = ($explorerLevelCounts[$level] ?? 0) + 1;
+        }
+      ?>
+      <?php if ($explorerLevelCounts): ?>
+        <div class="explorer-summary-grid">
+          <?php foreach ($explorerLevelCounts as $levelName => $count): ?>
+            <div class="explorer-summary-card"><strong><?= (int)$count ?></strong><span><?=htmlspecialchars((string)$levelName, ENT_QUOTES, 'UTF-8')?></span></div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+      <table class="md-table"><thead><tr><th>ID</th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'individual', 'Individual')?></th><th><?=t($t, 'role', 'Role')?></th><th><?=t($t, 'directorate', 'Directorate')?></th><th><?=t($t, 'department', 'Department')?></th><th><?=t($t, 'cadre', 'Team in the Department')?></th><th><?=t($t, 'work_function', 'Work Role')?></th><th><?=t($t, 'completion_level', 'Completion level')?></th><th><?=t($t, 'created_at', 'Created')?></th></tr></thead>
+      <tbody><?php foreach ($rows as $row): ?><?php $rowLevel = questionnaire_competency_level(isset($row['score']) && $row['score'] !== null ? (float)$row['score'] : null); ?><tr><td><?= (int)($row['response_id'] ?? 0) ?></td><td><?=htmlspecialchars((string)($row['questionnaire_title'] ?? ('#' . (int)($row['questionnaire_id'] ?? 0))), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars(trim((string)($row['full_name'] ?? '')) !== '' ? (string)$row['full_name'] : (string)($row['username'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['business_role'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['directorate'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['department'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['team'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars((string)($row['work_function'] ?? ''), ENT_QUOTES, 'UTF-8')?></td><td><?=htmlspecialchars($rowLevel !== '' ? $rowLevel : '—', ENT_QUOTES, 'UTF-8')?></td><?php $createdIso = app_format_machine_datetime($row['created_at'] ?? ''); ?><td><span data-client-date="<?=htmlspecialchars($createdIso, ENT_QUOTES, 'UTF-8')?>" data-client-date-mode="datetime"><?=htmlspecialchars(app_format_display_datetime($row['created_at'] ?? '', $locale, $cfg), ENT_QUOTES, 'UTF-8')?></span></td></tr><?php endforeach; ?></tbody>
       </table>
     </div>
   </section>
