@@ -290,16 +290,6 @@ if ($recommendedCourses) {
 }
 
 $pdf->addParagraph(t($t, 'my_performance_pdf_footer', 'For the most up-to-date analytics and section breakdowns, sign in to the portal.'));
-$pdf->addSignatureFields([
-    [
-        t($t, 'staff_name', 'Staff name'),
-        t($t, 'staff_signature', 'Staff signature'),
-    ],
-    [
-        t($t, 'supervisor_name', 'Supervisor name'),
-        t($t, 'supervisor_signature', 'Supervisor signature'),
-    ],
-]);
 
 $filename = sprintf(
     'my-performance-%s-%s.pdf',

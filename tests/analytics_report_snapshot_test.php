@@ -73,4 +73,17 @@ if (!($snapshot['generated_at'] instanceof DateTimeImmutable)) {
     exit(1);
 }
 
+$pdfOutput = analytics_report_render_pdf($snapshot, ['site_name' => 'Test Site']);
+if (!str_starts_with($pdfOutput, '%PDF-1.4')) {
+    fwrite(STDERR, "Analytics PDF renderer should emit a PDF document.\n");
+    exit(1);
+}
+
+foreach (['Sign-off', 'Staff signature', 'Supervisor signature'] as $removedSigningText) {
+    if (strpos($pdfOutput, $removedSigningText) !== false) {
+        fwrite(STDERR, "Analytics PDF should not include signing sections.\n");
+        exit(1);
+    }
+}
+
 echo "Analytics snapshot tests passed.\n";

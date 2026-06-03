@@ -240,7 +240,7 @@ class SimplePdfDocument
         $rowFill = [250, 252, 255];
         $borderColor = [203, 213, 225];
 
-        $buildRowLayout = function (array $row) use ($resolvedWidths, $fontSize, $cellPaddingX, $cellPaddingY, $lineHeight): array {
+        $buildRowLayout = function (array $row, ?int $maxCellLines = null) use ($resolvedWidths, $fontSize, $cellPaddingX, $cellPaddingY, $lineHeight): array {
             $cellLines = [];
             $maxLines = 1;
             foreach ($resolvedWidths as $index => $width) {
@@ -249,6 +249,9 @@ class SimplePdfDocument
                 $wrapped = $this->wrapTextToWidth($value, $fontSize, $availableTextWidth);
                 if ($wrapped === []) {
                     $wrapped = [''];
+                }
+                if ($maxCellLines !== null && count($wrapped) > $maxCellLines) {
+                    $wrapped = $this->truncateWrappedLines($wrapped, $maxCellLines);
                 }
                 $cellLines[$index] = $wrapped;
                 $maxLines = max($maxLines, count($wrapped));
@@ -296,10 +299,11 @@ class SimplePdfDocument
             $this->cursorY = $rowBottomY;
         };
 
-        $headerLayout = $buildRowLayout(array_values($headers));
+        $headerLayout = $buildRowLayout(array_values($headers), 3);
+        $maxBodyLines = $this->maxTableCellLines((float)$headerLayout['height'], $lineHeight, $cellPaddingY);
         $rowLayouts = [];
         foreach (array_values($rows) as $row) {
-            $rowLayouts[] = $buildRowLayout((array)$row);
+            $rowLayouts[] = $buildRowLayout((array)$row, $maxBodyLines);
         }
 
         if ($rowLayouts === []) {
@@ -383,6 +387,38 @@ class SimplePdfDocument
         }
 
         $this->cursorY = $currentY - 2.0;
+    }
+
+    private function maxTableCellLines(float $headerHeight, float $lineHeight, float $cellPaddingY): int
+    {
+        if ($lineHeight <= 0.0) {
+            return 1;
+        }
+
+        $availableHeight = $this->height - $this->marginTop - $this->marginBottom - $this->headerSpacing;
+        $usableRowHeight = max(36.0, $availableHeight - max(0.0, $headerHeight) - 4.0);
+        $lineSpace = max($lineHeight, $usableRowHeight - ($cellPaddingY * 2));
+
+        return max(1, (int)floor($lineSpace / $lineHeight));
+    }
+
+    private function truncateWrappedLines(array $lines, int $maxLines): array
+    {
+        $maxLines = max(1, $maxLines);
+        if (count($lines) <= $maxLines) {
+            return $lines;
+        }
+
+        $truncated = array_slice($lines, 0, $maxLines);
+        $lastIndex = count($truncated) - 1;
+        $truncated[$lastIndex] = rtrim((string)$truncated[$lastIndex]);
+        if ($truncated[$lastIndex] === '') {
+            $truncated[$lastIndex] = '…';
+        } elseif (!str_ends_with($truncated[$lastIndex], '…')) {
+            $truncated[$lastIndex] .= '…';
+        }
+
+        return $truncated;
     }
 
     private function wrapTextToWidth(string $text, float $fontSize, float $availableWidth): array

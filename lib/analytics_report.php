@@ -809,13 +809,6 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         );
     }
 
-    $pdf->addSubheading('Sign-off');
-    $pdf->addParagraph('Please review this report and acknowledge completion with the signatures below.');
-    $pdf->addSignatureFields([
-        ['Staff name', 'Staff signature'],
-        ['Supervisor name', 'Supervisor signature'],
-    ]);
-
     return $pdf->output();
 }
 
