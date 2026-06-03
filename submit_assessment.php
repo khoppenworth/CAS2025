@@ -1804,11 +1804,96 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       const storagePrefix = 'hrassess:assessment';
       let pendingSubmit = false;
       let lastSubmitAction = null;
+      let lastFocusedResponseControl = null;
 
       const getStorageKey = () => {
         const qid = qidField && qidField.value ? qidField.value : 'unknown';
         const period = periodField && periodField.value ? periodField.value : 'default';
         return `${storagePrefix}:${qid}:${period}`;
+      };
+
+      const getDraftViewportKey = () => `${getStorageKey()}:viewport`;
+
+      const isResponseControl = (control) => {
+        if (!(control instanceof HTMLElement) || control.form !== assessmentForm) {
+          return false;
+        }
+        const tagName = control.tagName.toLowerCase();
+        const type = (control.getAttribute('type') || '').toLowerCase();
+        return Boolean(control.name)
+          && tagName !== 'button'
+          && type !== 'button'
+          && type !== 'submit'
+          && type !== 'reset'
+          && type !== 'hidden';
+      };
+
+      const describeResponseControl = (control) => {
+        if (!isResponseControl(control)) {
+          return null;
+        }
+        const sameNameControls = Array.from(assessmentForm.elements).filter((field) => field.name === control.name);
+        return {
+          name: control.name,
+          index: Math.max(0, sameNameControls.indexOf(control)),
+        };
+      };
+
+      const resolveDescribedResponseControl = (descriptor) => {
+        if (!descriptor || typeof descriptor.name !== 'string') {
+          return null;
+        }
+        const sameNameControls = Array.from(assessmentForm.elements).filter((field) => field.name === descriptor.name);
+        if (!sameNameControls.length) {
+          return null;
+        }
+        const index = Number.isInteger(descriptor.index) ? descriptor.index : 0;
+        return sameNameControls[Math.max(0, Math.min(index, sameNameControls.length - 1))] || null;
+      };
+
+      const rememberResponseControl = (control) => {
+        if (isResponseControl(control)) {
+          lastFocusedResponseControl = control;
+        }
+      };
+
+      const captureDraftViewport = () => {
+        try {
+          const activeControl = isResponseControl(document.activeElement) ? document.activeElement : lastFocusedResponseControl;
+          const record = {
+            scrollX: window.scrollX || window.pageXOffset || 0,
+            scrollY: window.scrollY || window.pageYOffset || 0,
+            focus: describeResponseControl(activeControl),
+            savedAt: Date.now(),
+          };
+          window.sessionStorage.setItem(getDraftViewportKey(), JSON.stringify(record));
+        } catch (err) {
+          // Ignore storage failures; the saved draft should still complete.
+        }
+      };
+
+      const restoreDraftViewport = () => {
+        let record = null;
+        try {
+          const raw = window.sessionStorage.getItem(getDraftViewportKey());
+          window.sessionStorage.removeItem(getDraftViewportKey());
+          record = raw ? JSON.parse(raw) : null;
+        } catch (err) {
+          record = null;
+        }
+        if (!record || typeof record !== 'object') {
+          return;
+        }
+        const x = Number.isFinite(record.scrollX) ? record.scrollX : 0;
+        const y = Number.isFinite(record.scrollY) ? record.scrollY : 0;
+        const focusTarget = resolveDescribedResponseControl(record.focus);
+        const restore = () => {
+          window.scrollTo(x, y);
+          if (focusTarget && typeof focusTarget.focus === 'function') {
+            focusTarget.focus({ preventScroll: true });
+          }
+        };
+        window.requestAnimationFrame(() => window.requestAnimationFrame(restore));
       };
 
       const offlineStatus = document.createElement('div');
@@ -2012,9 +2097,14 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         };
       })();
 
+      assessmentForm.addEventListener('focusin', (event) => {
+        rememberResponseControl(event.target);
+      });
+
       assessmentForm.addEventListener('input', (event) => {
         scheduleSave();
         const target = event.target;
+        rememberResponseControl(target);
         if (!(target instanceof HTMLElement)) {
           return;
         }
@@ -2026,6 +2116,7 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       assessmentForm.addEventListener('change', (event) => {
         scheduleSave();
         const target = event.target;
+        rememberResponseControl(target);
         if (!(target instanceof HTMLElement)) {
           return;
         }
@@ -2061,6 +2152,10 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         }
       }
 
+      if (params.get('saved') === 'draft') {
+        restoreDraftViewport();
+      }
+
       assessmentForm.addEventListener('submit', (event) => {
         const submitAction = resolveSubmitAction(event);
         lastSubmitAction = null;
@@ -2080,6 +2175,10 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
         if (isFinalSubmit && !window.confirm(finalSubmitConfirmationMessage)) {
           event.preventDefault();
           return;
+        }
+
+        if (!isFinalSubmit) {
+          captureDraftViewport();
         }
 
         if (!isAppOnline()) {
