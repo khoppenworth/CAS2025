@@ -177,7 +177,7 @@ foreach ($activeStaff as $staffRow) {
           <th><?=t($t,'email','Email')?></th>
           <th><?=t($t,'next_assessment','Next Assessment')?></th>
           <th><?=t($t,'last_approved','Approved On')?></th>
-          <th><?=t($t,'change_next_aseessment_date','Change Next Aseessment Date')?></th>
+          <th><?=t($t,'change_next_assessment_date','Change Next Assessment Date')?></th>
         </tr>
       </thead>
       <tbody>
