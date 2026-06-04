@@ -124,7 +124,7 @@ foreach ($activeStaff as $staffRow) {
         <tr>
           <th><?=t($t,'name','Name')?></th>
           <th><?=t($t,'email','Email')?></th>
-          <th><?=t($t,'department','Department')?></th>
+          <th><?=t($t,'department','Directorate')?></th>
           <th><?=t($t,'profile_complete','Profile Complete?')?></th>
           <th><?=t($t,'requested_on','Requested On')?></th>
           <th><?=t($t,'next_assessment','Next Assessment')?></th>

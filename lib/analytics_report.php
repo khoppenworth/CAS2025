@@ -448,7 +448,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addSubheading('1. Executive Summary');
     $pdf->addParagraph('Assessment Period: ' . $assessmentPeriod);
     $pdf->addParagraph('Total Participants: ' . analytics_report_format_number($snapshot['total_participants'] ?? 0));
-    $pdf->addParagraph('Departments Covered: ' . analytics_report_format_number($departmentsCovered));
+    $pdf->addParagraph('Directorates Covered: ' . analytics_report_format_number($departmentsCovered));
     $pdf->addParagraph('Assessment Date: ' . app_format_display_date($generatedAt, $locale, $cfg));
     $pdf->addParagraph('Overall Organizational Competency Score: ' . analytics_report_format_score($avgScore));
     $pdf->addParagraph('Competency Level Classification: ' . $competencyLevel);
@@ -510,7 +510,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         $pdf->addBulletList(['N/A'], 10.5);
     }
 
-    $pdf->addParagraph('Departments with highest and lowest performance:', 10.5);
+    $pdf->addParagraph('Directorates with highest and lowest performance:', 10.5);
     $pdf->addBulletList([$highestDepartment . ' / ' . $lowestDepartment], 10.5);
 
     $pdf->addSubheading('Questionnaire performance');
@@ -704,12 +704,12 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             'Staff: ' . analytics_report_format_number($staffCount),
         ]);
 
-        $pdf->addParagraph('By Department:');
+        $pdf->addParagraph('By Directorate:');
         $departmentLines = [];
         foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 6) as $deptRow) {
-            $departmentLines[] = (string)($deptRow['department'] ?? 'Department') . ' – ' . analytics_report_format_number($deptRow['total_responses'] ?? 0) . ' participants';
+            $departmentLines[] = (string)($deptRow['department'] ?? 'Directorate') . ' – ' . analytics_report_format_number($deptRow['total_responses'] ?? 0) . ' participants';
         }
-        $pdf->addBulletList($departmentLines ?: ['No department data available']);
+        $pdf->addBulletList($departmentLines ?: ['No directorate data available']);
 
         $pdf->addParagraph('Gender Distribution (Auto-populated from registration data)');
         $genderLines = [];
@@ -739,7 +739,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
         $pdf->addParagraph('(Gap % = 100% – actual score OR based on required benchmark level)');
 
-        $pdf->addSubheading('5. Department-Level Analysis');
+        $pdf->addSubheading('5. Directorate-Level Analysis');
         $deptRows = [];
         foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 10) as $row) {
             $score = isset($row['avg_score']) && $row['avg_score'] !== null ? (float)$row['avg_score'] : null;
@@ -751,13 +751,13 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             ];
         }
         if ($deptRows) {
-            $pdf->addTable(['Department', 'Average Score', 'Level', 'Key Gap'], $deptRows, [24, 12, 12, 12]);
+            $pdf->addTable(['Directorate', 'Average Score', 'Level', 'Key Gap'], $deptRows, [24, 12, 12, 12]);
         } else {
-            $pdf->addParagraph('No department-level records are available yet.');
+            $pdf->addParagraph('No directorate-level records are available yet.');
         }
         $pdf->addBulletList([
             'Heatmap visualization',
-            'Bar chart comparison across departments',
+            'Bar chart comparison across directorates',
         ]);
 
         $pdf->addSubheading('6. Role-Based Analysis');

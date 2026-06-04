@@ -1039,8 +1039,8 @@ foreach ($teamCatalog as $departmentTeams) {
     }
 }
 $dimensionLabels = [
-    'department' => t($t, 'department', 'Department'),
-    'team' => t($t, 'cadre', 'Team in the Department'),
+    'department' => t($t, 'department', 'Directorate'),
+    'team' => t($t, 'cadre', 'Team in the Directorate'),
     'work_function' => t($t, 'work_function', 'Work Role'),
 ];
 $dimensionLabelResolvers = [
@@ -1952,9 +1952,9 @@ $pageHelpKey = 'team.analytics';
     <?php if ($analyticsViewMode === 'overview'): ?>
       <a href="#overview"><?=t($t, 'analytics_overview', 'Analytics overview')?></a>
       <a href="#questionnaire-performance"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></a>
-      <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></a>
+      <a href="#org-heatmap"><?=t($t, 'department_role_heatmap', 'Directorate × Role heatmap')?></a>
       <a href="#report-explorer-focus"><?=t($t, 'analytics_report_explorer_title', 'Report Explorer')?></a>
-      <a href="#disaggregated-completion"><?=t($t, 'disaggregated_completion', 'Completion by department/team')?></a>
+      <a href="#disaggregated-completion"><?=t($t, 'disaggregated_completion', 'Completion by directorate/team')?></a>
       <a href="#downloads-tools"><?=t($t, 'analytics_download_and_tools', 'Downloads & tools')?></a>
     <?php elseif ($selectedQuestionnaireId): ?>
       <a href="#questionnaire-drilldown"><?=t($t, 'questionnaire_drilldown', 'Questionnaire drilldown')?></a>
@@ -2056,16 +2056,16 @@ $pageHelpKey = 'team.analytics';
         <input type="date" name="date_to" value="<?=htmlspecialchars($dashboardFilters['date_to'], ENT_QUOTES, 'UTF-8')?>">
       </label>
       <label>
-        <?=t($t, 'department', 'Department')?>
+        <?=t($t, 'department', 'Directorate')?>
         <select name="department">
-          <option value=""><?=t($t, 'all_departments', 'All departments')?></option>
+          <option value=""><?=t($t, 'all_departments', 'All directorates')?></option>
           <?php foreach ($departmentOptions as $value => $label): ?>
             <option value="<?=htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8')?>" <?=$dashboardFilters['department'] === (string)$value ? 'selected' : ''?>><?=htmlspecialchars((string)$label, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
       <label>
-        <?=t($t, 'cadre', 'Team in the Department')?>
+        <?=t($t, 'cadre', 'Team in the Directorate')?>
         <select name="team">
           <option value=""><?=t($t, 'all_teams', 'All teams')?></option>
           <?php foreach ($teamOptions as $value => $label): ?>
@@ -2198,8 +2198,8 @@ $pageHelpKey = 'team.analytics';
   </div>
 
   <div class="md-card md-elev-2" id="disaggregated-completion">
-    <h2 class="md-card-title"><?=t($t, 'disaggregated_completion', 'Completion by department/team')?></h2>
-    <p class="md-upgrade-meta"><?=t($t, 'disaggregated_completion_hint', 'Lowest completion groups are shown first across departments, teams, and work roles using completion-level distribution.')?></p>
+    <h2 class="md-card-title"><?=t($t, 'disaggregated_completion', 'Completion by directorate/team')?></h2>
+    <p class="md-upgrade-meta"><?=t($t, 'disaggregated_completion_hint', 'Lowest completion groups are shown first across directorates, teams, and work roles using completion-level distribution.')?></p>
     <?php if ($dimensionCompletionRows): ?>
       <div class="md-dimension-list">
         <?php foreach ($dimensionCompletionRows as $dimensionRow): ?>
@@ -2227,8 +2227,8 @@ $pageHelpKey = 'team.analytics';
   </div>
 
   <div class="md-card md-elev-2" id="org-heatmap">
-    <h2 class="md-card-title"><?=t($t, 'department_role_heatmap', 'Department × Role heatmap')?></h2>
-    <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_hint', 'Completion percentage by department (rows) and work role (columns). Colours move from red to green as the percentage at or above target improves.')?></p>
+    <h2 class="md-card-title"><?=t($t, 'department_role_heatmap', 'Directorate × Role heatmap')?></h2>
+    <p class="md-upgrade-meta"><?=t($t, 'department_role_heatmap_hint', 'Completion percentage by directorate (rows) and work role (columns). Colours move from red to green as the percentage at or above target improves.')?></p>
     <?php if ($departmentRoleDepartments && $departmentRoleFunctions): ?>
       <p class="md-analytics-meta"><?=t($t, 'year', 'Year')?>: <?=htmlspecialchars($dashboardFilters['year'] !== '' ? $dashboardFilters['year'] : t($t, 'all_years', 'All years'), ENT_QUOTES, 'UTF-8')?></p>
       <div class="md-heatmap-legend" aria-label="<?=htmlspecialchars(t($t, 'heatmap_legend', 'Heatmap legend'), ENT_QUOTES, 'UTF-8')?>">
@@ -2238,10 +2238,10 @@ $pageHelpKey = 'team.analytics';
         <span><i style="background: rgba(22, 163, 74, 0.82);"></i>80–100%</span>
       </div>
       <div class="md-matrix-wrapper">
-        <table class="md-matrix-table" aria-label="<?=htmlspecialchars(t($t, 'department_role_heatmap', 'Department × Role heatmap'), ENT_QUOTES, 'UTF-8')?>">
+        <table class="md-matrix-table" aria-label="<?=htmlspecialchars(t($t, 'department_role_heatmap', 'Directorate × Role heatmap'), ENT_QUOTES, 'UTF-8')?>">
           <thead>
             <tr>
-              <th><?=t($t, 'department', 'Department')?></th>
+              <th><?=t($t, 'department', 'Directorate')?></th>
               <?php foreach ($departmentRoleFunctions as $workFunctionLabel): ?>
                 <th><?=htmlspecialchars((string)$workFunctionLabel, ENT_QUOTES, 'UTF-8')?></th>
               <?php endforeach; ?>
@@ -2457,8 +2457,8 @@ $pageHelpKey = 'team.analytics';
           <thead>
             <tr>
               <th><?=t($t, 'user', 'User')?></th>
-              <th><?=t($t, 'department', 'Department')?></th>
-              <th><?=t($t, 'cadre', 'Team in the Department')?></th>
+              <th><?=t($t, 'department', 'Directorate')?></th>
+              <th><?=t($t, 'cadre', 'Team in the Directorate')?></th>
               <th><?=t($t, 'work_function', 'Work Role')?></th>
               <th><?=t($t, 'count', 'Responses')?></th>
               <th><?=t($t, 'approved', 'Approved')?></th>

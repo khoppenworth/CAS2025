@@ -20,7 +20,7 @@ function built_in_work_function_definitions(): array
         'director' => 'Director',
         'manager' => 'Manager',
         'team_lead' => 'Team Lead',
-        'expert' => 'Expert',
+        'expert' => 'Officer',
     ];
 }
 
@@ -83,6 +83,10 @@ function ensure_work_function_catalog(PDO $pdo): void
             if ((int)$check->fetchColumn() > 0) {
                 $updateSort->execute([$sort, $slug]);
                 $updateMissingLabel->execute([$label, $sort, $slug]);
+                if ($slug === 'expert') {
+                    $pdo->prepare("UPDATE work_function_catalog SET label = ? WHERE slug = ? AND TRIM(label) = 'Expert'")
+                        ->execute([$label, $slug]);
+                }
             } else {
                 $insert->execute([$slug, $label, $sort]);
             }

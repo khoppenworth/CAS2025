@@ -152,7 +152,7 @@ if (!empty($user['username'])) {
     $userDetails[] = t($t, 'employee_username', 'Username') . ': ' . $user['username'];
 }
 if ($departmentLabel !== '') {
-    $userDetails[] = t($t, 'employee_department', 'Department') . ': ' . $departmentLabel;
+    $userDetails[] = t($t, 'employee_department', 'Directorate') . ': ' . $departmentLabel;
 }
 $roleKey = trim((string) ($user['role'] ?? ''));
 if ($roleKey !== '') {
