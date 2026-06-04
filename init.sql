@@ -94,7 +94,9 @@ CREATE TABLE users (
   approved_by INT NULL,
   approved_at DATETIME NULL,
   sso_provider VARCHAR(50) NULL,
+  sso_subject VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_sso_identity (sso_provider, sso_subject),
   FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

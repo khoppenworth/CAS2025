@@ -222,6 +222,7 @@ $expectedSchemas = [
         'approved_by' => ['type' => 'int', 'null' => 'YES'],
         'approved_at' => ['type' => 'datetime', 'null' => 'YES'],
         'sso_provider' => ['type' => 'varchar', 'null' => 'YES'],
+        'sso_subject' => ['type' => 'varchar', 'null' => 'YES'],
         'first_login_at' => ['type' => 'datetime', 'null' => 'YES'],
     ],
     'questionnaire_item' => [

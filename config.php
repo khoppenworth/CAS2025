@@ -1072,6 +1072,7 @@ function ensure_users_schema(PDO $pdo): void
         'approved_by' => 'ALTER TABLE users ADD COLUMN approved_by INT NULL AFTER next_assessment_date',
         'approved_at' => 'ALTER TABLE users ADD COLUMN approved_at DATETIME NULL AFTER approved_by',
         'sso_provider' => 'ALTER TABLE users ADD COLUMN sso_provider VARCHAR(50) NULL AFTER approved_at',
+        'sso_subject' => 'ALTER TABLE users ADD COLUMN sso_subject VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL AFTER sso_provider',
         'profile_role' => 'ALTER TABLE users ADD COLUMN profile_role VARCHAR(100) NULL AFTER work_function',
         'profile_role_other' => 'ALTER TABLE users ADD COLUMN profile_role_other VARCHAR(200) NULL AFTER profile_role',
         'job_grade' => 'ALTER TABLE users ADD COLUMN job_grade VARCHAR(50) NULL AFTER profile_role_other',
@@ -1092,6 +1093,15 @@ function ensure_users_schema(PDO $pdo): void
                 error_log(sprintf('ensure_users_schema add column %s failed: %s', $field, $e->getMessage()));
             }
         }
+    }
+
+    try {
+        $indexStmt = $pdo->query("SHOW INDEX FROM users WHERE Key_name = 'uniq_sso_identity'");
+        if ($indexStmt && !$indexStmt->fetch()) {
+            $pdo->exec('ALTER TABLE users ADD UNIQUE KEY uniq_sso_identity (sso_provider, sso_subject)');
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema SSO identity index failed: ' . $e->getMessage());
     }
 }
 
