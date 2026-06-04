@@ -16,7 +16,7 @@ $err = '';
 $flashNotice = '';
 $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
-
+$userManualUrl = 'https://github.com/khoppenworth/CAS2025/blob/main/docs/Competency%20Assessment%20System%20End-User%20Manual.pdf';
 
 $supportsItemConditions = false;
 $supportsSectionIncludeInScoring = false;
@@ -899,6 +899,19 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
 <section class="md-section">
 <div class="md-card md-elev-2 md-assessment-shell">
   <h2 class="md-card-title"><?=t($t,'submit_assessment','Submit Assessment')?></h2>
+  <div class="md-help-banner md-elev-1" role="region" aria-labelledby="assessment-help-heading">
+    <div class="md-help-banner__content">
+      <strong id="assessment-help-heading"><?=htmlspecialchars(t($t, 'assessment_help_banner_title', 'Need help getting started?'), ENT_QUOTES, 'UTF-8')?></strong>
+      <span><?=htmlspecialchars(t($t, 'assessment_help_banner_message', 'Use the end-user manual to learn how to submit assessments and review your performance.'), ENT_QUOTES, 'UTF-8')?></span>
+    </div>
+    <a
+      href="<?=htmlspecialchars($userManualUrl, ENT_QUOTES, 'UTF-8')?>"
+      class="md-button md-secondary md-help-banner__action"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="<?=htmlspecialchars(t($t, 'get_help_user_manual', 'Get help: open the user manual'), ENT_QUOTES, 'UTF-8')?>"
+    ><?=htmlspecialchars(t($t, 'get_help', 'Get help'), ENT_QUOTES, 'UTF-8')?></a>
+  </div>
   <?php if ($flashNotice): ?><div class="md-alert success"><?=htmlspecialchars($flashNotice, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
   <?php if (!empty($err)): ?><div class="md-alert error"><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
   <form method="get" class="md-inline-form" action="<?=htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8')?>" data-questionnaire-form>

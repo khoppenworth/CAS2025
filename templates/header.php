@@ -76,6 +76,7 @@ $nextLocale = $localeCount > 0
     : $currentLocale;
 $currentLocaleBadge = strtoupper((string)$currentLocale);
 $currentLocaleFlag = asset_url('assets/images/flags/flag-' . $currentLocale . '.svg');
+$userManualUrl = 'https://github.com/khoppenworth/CAS2025/blob/main/docs/Competency%20Assessment%20System%20End-User%20Manual.pdf';
 $profileDisplayName = trim((string)($user['full_name'] ?? $user['username'] ?? t($t, 'profile', 'Profile')));
 $initialParts = preg_split('/\s+/', $profileDisplayName) ?: [];
 $profileInitials = '';
@@ -141,6 +142,16 @@ if ($profileInitials === '') {
         loading="lazy"
         decoding="async"
       >
+    </a>
+    <a
+      href="<?=htmlspecialchars($userManualUrl, ENT_QUOTES, 'UTF-8')?>"
+      class="md-appbar-link md-appbar-help"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="<?=htmlspecialchars(t($t, 'get_help_user_manual', 'Get help: open the user manual'), ENT_QUOTES, 'UTF-8')?>"
+      title="<?=htmlspecialchars(t($t, 'get_help_user_manual', 'Get help: open the user manual'), ENT_QUOTES, 'UTF-8')?>"
+    >
+      <?=htmlspecialchars(t($t, 'get_help', 'Get help'), ENT_QUOTES, 'UTF-8')?>
     </a>
     <a
       href="<?=htmlspecialchars(url_for('profile.php'), ENT_QUOTES, 'UTF-8')?>"
