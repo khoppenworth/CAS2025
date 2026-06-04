@@ -1,18 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="United Kingdom flag">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="United States flag">
   <defs>
     <clipPath id="en-circle-clip">
       <circle cx="32" cy="32" r="32" />
     </clipPath>
+    <clipPath id="en-canton-clip">
+      <rect x="0" y="0" width="28" height="34.46" />
+    </clipPath>
   </defs>
   <g clip-path="url(#en-circle-clip)">
-    <rect width="64" height="64" fill="#012169" />
-    <path d="M0 0V8L56 64H64V56L8 0Z" fill="#FFFFFF" />
-    <path d="M64 0H56L0 56V64H8L64 8Z" fill="#FFFFFF" />
-    <path d="M0 0V5L59 64H64V59L5 0Z" fill="#C8102E" />
-    <path d="M64 0H59L0 59V64H5L64 5Z" fill="#C8102E" />
-    <rect x="0" y="26" width="64" height="12" fill="#FFFFFF" />
-    <rect x="26" y="0" width="12" height="64" fill="#FFFFFF" />
-    <rect x="0" y="29" width="64" height="6" fill="#C8102E" />
-    <rect x="29" y="0" width="6" height="64" fill="#C8102E" />
+    <rect width="64" height="64" fill="#FFFFFF" />
+    <g fill="#B22234">
+      <rect width="64" height="4.92" y="0" />
+      <rect width="64" height="4.92" y="9.85" />
+      <rect width="64" height="4.92" y="19.69" />
+      <rect width="64" height="4.92" y="29.54" />
+      <rect width="64" height="4.92" y="39.38" />
+      <rect width="64" height="4.92" y="49.23" />
+      <rect width="64" height="4.92" y="59.08" />
+    </g>
+    <rect width="28" height="34.46" fill="#3C3B6E" />
+    <g clip-path="url(#en-canton-clip)" fill="#FFFFFF">
+      <g id="star-row-6">
+        <path d="M3.4 2.5 3.95 4.15H5.7L4.28 5.17 4.82 6.84 3.4 5.8 1.98 6.84 2.52 5.17 1.1 4.15H2.85Z" />
+        <path d="M8.4 2.5 8.95 4.15H10.7L9.28 5.17 9.82 6.84 8.4 5.8 6.98 6.84 7.52 5.17 6.1 4.15H7.85Z" />
+        <path d="M13.4 2.5 13.95 4.15H15.7L14.28 5.17 14.82 6.84 13.4 5.8 11.98 6.84 12.52 5.17 11.1 4.15H12.85Z" />
+        <path d="M18.4 2.5 18.95 4.15H20.7L19.28 5.17 19.82 6.84 18.4 5.8 16.98 6.84 17.52 5.17 16.1 4.15H17.85Z" />
+        <path d="M23.4 2.5 23.95 4.15H25.7L24.28 5.17 24.82 6.84 23.4 5.8 21.98 6.84 22.52 5.17 21.1 4.15H22.85Z" />
+        <path d="M28.4 2.5 28.95 4.15H30.7L29.28 5.17 29.82 6.84 28.4 5.8 26.98 6.84 27.52 5.17 26.1 4.15H27.85Z" />
+      </g>
+      <use href="#star-row-6" y="6" />
+      <use href="#star-row-6" y="12" />
+      <use href="#star-row-6" y="18" />
+      <use href="#star-row-6" y="24" />
+      <g id="star-row-5" transform="translate(2.5 3)">
+        <path d="M3.4 2.5 3.95 4.15H5.7L4.28 5.17 4.82 6.84 3.4 5.8 1.98 6.84 2.52 5.17 1.1 4.15H2.85Z" />
+        <path d="M8.4 2.5 8.95 4.15H10.7L9.28 5.17 9.82 6.84 8.4 5.8 6.98 6.84 7.52 5.17 6.1 4.15H7.85Z" />
+        <path d="M13.4 2.5 13.95 4.15H15.7L14.28 5.17 14.82 6.84 13.4 5.8 11.98 6.84 12.52 5.17 11.1 4.15H12.85Z" />
+        <path d="M18.4 2.5 18.95 4.15H20.7L19.28 5.17 19.82 6.84 18.4 5.8 16.98 6.84 17.52 5.17 16.1 4.15H17.85Z" />
+        <path d="M23.4 2.5 23.95 4.15H25.7L24.28 5.17 24.82 6.84 23.4 5.8 21.98 6.84 22.52 5.17 21.1 4.15H22.85Z" />
+      </g>
+      <use href="#star-row-5" y="6" />
+      <use href="#star-row-5" y="12" />
+      <use href="#star-row-5" y="18" />
+    </g>
   </g>
 </svg>
