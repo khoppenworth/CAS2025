@@ -103,13 +103,13 @@ $experienceBandOptions = [
     '5_10' => '5-10 years',
     '10_plus' => 'More than 10 years',
 ];
+$experienceBandRanks = array_flip(array_keys($experienceBandOptions));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $fullName = trim($_POST['full_name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $gender = $_POST['gender'] ?? '';
-    $dob = $_POST['date_of_birth'] ?? '';
     $phoneCountry = $_POST['phone_country'] ?? $phoneCountryValue;
     $phoneLocalRaw = $_POST['phone_local'] ?? '';
     $phoneCombined = trim($_POST['phone'] ?? '');
@@ -123,7 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jobGrade = trim((string)($_POST['job_grade'] ?? ''));
     $educationLevel = trim((string)($_POST['education_level'] ?? ''));
     $highestDegreeSubject = trim((string)($_POST['highest_degree_subject'] ?? ''));
-    $workExperienceProfile = trim((string)($_POST['work_experience_profile'] ?? ''));
     $totalWorkExperienceBand = trim((string)($_POST['total_work_experience_band'] ?? ''));
     $epssWorkExperienceBand = trim((string)($_POST['epss_work_experience_band'] ?? ''));
     $language = $_POST['language'] ?? ($_SESSION['lang'] ?? 'en');
@@ -152,7 +151,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fullName === '' ||
         $email === '' ||
         $gender === '' ||
-        $dob === '' ||
         $phoneLocalDigits === '' ||
         $department === '' ||
         $cadre === '' ||
@@ -161,7 +159,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $jobGrade === '' ||
         $educationLevel === '' ||
         $highestDegreeSubject === '' ||
-        $workExperienceProfile === '' ||
         $totalWorkExperienceBand === '' ||
         $epssWorkExperienceBand === ''
     ) {
@@ -171,9 +168,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!in_array($gender, ['female','male','other','prefer_not_say'], true)) {
         $error = t($t,'invalid_gender','Select a valid gender option.');
     } elseif (!isset($departmentOptions[$department])) {
-        $error = t($t,'invalid_department','Select a valid department.');
+        $error = t($t,'invalid_department','Select a valid directorate.');
     } elseif ($cadre === '') {
-        $error = t($t,'invalid_team_department','Select a valid team in the department.');
+        $error = t($t,'invalid_team_department','Select a valid team in the directorate.');
     } elseif (!isset($workFunctionOptions[$workFunction])) {
         $error = t($t,'invalid_work_function','Select a valid work function.');
     } elseif (!isset($profileRoleOptions[$profileRole])) {
@@ -188,6 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = t($t,'invalid_total_experience_band','Select a valid total work experience option.');
     } elseif (!isset($experienceBandOptions[$epssWorkExperienceBand])) {
         $error = t($t,'invalid_epss_experience_band','Select a valid EPSS experience option.');
+    } elseif (($experienceBandRanks[$epssWorkExperienceBand] ?? 0) > ($experienceBandRanks[$totalWorkExperienceBand] ?? 0)) {
+        $error = t($t,'invalid_experience_band_order','Total years of experience must be equal to or greater than EPSS experience.');
     } elseif (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12) {
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
@@ -201,7 +200,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'full_name' => $fullName,
             'email' => $email,
             'gender' => $gender,
-            'date_of_birth' => $dob,
             'phone' => $fullPhone,
             'department' => $department,
             'cadre' => $cadre,
@@ -211,7 +209,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'job_grade' => $jobGrade,
             'education_level' => $educationLevel,
             'highest_degree_subject' => $highestDegreeSubject,
-            'work_experience_profile' => $workExperienceProfile,
             'total_work_experience_band' => $totalWorkExperienceBand,
             'epss_work_experience_band' => $epssWorkExperienceBand,
             'language' => $language,
@@ -326,14 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <option value="prefer_not_say" <?=$gval==='prefer_not_say'?'selected':''?>><?=t($t,'prefer_not_say','Prefer not to say')?></option>
         </select>
       </label>
-      <label class="md-field md-field--required">
-        <span><?=t($t,'date_of_birth','Date of Birth')?></span>
-        <input type="date" name="date_of_birth" value="<?=htmlspecialchars($user['date_of_birth'] ?? '')?>" required>
-      </label>
       <label class="md-field md-field-inline md-field--required">
         <span>
           <?=t($t,'phone','Phone Number')?>
-          <?=render_help_icon(t($t,'phone_number_hint','Choose a country code and enter digits only.'))?>
         </span>
         <div class="md-phone-input" data-phone-field>
           <span class="md-phone-flag" data-phone-flag><?=htmlspecialchars($phoneFlagValue, ENT_QUOTES, 'UTF-8')?></span>
@@ -357,7 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       ?>
       <label class="md-field md-field--required">
-        <span><?=t($t,'department','Department')?></span>
+        <span><?=t($t,'department','Directorate')?></span>
         <select name="department" required data-department-select>
           <option value="" disabled <?= $currentDepartmentSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
@@ -366,7 +358,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </select>
       </label>
       <label class="md-field md-field--required">
-        <span><?=t($t,'cadre','Team in the Department')?></span>
+        <span><?=t($t,'cadre','Team in the Directorate')?></span>
         <select name="cadre" required data-team-select>
           <option value="" disabled <?= $currentTeamSlug === '' ? 'selected' : '' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($teamCatalog as $teamSlug => $teamRecord): ?>
@@ -395,7 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="md-field md-field--required" data-profile-role-other-wrapper hidden>
+      <label class="md-field" data-profile-role-other-wrapper hidden>
         <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
         <input name="profile_role_other" value="<?=htmlspecialchars((string)($user['profile_role_other'] ?? ''), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input>
       </label>
@@ -424,26 +416,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input name="highest_degree_subject" value="<?=htmlspecialchars((string)($user['highest_degree_subject'] ?? ''), ENT_QUOTES, 'UTF-8')?>" required>
       </label>
       <label class="md-field md-field--required">
-        <span><?=t($t,'work_experience_profile_label','Your work Experience')?></span>
-        <input name="work_experience_profile" value="<?=htmlspecialchars((string)($user['work_experience_profile'] ?? ''), ENT_QUOTES, 'UTF-8')?>" required>
-      </label>
-      <label class="md-field md-field--required">
         <span><?=t($t,'total_work_experience_band_label','How many years of work experience do you have in total?')?></span>
         <?php $totalExperienceValue = (string)($user['total_work_experience_band'] ?? ''); ?>
-        <select name="total_work_experience_band" required>
+        <select name="total_work_experience_band" required data-total-experience-select>
           <option value="" disabled <?= $totalExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
-            <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$totalExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
+            <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$totalExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
       <label class="md-field md-field--required">
         <span><?=t($t,'epss_work_experience_band_label','How long have you been working in EPSS?')?></span>
         <?php $epssExperienceValue = (string)($user['epss_work_experience_band'] ?? ''); ?>
-        <select name="epss_work_experience_band" required>
+        <select name="epss_work_experience_band" required data-epss-experience-select>
           <option value="" disabled <?= $epssExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
-            <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$epssExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
+            <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$epssExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
@@ -510,6 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const needsOther = roleSelect.value === 'other';
     roleOtherWrapper.hidden = !needsOther;
     roleOtherInput.required = needsOther;
+    roleOtherWrapper.classList.toggle('md-field--required', needsOther);
     if (!needsOther) {
       roleOtherInput.value = '';
     }
@@ -529,6 +518,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const popup = document.querySelector('[data-required-popup]');
     const passwordPopup = document.querySelector('[data-password-popup]');
     const passwordField = form ? form.querySelector('[data-password-field]') : null;
+    const totalExperienceSelect = form ? form.querySelector('[data-total-experience-select]') : null;
+    const epssExperienceSelect = form ? form.querySelector('[data-epss-experience-select]') : null;
     const passwordPolicyRegex = /^(?=.{8,}$)(?=.*[\d\W_]).+$/;
     if (!form || !popup || !passwordPopup || !passwordField) {
       return;
@@ -548,8 +539,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    const requiredFields = Array.from(form.querySelectorAll('[required]'));
+    const getRequiredFields = () => Array.from(form.querySelectorAll('[required]'));
     const markField = (field, hasError) => {
+      if (!field) return;
       const wrapper = field.closest('.md-field');
       if (wrapper) {
         wrapper.classList.toggle('md-field--error', hasError);
@@ -564,6 +556,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return !hasError;
     };
 
+    const getExperienceRank = (field) => {
+      if (!field || !field.selectedOptions || field.selectedOptions.length === 0) return null;
+      const rank = Number(field.selectedOptions[0].dataset.experienceRank);
+      return Number.isFinite(rank) ? rank : null;
+    };
+
+    const validateExperienceOrder = () => {
+      const totalRank = getExperienceRank(totalExperienceSelect);
+      const epssRank = getExperienceRank(epssExperienceSelect);
+      const hasError = totalRank !== null && epssRank !== null && epssRank > totalRank;
+      markField(totalExperienceSelect, hasError);
+      markField(epssExperienceSelect, hasError);
+      if (epssExperienceSelect) {
+        epssExperienceSelect.setCustomValidity(hasError ? 'EPSS experience cannot be greater than total years of experience.' : '');
+      }
+      return !hasError;
+    };
+
     const validatePassword = () => {
       const value = passwordField.value;
       if (value.trim() === '') {
@@ -575,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return valid;
     };
 
-    requiredFields.forEach((field) => {
+    getRequiredFields().forEach((field) => {
       field.addEventListener('blur', () => {
         validateField(field);
       });
@@ -589,6 +599,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    if (totalExperienceSelect && epssExperienceSelect) {
+      totalExperienceSelect.addEventListener('change', validateExperienceOrder);
+      epssExperienceSelect.addEventListener('change', validateExperienceOrder);
+    }
+
     passwordField.addEventListener('blur', validatePassword);
     passwordField.addEventListener('input', () => {
       if (passwordField.value.trim() === '') {
@@ -601,11 +616,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('submit', (event) => {
       let hasError = false;
-      requiredFields.forEach((field) => {
+      getRequiredFields().forEach((field) => {
         if (!validateField(field)) {
           hasError = true;
         }
       });
+      if (!validateExperienceOrder()) {
+        hasError = true;
+      }
+
       if (hasError) {
         event.preventDefault();
         popup.hidden = false;

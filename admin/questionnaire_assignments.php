@@ -68,7 +68,7 @@ if (!$assignmentsByDepartment) {
 <section class="md-section">
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'assign_questionnaires','Assign Questionnaires')?></h2>
-    <p class="md-hint"><?=t($t,'assignment_work_function_only','Questionnaire defaults are configured at department level.')?></p>
+    <p class="md-hint"><?=t($t,'assignment_work_function_only','Questionnaire defaults are configured at directorate level.')?></p>
     <p>
       <a href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t,'work_function_defaults_title','Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></a>
     </p>
@@ -76,7 +76,7 @@ if (!$assignmentsByDepartment) {
     <table class="md-table">
       <thead>
         <tr>
-          <th><?=t($t,'department','Department')?></th>
+          <th><?=t($t,'department','Directorate')?></th>
           <th><?=t($t,'questionnaires','Questionnaires')?></th>
         </tr>
       </thead>

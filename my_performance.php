@@ -352,7 +352,7 @@ $pageHelpKey = 'workspace.my_performance';
           <dd><?=htmlspecialchars(trim((string)($user['full_name'] ?? '')) !== '' ? trim((string)($user['full_name'] ?? '')) : (string)($user['email'] ?? '—'), ENT_QUOTES, 'UTF-8')?><?= $positionDisplay !== '' ? ' / ' . htmlspecialchars($positionDisplay, ENT_QUOTES, 'UTF-8') : '' ?></dd>
         </div>
         <div>
-          <dt><?=t($t,'department','Department')?></dt>
+          <dt><?=t($t,'department','Directorate')?></dt>
           <dd><?=htmlspecialchars($departmentDisplay !== '' ? $departmentDisplay : '—', ENT_QUOTES, 'UTF-8')?></dd>
         </div>
         <div>

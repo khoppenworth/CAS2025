@@ -578,7 +578,7 @@ foreach ($rows as $r) {
   </label>
 <label class="md-field"><span><?=t($t,'full_name','Full Name')?></span><input name="full_name"></label>
 <label class="md-field"><span><?=t($t,'email','Email')?></span><input name="email"></label>
-<label class="md-field"><span><?=t($t,'department','Department')?></span>
+<label class="md-field"><span><?=t($t,'department','Directorate')?></span>
   <select name="department" required data-department-select>
     <option value="" disabled selected><?=t($t,'select_option','Select')?></option>
     <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
@@ -640,7 +640,7 @@ foreach ($rows as $r) {
               <dd><?=htmlspecialchars($record['role_label'], ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
-              <dt><?=t($t,'department','Department')?></dt>
+              <dt><?=t($t,'department','Directorate')?></dt>
               <dd><?=htmlspecialchars($record['department_label'] ?? '—', ENT_QUOTES, 'UTF-8')?></dd>
             </div>
             <div>
@@ -702,7 +702,7 @@ foreach ($rows as $r) {
                   </select>
                 </label>
                 <label class="md-field md-field--compact">
-                  <span><?=t($t,'department','Department')?></span>
+                  <span><?=t($t,'department','Directorate')?></span>
                   <select name="department" required data-department-select>
                     <option value="" disabled <?=$record['department_key'] === '' ? 'selected' : ''?>><?=t($t,'select_option','Select')?></option>
                     <?php foreach ($departmentOptions as $departmentSlug => $departmentLabel): ?>
@@ -763,7 +763,7 @@ foreach ($rows as $r) {
             <th><?=t($t,'name','Name')?></th>
             <th><?=t($t,'username','Username')?></th>
             <th><?=t($t,'role','Role')?></th>
-            <th><?=t($t,'department','Department')?></th>
+            <th><?=t($t,'department','Directorate')?></th>
             <th><?=t($t,'team_catalog_label','Team')?></th>
             <th><?=t($t,'work_function','Work Role')?></th>
             <th><?=t($t,'status','Status')?></th>

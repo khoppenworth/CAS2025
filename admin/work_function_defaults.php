@@ -103,11 +103,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $exists = isset($departments[$slug]);
             if ($exists) {
-                throw new InvalidArgumentException(t($t,'department_exists','Department already exists.'));
+                throw new InvalidArgumentException(t($t,'department_exists','Directorate already exists.'));
             }
             $sort = count($departments) + 1;
             $pdo->prepare('INSERT INTO department_catalog (slug,label,sort_order) VALUES (?,?,?)')->execute([$slug,$label,$sort]);
-            $_SESSION[$metadataFlashKey] = t($t,'department_created','Department added.');
+            $_SESSION[$metadataFlashKey] = t($t,'department_created','Directorate added.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_update') {
@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $label = trim((string)($_POST['label'] ?? ''));
             if ($slug === '' || $label === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET label=? WHERE slug=?')->execute([$label,$slug]);
-            $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
+            $_SESSION[$metadataFlashKey] = t($t,'department_updated','Directorate updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_archive') {
@@ -128,24 +128,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
-            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Department archived.');
+            $_SESSION[$metadataFlashKey] = t($t,'department_archived','Directorate archived.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'department_activate') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
-            $_SESSION[$metadataFlashKey] = t($t,'department_updated','Department updated.');
+            $_SESSION[$metadataFlashKey] = t($t,'department_updated','Directorate updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_add') {
             $label = trim((string)($_POST['label'] ?? ''));
             $departmentSlug = trim((string)($_POST['department_slug'] ?? ''));
             if ($label === '' || !isset($departmentOptions[$departmentSlug])) {
-                throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
+                throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the directorate.'));
             }
             $slug = canonical_department_team_slug($label);
-            if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
+            if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the directorate.'));
             if (isset($teams[$slug])) throw new InvalidArgumentException(t($t,'team_catalog_duplicate','That team already exists.'));
             $sort = count($teams) + 1;
             $pdo->prepare('INSERT INTO department_team_catalog (slug,department_slug,label,sort_order) VALUES (?,?,?,?)')->execute([$slug,$departmentSlug,$label,$sort]);
@@ -156,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = trim((string)($_POST['slug'] ?? ''));
             $label = trim((string)($_POST['label'] ?? ''));
             $departmentSlug = trim((string)($_POST['department_slug'] ?? ''));
-            if ($slug === '' || $label === '' || !isset($allDepartmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the department.'));
+            if ($slug === '' || $label === '' || !isset($allDepartmentOptions[$departmentSlug])) throw new InvalidArgumentException(t($t,'invalid_team_department','Select a valid team in the directorate.'));
             $pdo->prepare('UPDATE department_team_catalog SET label=?, department_slug=? WHERE slug=?')->execute([$label,$departmentSlug,$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
@@ -263,7 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             $pdo->commit();
-            $_SESSION[$flashKey] = t($t,'work_function_defaults_bulk_cloned','Assignments copied to selected departments.');
+            $_SESSION[$flashKey] = t($t,'work_function_defaults_bulk_cloned','Assignments copied to selected directorates.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
     } catch (InvalidArgumentException $e) {
@@ -394,7 +394,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     <?php if ($metadataErrors): ?><div class="md-alert error"><?php foreach ($metadataErrors as $err): ?><p><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></p><?php endforeach; ?></div><?php endif; ?>
 
     <div class="md-tab-row" role="tablist" aria-label="Work function defaults sections">
-      <a class="md-tab-chip is-active" id="tab-departments" data-tab-target="departments" href="#departments" role="tab" aria-controls="departments" aria-selected="true">Departments</a>
+      <a class="md-tab-chip is-active" id="tab-departments" data-tab-target="departments" href="#departments" role="tab" aria-controls="departments" aria-selected="true">Directorates</a>
       <a class="md-tab-chip" id="tab-teams" data-tab-target="teams" href="#teams" role="tab" aria-controls="teams" aria-selected="false">Teams</a>
       <a class="md-tab-chip" id="tab-roles" data-tab-target="roles" href="#roles" role="tab" aria-controls="roles" aria-selected="false">Work Roles</a>
       <a class="md-tab-chip" id="tab-defaults" data-tab-target="defaults" href="#defaults" role="tab" aria-controls="defaults" aria-selected="false">Questionnaire Defaults</a>
@@ -408,19 +408,19 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 
     <section class="md-defaults-group md-pane is-active" id="departments" data-pane role="tabpanel" aria-labelledby="tab-departments">
       <div class="md-defaults-header">
-        <span><?=htmlspecialchars(t($t,'department','Department'), ENT_QUOTES, 'UTF-8')?></span>
+        <span><?=htmlspecialchars(t($t,'department','Directorate'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeDepartmentCount : ($statusFilter === 'inactive' ? ($totalDepartmentCount - $activeDepartmentCount) : $totalDepartmentCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </div>
       <div class="md-defaults-group-body">
-        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
+        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="department_add"><label class="md-field"><span><?=t($t,'department','Directorate')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'create','Create')?></button></form>
         <div class="md-search-block">
-          <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="department" placeholder="<?=htmlspecialchars(t($t, 'search_department_placeholder', 'Search departments'), ENT_QUOTES, 'UTF-8')?>"></label>
+          <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="department" placeholder="<?=htmlspecialchars(t($t, 'search_department_placeholder', 'Search directorates'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
         <div class="md-list">
-          <div class="md-list-head md-list-department"><div>Department</div><div>Slug</div><div>Active</div><div>Actions</div></div>
+          <div class="md-list-head md-list-department"><div>Directorate</div><div>Slug</div><div>Active</div><div>Actions</div></div>
             <?php foreach ($departments as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
               <div class="md-work-function-row md-list-row md-list-department" data-search-group="department" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
-                <div class="md-list-col" data-label="Department"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
+                <div class="md-list-col" data-label="Directorate"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
                 <div class="md-list-col" data-label="Slug"><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></div>
                 <div class="md-list-col" data-label="Active">
                   <form method="post" class="js-active-toggle-form">
@@ -439,7 +439,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                         <input type="hidden" name="csrf" value="<?=csrf_token()?>">
                         <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
                         <input type="hidden" name="mode" value="department_update">
-                        <label class="md-field"><span><?=t($t,'department','Department')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                        <label class="md-field"><span><?=t($t,'department','Directorate')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
                         <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                       </form>
                     </div>
@@ -454,19 +454,19 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 
     <section class="md-defaults-group md-pane" id="teams" data-pane role="tabpanel" aria-labelledby="tab-teams">
       <div class="md-defaults-header">
-        <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Department'), ENT_QUOTES, 'UTF-8')?></span>
+        <span><?=htmlspecialchars(t($t,'team_catalog_title','Manage Teams in the Directorate'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=$statusFilter === 'active' ? $activeTeamCount : ($statusFilter === 'inactive' ? ($totalTeamCount - $activeTeamCount) : $totalTeamCount)?> <?=htmlspecialchars(t($t,'items','items'), ENT_QUOTES, 'UTF-8')?></span>
       </div>
       <div class="md-defaults-group-body">
-        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
+        <form method="post" class="md-compact-actions"><input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_add"><label class="md-field"><span><?=t($t,'department','Directorate')?></span><select name="department_slug" required><?php foreach ($departmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label><label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" required></label><button type="submit" class="md-button md-primary"><?=t($t,'team_catalog_add','Add team')?></button></form>
         <div class="md-search-block">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'search_catalog', 'Search this list'), ENT_QUOTES, 'UTF-8')?></span><input type="search" class="js-catalog-search" data-target="team" placeholder="<?=htmlspecialchars(t($t, 'search_team_placeholder', 'Search teams'), ENT_QUOTES, 'UTF-8')?>"></label>
         </div>
-        <div class="md-list"><div class="md-list-head md-list-team"><div>Team</div><div>Department</div><div>Slug</div><div>Active</div><div>Actions</div></div>
+        <div class="md-list"><div class="md-list-head md-list-team"><div>Team</div><div>Directorate</div><div>Slug</div><div>Active</div><div>Actions</div></div>
         <?php foreach ($teams as $slug => $record): if (!$matchesStatusFilter($record['archived_at'] ?? null)) continue; ?>
           <div class="md-work-function-row md-list-row md-list-team" data-search-group="team" data-search-text="<?=htmlspecialchars(strtolower(trim($slug . ' ' . (string)($record['label'] ?? '') . ' ' . (string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? ''))), ENT_QUOTES, 'UTF-8')?>">
             <div class="md-list-col" data-label="Team"><?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
-            <div class="md-list-col" data-label="Department"><?=htmlspecialchars((string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? '—'), ENT_QUOTES, 'UTF-8')?></div>
+            <div class="md-list-col" data-label="Directorate"><?=htmlspecialchars((string)($allDepartmentOptions[$record['department_slug'] ?? ''] ?? '—'), ENT_QUOTES, 'UTF-8')?></div>
             <div class="md-list-col" data-label="Slug"><code><?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?></code></div>
             <div class="md-list-col" data-label="Active">
               <form method="post" class="js-active-toggle-form">
@@ -486,7 +486,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                     <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
                     <input type="hidden" name="mode" value="team_update">
                     <label class="md-field"><span><?=t($t,'team_catalog_label','Team name')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-                    <label class="md-field"><span><?=t($t,'department','Department')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
+                    <label class="md-field"><span><?=t($t,'department','Directorate')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
                     <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                   </form>
                 </div>
@@ -545,7 +545,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 
     <section class="md-defaults-group md-pane" id="defaults" data-pane role="tabpanel" aria-labelledby="tab-defaults">
       <div class="md-defaults-header">
-        <span><?=htmlspecialchars(t($t,'assignment_overview','Department questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
+        <span><?=htmlspecialchars(t($t,'assignment_overview','Directorate questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
         <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
       </div>
       <div class="md-defaults-group-body md-assignment-picker">
@@ -562,7 +562,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
             </select>
           </label>
           <div class="md-field" style="flex:2 1 380px;">
-            <span><?=htmlspecialchars(t($t,'bulk_clone_to','Apply to departments'), ENT_QUOTES, 'UTF-8')?></span>
+            <span><?=htmlspecialchars(t($t,'bulk_clone_to','Apply to directorates'), ENT_QUOTES, 'UTF-8')?></span>
             <div style="display:flex; flex-wrap:wrap; gap:.5rem; max-height:120px; overflow:auto; padding:.35rem; border:1px solid rgba(0,0,0,.1); border-radius:6px;">
               <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
                 <label style="display:inline-flex; align-items:center; gap:.25rem;">
@@ -578,7 +578,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
           <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="assignments_save">
           <div class="md-table-wrap" style="width:100%;">
             <table class="md-table">
-              <thead><tr><th>Department</th><th>Questionnaires</th><th>Selected</th></tr></thead>
+              <thead><tr><th>Directorate</th><th>Questionnaires</th><th>Selected</th></tr></thead>
               <tbody>
               <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
                 <tr>

@@ -133,7 +133,7 @@ VALUES
   ('director', 'Director', 1, NULL),
   ('manager', 'Manager', 2, NULL),
   ('team_lead', 'Team Lead', 3, NULL),
-  ('expert', 'Expert', 4, NULL)
+  ('expert', 'Officer', 4, NULL)
 ON DUPLICATE KEY UPDATE
   label = VALUES(label),
   sort_order = VALUES(sort_order),
