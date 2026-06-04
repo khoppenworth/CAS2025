@@ -146,9 +146,11 @@ Provide the client ID, client secret, and (for Microsoft) the tenant identifier.
 `<BASE_URL>/oauth.php?provider=<google|microsoft>&action=callback`; ensure this is registered with each provider.
 
 When a user signs in with SSO and no account exists, the platform auto-provisions a pending profile that is limited to the
-Profile page until a supervisor approves it. Supervisors (and admins) can review and approve accounts at
-**Team & Reviews → User Approval**. A banner on the profile and login pages explains the pending status to the end user.
-Supervisors can also set the user's next assessment date during approval.
+Profile page until a supervisor approves it. Existing SSO users are matched by trusted identity only: provider subject when
+already linked, or exact verified email for first-time linking. OAuth sign-in does not match by username, email local-part, or
+display name. Supervisors (and admins) can review and approve accounts at **Team & Reviews → User Approval**. A banner on
+the profile and login pages explains the pending status to the end user. Supervisors can also set the user's next assessment
+date during approval.
 
 ### Email delivery
 

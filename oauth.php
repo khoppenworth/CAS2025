@@ -94,16 +94,19 @@ if ($profileStatus >= 400) {
     oauth_fail('Unable to retrieve your profile information. Please try again.', $provider);
 }
 
-[$email, $displayName] = extract_identity($profileData, $provider);
+$identity = extract_identity($profileData, $provider, $tokenData, $providerConfig);
+$email = $identity['email'];
+$displayName = $identity['display_name'];
+$subject = $identity['subject'];
 if ($email === '') {
     oauth_fail('Unable to determine your account email address from the identity provider.', $provider);
 }
 
-$user = lookup_user_by_identity($pdo, $email, $displayName);
+$user = lookup_user_by_identity($pdo, $provider, $email, $subject);
 $created = false;
 if (!$user) {
     try {
-        $user = create_sso_user($pdo, $email, $displayName, $provider);
+        $user = create_sso_user($pdo, $email, $displayName, $provider, $subject);
         if ($user) {
             $created = true;
             notify_supervisors_of_pending_user($pdo, $cfg, $user);
@@ -116,8 +119,18 @@ if (!$user) {
     }
 }
 
+if (!sso_provider_can_sign_in($user, $provider)) {
+    oauth_fail('Please use the sign-in method already linked to this account.', $provider);
+}
+
 if (($user['account_status'] ?? 'active') === 'disabled') {
     oauth_fail('Your account has been disabled. Please contact your administrator.', $provider);
+}
+
+if ($subject !== '') {
+    link_sso_identity($pdo, $user, $provider, $subject);
+    $user['sso_provider'] = $provider;
+    $user['sso_subject'] = $subject;
 }
 
 if (empty($user['first_login_at'])) {
@@ -268,26 +281,145 @@ function oauth_get_json(string $url, string $accessToken, array $extraHeaders = 
     return [$status, $data];
 }
 
-function extract_identity(array $profile, string $provider): array
+function extract_identity(array $profile, string $provider, array $tokenData, array $providerConfig): array
 {
-    $email = '';
-    $name = '';
     if ($provider === 'google') {
-        $email = strtolower(trim((string)($profile['email'] ?? '')));
-        $name = trim((string)($profile['name'] ?? ''));
-    } else {
-        $emailRaw = (string)($profile['mail'] ?? '');
-        if ($emailRaw === '') {
-            $emailRaw = (string)($profile['userPrincipalName'] ?? '');
-        }
-        $email = strtolower(trim($emailRaw));
-        $name = trim((string)($profile['displayName'] ?? ''));
+        return extract_google_identity($profile, $tokenData, $providerConfig);
     }
-    return [$email, $name];
+
+    $emailRaw = (string)($profile['mail'] ?? '');
+    if ($emailRaw === '') {
+        $emailRaw = (string)($profile['userPrincipalName'] ?? '');
+    }
+
+    return [
+        'email' => strtolower(trim($emailRaw)),
+        'display_name' => trim((string)($profile['displayName'] ?? '')),
+        'subject' => '',
+        'email_verified' => true,
+    ];
 }
 
-function lookup_user_by_identity(PDO $pdo, string $email, string $displayName)
+function extract_google_identity(array $profile, array $tokenData, array $providerConfig): array
 {
+    $claims = validate_google_id_token((string)($tokenData['id_token'] ?? ''), (string)$providerConfig['client_id']);
+    $profileEmail = strtolower(trim((string)($profile['email'] ?? '')));
+    $claimEmail = strtolower(trim((string)($claims['email'] ?? '')));
+    $subject = trim((string)($claims['sub'] ?? ''));
+    $profileSubject = trim((string)($profile['sub'] ?? ''));
+    $name = trim((string)($profile['name'] ?? ($claims['name'] ?? '')));
+
+    if ($profileEmail === '' || $claimEmail === '' || !hash_equals($claimEmail, $profileEmail)) {
+        oauth_fail('Google did not return a consistent verified email address.', 'google');
+    }
+
+    if ($subject === '' || ($profileSubject !== '' && !hash_equals($subject, $profileSubject))) {
+        oauth_fail('Google did not return a consistent account identifier.', 'google');
+    }
+
+    $profileEmailVerified = $profile['email_verified'] ?? true;
+    if (!truthy_oauth_claim($profileEmailVerified)) {
+        oauth_fail('Your Google email address must be verified before you can sign in.', 'google');
+    }
+
+    return [
+        'email' => $claimEmail,
+        'display_name' => $name,
+        'subject' => $subject,
+        'email_verified' => true,
+    ];
+}
+
+function validate_google_id_token(string $idToken, string $clientId): array
+{
+    if ($idToken === '') {
+        oauth_fail('Google did not return an ID token.', 'google');
+    }
+
+    $parts = explode('.', $idToken);
+    if (count($parts) !== 3) {
+        oauth_fail('Google returned an invalid ID token.', 'google');
+    }
+
+    $header = json_decode(base64url_decode($parts[0]), true);
+    $claims = json_decode(base64url_decode($parts[1]), true);
+    if (!is_array($header) || !is_array($claims)) {
+        oauth_fail('Google returned an unreadable ID token.', 'google');
+    }
+
+    if (($header['alg'] ?? '') === 'none') {
+        oauth_fail('Google returned an unsigned ID token.', 'google');
+    }
+
+    $issuer = (string)($claims['iss'] ?? '');
+    if (!in_array($issuer, ['accounts.google.com', 'https://accounts.google.com'], true)) {
+        oauth_fail('Google returned an ID token from an unexpected issuer.', 'google');
+    }
+
+    $audience = $claims['aud'] ?? '';
+    $audiences = is_array($audience) ? array_map('strval', $audience) : [(string)$audience];
+    if (!in_array($clientId, $audiences, true)) {
+        oauth_fail('Google returned an ID token for a different client.', 'google');
+    }
+
+    $expiresAt = (int)($claims['exp'] ?? 0);
+    if ($expiresAt <= time()) {
+        oauth_fail('Google returned an expired ID token.', 'google');
+    }
+
+    if (trim((string)($claims['sub'] ?? '')) === '') {
+        oauth_fail('Google did not return an account identifier.', 'google');
+    }
+
+    if (strtolower(trim((string)($claims['email'] ?? ''))) === '') {
+        oauth_fail('Google did not return an email address.', 'google');
+    }
+
+    if (!truthy_oauth_claim($claims['email_verified'] ?? false)) {
+        oauth_fail('Your Google email address must be verified before you can sign in.', 'google');
+    }
+
+    return $claims;
+}
+
+function truthy_oauth_claim($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+    if (is_int($value)) {
+        return $value === 1;
+    }
+    if (is_string($value)) {
+        return in_array(strtolower($value), ['1', 'true', 'yes'], true);
+    }
+    return false;
+}
+
+function base64url_decode(string $value): string
+{
+    $remainder = strlen($value) % 4;
+    if ($remainder > 0) {
+        $value .= str_repeat('=', 4 - $remainder);
+    }
+    $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+    if ($decoded === false) {
+        return '';
+    }
+    return $decoded;
+}
+
+function lookup_user_by_identity(PDO $pdo, string $provider, string $email, string $subject)
+{
+    if ($subject !== '') {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE sso_provider = ? AND sso_subject = ? LIMIT 1');
+        $stmt->execute([$provider, $subject]);
+        $user = $stmt->fetch();
+        if ($user) {
+            return $user;
+        }
+    }
+
     $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
@@ -295,38 +427,39 @@ function lookup_user_by_identity(PDO $pdo, string $email, string $displayName)
         return $user;
     }
 
-    $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1');
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
-    if ($user) {
-        return $user;
-    }
-
-    if (str_contains($email, '@')) {
-        $local = substr($email, 0, strpos($email, '@'));
-        if ($local !== '') {
-            $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1');
-            $stmt->execute([$local]);
-            $user = $stmt->fetch();
-            if ($user) {
-                return $user;
-            }
-        }
-    }
-
-    if ($displayName !== '') {
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(full_name) = LOWER(?) LIMIT 1');
-        $stmt->execute([$displayName]);
-        $user = $stmt->fetch();
-        if ($user) {
-            return $user;
-        }
-    }
-
     return false;
 }
 
-function create_sso_user(PDO $pdo, string $email, string $displayName, string $provider)
+function sso_provider_can_sign_in(array $user, string $provider): bool
+{
+    $linkedProvider = trim((string)($user['sso_provider'] ?? ''));
+    return $linkedProvider === '' || hash_equals($linkedProvider, $provider);
+}
+
+function link_sso_identity(PDO $pdo, array $user, string $provider, string $subject): void
+{
+    $currentProvider = trim((string)($user['sso_provider'] ?? ''));
+    $currentSubject = trim((string)($user['sso_subject'] ?? ''));
+    if ($currentProvider === $provider && $currentSubject === $subject) {
+        return;
+    }
+    if ($currentProvider !== '' && $currentProvider !== $provider) {
+        return;
+    }
+    if ($currentSubject !== '' && $currentSubject !== $subject) {
+        oauth_fail('This account is linked to a different Google identity.', $provider);
+    }
+
+    try {
+        $stmt = $pdo->prepare('UPDATE users SET sso_provider = ?, sso_subject = ? WHERE id = ?');
+        $stmt->execute([$provider, $subject, $user['id']]);
+    } catch (PDOException $e) {
+        error_log('SSO identity link failed: ' . $e->getMessage());
+        oauth_fail('This Google account could not be linked. Please contact your administrator.', $provider);
+    }
+}
+
+function create_sso_user(PDO $pdo, string $email, string $displayName, string $provider, string $subject)
 {
     $username = generate_unique_username($pdo, $email, $displayName);
     if ($username === '') {
@@ -334,7 +467,7 @@ function create_sso_user(PDO $pdo, string $email, string $displayName, string $p
     }
     $password = bin2hex(random_bytes(16));
     $hash = password_hash($password, PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare('INSERT INTO users (username, password, role, full_name, email, profile_completed, account_status, sso_provider, language) VALUES (?,?,?,?,?,0,?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT INTO users (username, password, role, full_name, email, profile_completed, account_status, sso_provider, sso_subject, language) VALUES (?,?,?,?,?,0,?, ?, ?, ?)');
     $language = 'en';
     $stmt->execute([
         $username,
@@ -344,6 +477,7 @@ function create_sso_user(PDO $pdo, string $email, string $displayName, string $p
         $email !== '' ? $email : null,
         'pending',
         $provider,
+        $subject !== '' ? $subject : null,
         $language,
     ]);
     $id = (int)$pdo->lastInsertId();

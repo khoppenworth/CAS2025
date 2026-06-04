@@ -1202,6 +1202,41 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 
+SET @users_sso_subject_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'sso_subject'
+);
+SET @users_sso_subject_sql = IF(
+  @users_sso_subject_exists = 0,
+  'ALTER TABLE users ADD COLUMN sso_subject VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL AFTER sso_provider',
+  'DO 1'
+);
+PREPARE stmt FROM @users_sso_subject_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+SET @users_sso_identity_index_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND INDEX_NAME = 'uniq_sso_identity'
+);
+SET @users_sso_identity_index_sql = IF(
+  @users_sso_identity_index_exists = 0,
+  'ALTER TABLE users ADD UNIQUE KEY uniq_sso_identity (sso_provider, sso_subject)',
+  'DO 1'
+);
+PREPARE stmt FROM @users_sso_identity_index_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+
 CREATE TABLE IF NOT EXISTS performance_period (
   id INT AUTO_INCREMENT PRIMARY KEY,
   label VARCHAR(50) NOT NULL,
