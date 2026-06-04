@@ -86,73 +86,6 @@ if ($landingBackgroundRenderPath !== '') {
 $metaImagePath = $landingBackgroundRenderPath !== '' ? $landingBackgroundRenderPath : $logoRenderPath;
 $metaImageUrl = htmlspecialchars($toAbsoluteUrl($metaImagePath), ENT_QUOTES, 'UTF-8');
 $canonicalUrl = htmlspecialchars($toAbsoluteUrl(url_for('')), ENT_QUOTES, 'UTF-8');
-$organizationName = trim((string)($cfg['footer_org_name'] ?? ''));
-$organizationNameEscaped = htmlspecialchars($organizationName !== '' ? $organizationName : ($cfg['site_name'] ?? 'My Performance'), ENT_QUOTES, 'UTF-8');
-$organizationShort = trim((string)($cfg['footer_org_short'] ?? ''));
-$organizationShortEscaped = htmlspecialchars($organizationShort, ENT_QUOTES, 'UTF-8');
-$footerWebsiteLabelRaw = trim((string)($cfg['footer_website_label'] ?? ''));
-$footerWebsiteUrlRaw = trim((string)($cfg['footer_website_url'] ?? ''));
-$footerEmailRaw = trim((string)($cfg['footer_email'] ?? ''));
-$footerPhoneRaw = trim((string)($cfg['footer_phone'] ?? ''));
-$footerHotlineLabelRaw = trim((string)($cfg['footer_hotline_label'] ?? ''));
-$footerHotlineNumberRaw = trim((string)($cfg['footer_hotline_number'] ?? ''));
-$addressRaw = trim((string)($cfg['address'] ?? ''));
-$contactRaw = trim((string)($cfg['contact'] ?? ''));
-$footerRightsEscaped = htmlspecialchars(trim((string)($cfg['footer_rights'] ?? '')), ENT_QUOTES, 'UTF-8');
-$footerWebsiteLabel = htmlspecialchars($footerWebsiteLabelRaw, ENT_QUOTES, 'UTF-8');
-$footerWebsiteUrl = htmlspecialchars($footerWebsiteUrlRaw, ENT_QUOTES, 'UTF-8');
-$footerEmail = htmlspecialchars($footerEmailRaw, ENT_QUOTES, 'UTF-8');
-$footerPhone = htmlspecialchars($footerPhoneRaw, ENT_QUOTES, 'UTF-8');
-$footerHotlineLabel = htmlspecialchars($footerHotlineLabelRaw, ENT_QUOTES, 'UTF-8');
-$footerHotlineNumber = htmlspecialchars($footerHotlineNumberRaw, ENT_QUOTES, 'UTF-8');
-$address = htmlspecialchars($addressRaw, ENT_QUOTES, 'UTF-8');
-$contact = htmlspecialchars($contactRaw, ENT_QUOTES, 'UTF-8');
-
-$landingFetchScalar = static function (PDO $pdo, string $sql) {
-    try {
-        $stmt = $pdo->query($sql);
-        if (!$stmt) {
-            return null;
-        }
-        $value = $stmt->fetchColumn();
-        return $value !== false ? $value : null;
-    } catch (Throwable $e) {
-        error_log('index.php metric query failed: ' . $e->getMessage());
-        return null;
-    }
-};
-
-$registeredUsersRaw = $landingFetchScalar($pdo, 'SELECT COUNT(*) FROM users');
-$totalSubmissionsRaw = $landingFetchScalar($pdo, 'SELECT COUNT(*) FROM questionnaire_response');
-$latestSubmissionRaw = $landingFetchScalar($pdo, 'SELECT MAX(created_at) FROM questionnaire_response');
-$topIndicatorRaw = $landingFetchScalar(
-    $pdo,
-    "SELECT ROUND((SUM(CASE WHEN max_score >= 80 THEN 1 ELSE 0 END) / COUNT(*)) * 100, 1) " .
-    "FROM (" .
-    "  SELECT user_id, MAX(score) AS max_score " .
-    "  FROM questionnaire_response " .
-    "  WHERE status <> 'draft' AND score IS NOT NULL " .
-    "  GROUP BY user_id" .
-    ") kpi"
-);
-
-$registeredUsersDisplay = $registeredUsersRaw !== null ? number_format((int)$registeredUsersRaw) : '—';
-$totalSubmissionsDisplay = $totalSubmissionsRaw !== null ? number_format((int)$totalSubmissionsRaw) : '—';
-$latestSubmissionDisplay = '—';
-$latestSubmissionIso = '';
-if (is_string($latestSubmissionRaw) && trim($latestSubmissionRaw) !== '') {
-    $latestSubmissionDisplay = app_format_display_date($latestSubmissionRaw, $locale, $cfg);
-    $latestSubmissionIso = app_format_machine_datetime($latestSubmissionRaw);
-}
-$topIndicatorDisplay = $topIndicatorRaw !== null ? number_format((float)$topIndicatorRaw, 1) . '%' : '—';
-
-$statTiles = [
-    ['value' => htmlspecialchars($registeredUsersDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_registered_users', 'Total registered users'), ENT_QUOTES, 'UTF-8')],
-    ['value' => htmlspecialchars($totalSubmissionsDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_total_submissions', 'Total submissions'), ENT_QUOTES, 'UTF-8')],
-    ['value' => htmlspecialchars($latestSubmissionDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_latest_submission_date', 'Latest submission date'), ENT_QUOTES, 'UTF-8'), 'date' => htmlspecialchars($latestSubmissionIso, ENT_QUOTES, 'UTF-8'), 'date_mode' => 'date'],
-    ['value' => htmlspecialchars($topIndicatorDisplay, ENT_QUOTES, 'UTF-8'), 'label' => htmlspecialchars(t($t, 'stat_top_indicator', 'Staff reaching 80%+ (top KPI)'), ENT_QUOTES, 'UTF-8')],
-];
-
 ?>
 <!doctype html>
 <html lang="<?= $langAttr ?>" data-base-url="<?= $baseUrl ?>">
@@ -212,53 +145,19 @@ $statTiles = [
 
     <main class="landing-main" aria-label="<?= htmlspecialchars(t($t, 'landing_main_label', 'Landing content'), ENT_QUOTES, 'UTF-8') ?>">
       <section class="<?= htmlspecialchars($landingHeroClass, ENT_QUOTES, 'UTF-8') ?>">
-        <div class="landing-hero-panel"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . '"' : '' ?>>
-          <div class="landing-hero-copy">
-            <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
-            <h1 class="landing-hero-copy__title"><?= $heroTitle ?></h1>
-            <p class="landing-hero-copy__subtitle"><?= $heroSubtitle ?></p>
-          </div>
-        </div>
+        <div class="landing-hero-panel"<?= $landingHeroStyle !== '' ? ' style="' . $landingHeroStyle . ' min-height: clamp(18rem, 44vw, 34rem);"' : ' style="min-height: clamp(18rem, 44vw, 34rem);"' ?> aria-hidden="true"></div>
       </section>
 
-      <section class="landing-section landing-section--stats">
-        <div class="landing-stats-grid">
-          <?php foreach ($statTiles as $tile): ?>
-            <article class="landing-stat-card">
-              <h3<?= !empty($tile['date']) ? ' data-client-date="' . $tile['date'] . '" data-client-date-mode="' . htmlspecialchars($tile['date_mode'] ?? 'date', ENT_QUOTES, 'UTF-8') . '"' : '' ?>><?= $tile['value'] ?></h3>
-              <p><?= $tile['label'] ?></p>
-            </article>
-          <?php endforeach; ?>
+      <section class="landing-section landing-section--hero-copy" aria-labelledby="landing-hero-title" style="margin-top: clamp(1.5rem, 4vw, 2.5rem);">
+        <div class="landing-hero-copy" style="width: var(--landing-container-width); margin: 0 auto;">
+          <p class="landing-hero-copy__eyebrow"><?= $heroEyebrow ?></p>
+          <h1 class="landing-hero-copy__title" id="landing-hero-title"><?= $heroTitle ?></h1>
+          <p class="landing-hero-copy__subtitle"><?= $heroSubtitle ?></p>
         </div>
       </section>
 
     </main>
 
-    <footer class="landing-footer" id="contact">
-      <div class="landing-footer__meta landing-footer__company">
-        <p class="landing-footer__org"><?= $organizationNameEscaped ?></p>
-        <?php if ($organizationShort !== ''): ?>
-          <p class="landing-footer__secondary-link"><?= $organizationShortEscaped ?></p>
-        <?php endif; ?>
-        <?php if ($footerWebsiteUrlRaw !== ''): ?>
-          <div class="landing-footer__links">
-            <h3><?= htmlspecialchars(t($t, 'further_information', 'Further Information'), ENT_QUOTES, 'UTF-8') ?></h3>
-            <a href="<?= $footerWebsiteUrl ?>" target="_blank" rel="noopener noreferrer"><?= $footerWebsiteLabel !== '' ? $footerWebsiteLabel : $footerWebsiteUrl ?></a>
-          </div>
-        <?php endif; ?>
-        <?php if ($footerRightsEscaped !== ''): ?>
-          <p class="landing-footer__secondary-link"><?= $footerRightsEscaped ?></p>
-        <?php endif; ?>
-      </div>
-      <div class="landing-footer__meta landing-footer__contact">
-        <h3><?= htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8') ?></h3>
-        <?php if ($addressRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'address_label', 'Address'), ENT_QUOTES, 'UTF-8') ?>:</strong> <?= $address ?></p><?php endif; ?>
-        <?php if ($contactRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'contact_label', 'Contact'), ENT_QUOTES, 'UTF-8') ?>:</strong> <?= $contact ?></p><?php endif; ?>
-        <?php if ($footerPhoneRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'footer_phone_label', 'Phone Number'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="tel:<?= htmlspecialchars(preg_replace('/\s+/', '', $footerPhoneRaw), ENT_QUOTES, 'UTF-8') ?>"><?= $footerPhone ?></a></p><?php endif; ?>
-        <?php if ($footerEmailRaw !== ''): ?><p><strong><?= htmlspecialchars(t($t, 'footer_email_label', 'Contact Email'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="mailto:<?= $footerEmail ?>"><?= $footerEmail ?></a></p><?php endif; ?>
-        <?php if ($footerHotlineNumberRaw !== ''): ?><p><strong><?= $footerHotlineLabel !== '' ? $footerHotlineLabel : htmlspecialchars(t($t, 'footer_hotline_label_label', 'Hotline'), ENT_QUOTES, 'UTF-8') ?>:</strong> <a href="tel:<?= htmlspecialchars(preg_replace('/\s+/', '', $footerHotlineNumberRaw), ENT_QUOTES, 'UTF-8') ?>"><?= $footerHotlineNumber ?></a></p><?php endif; ?>
-      </div>
-    </footer>
   </div>
   <script src="<?= asset_url('assets/js/app.js') ?>"></script>
 </body>
