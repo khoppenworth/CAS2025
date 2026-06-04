@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
+require_once __DIR__ . '/lib/questionnaire_submission.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
 require_once __DIR__ . '/lib/questionnaire_visibility.php';
 if (!function_exists('canonical')) {
@@ -90,35 +91,12 @@ $isOtherSelected = static function ($rawValue): bool {
 
 
 $normalizeConditionLinkId = static function (string $value): string {
-    $normalized = trim($value);
-    if ($normalized === '') {
-        return '';
-    }
-    if (str_starts_with(strtolower($normalized), 'item_')) {
-        $normalized = substr($normalized, 5);
-    }
-    if (str_ends_with($normalized, '[]')) {
-        $normalized = substr($normalized, 0, -2);
-    }
-    return strtolower(trim($normalized));
+    return questionnaire_submission_normalize_link_id($value);
 };
 
 
 $collectPostedValues = static function (array $postData) use ($normalizeConditionLinkId): array {
     $valuesByLinkId = [];
-    $normalizeConditionLinkId = static function (string $value): string {
-        $normalized = trim($value);
-        if ($normalized === '') {
-            return '';
-        }
-        if (str_starts_with(strtolower($normalized), 'item_')) {
-            $normalized = substr($normalized, 5);
-        }
-        if (str_ends_with($normalized, '[]')) {
-            $normalized = substr($normalized, 0, -2);
-        }
-        return strtolower(trim($normalized));
-    };
     foreach ($postData as $key => $value) {
         if (!is_string($key) || !str_starts_with($key, 'item_')) {
             continue;
@@ -418,7 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $parentLinkId = (string)($it['other_followup_parent_linkid'] ?? '');
                 if ($parentLinkId !== '') {
                     $parentField = 'item_' . $parentLinkId;
-                    $showForSelectedOther = $isOtherSelected($_POST[$parentField] ?? null);
+                    $showForSelectedOther = $isOtherSelected(questionnaire_post_item_value($_POST, $parentLinkId));
                     if (!$showForSelectedOther) {
                         $isRequired = false;
                     }
@@ -427,15 +405,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$showForSelectedOther) {
                     $a = json_encode([]);
                 } elseif ($type === 'boolean') {
-                    $hasResponse = array_key_exists($name, $_POST);
-                    $ans = $_POST[$name] ?? '';
+                    $hasResponse = questionnaire_post_item_exists($_POST, (string)$it['linkId']);
+                    $ans = questionnaire_post_item_value($_POST, (string)$it['linkId'], '');
                     $val = ($ans === '1' || $ans === 'true' || $ans === 'on') ? 'true' : 'false';
                     if ($val === 'true') {
                         $achievedPoints = $effectiveWeight;
                     }
                     $a = json_encode([['valueBoolean' => $val === 'true']]);
                 } elseif ($type === 'likert') {
-                    $raw = $_POST[$name] ?? '';
+                    $raw = questionnaire_post_item_value($_POST, (string)$it['linkId'], '');
                     if (is_array($raw)) {
                         $raw = reset($raw);
                     }
@@ -477,7 +455,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($type === 'choice') {
                     $allowMultiple = !empty($it['allow_multiple']);
                     $requiresCorrect = !$allowMultiple && !empty($it['requires_correct']);
-                    $raw = $_POST[$name] ?? ($allowMultiple ? [] : '');
+                    $raw = questionnaire_post_item_value($_POST, (string)$it['linkId'], ($allowMultiple ? [] : ''));
                     $selected = $allowMultiple ? (array)$raw : [$raw];
                     $values = array_values(array_filter(array_map(static function ($val) {
                         if (is_string($val)) {
@@ -509,7 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $a = $encodeAnswerPayload(array_map(static fn($val) => ['valueString' => (string)$val], $values));
                 } else {
-                    $ans = $_POST[$name] ?? '';
+                    $ans = questionnaire_post_item_value($_POST, (string)$it['linkId'], '');
                     $txt = trim((string)$ans);
                     if ($txt !== '') {
                         $hasResponse = true;

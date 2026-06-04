@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/../config.php';
+require_once __DIR__ . '/../lib/questionnaire_submission.php';
 if (!function_exists('available_work_functions')) {
     require_once __DIR__ . '/../lib/work_functions.php';
 }
@@ -665,6 +666,7 @@ function qb_fetch_questionnaires(PDO $pdo): array
             'questionnaire_id' => $qid,
             'section_id' => $sid,
             'linkId' => $item['linkId'],
+            'original_linkId' => $item['linkId'],
             'text' => $item['text'],
             'type' => $item['type'],
             'order_index' => (int)$item['order_index'],
@@ -1333,6 +1335,53 @@ if ($action === 'save' || $action === 'publish') {
             return $values;
         };
 
+        $linkIdChangedToUnsafe = static function (?int $itemId, string $linkId, array $existingItems): bool {
+            if (questionnaire_link_id_is_safe($linkId)) {
+                return false;
+            }
+            if ($itemId && isset($existingItems[$itemId])) {
+                $existingLinkId = (string)($existingItems[$itemId]['linkId'] ?? '');
+                if ($existingLinkId === $linkId) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        $unsafeLinkIdMessage = static function (string $linkId, string $text): string {
+            $label = $text !== '' ? $text : $linkId;
+            return sprintf(
+                'Question Code "%s" is not allowed for "%s". Use only letters, numbers, underscores, and hyphens.',
+                $linkId,
+                $label
+            );
+        };
+
+        $assertUniquePostKey = static function (array &$seenPostKeys, string $linkId, string $text): void {
+            $postKey = questionnaire_post_item_form_key($linkId);
+            if ($postKey === '') {
+                return;
+            }
+            if (isset($seenPostKeys[$postKey])) {
+                $first = $seenPostKeys[$postKey];
+                $firstLabel = trim((string)($first['text'] ?? ''));
+                if ($firstLabel === '') {
+                    $firstLabel = (string)($first['linkId'] ?? 'Question');
+                }
+                $label = $text !== '' ? $text : $linkId;
+                throw new InvalidArgumentException(sprintf(
+                    'Question Code "%s" for "%s" conflicts with "%s" after form key normalization. Use a unique code containing only letters, numbers, underscores, and hyphens.',
+                    $linkId,
+                    $label,
+                    $firstLabel
+                ));
+            }
+            $seenPostKeys[$postKey] = [
+                'linkId' => $linkId,
+                'text' => $text,
+            ];
+        };
+
         $insertWorkFunctionStmt = null;
         $deleteWorkFunctionStmt = null;
         try {
@@ -1470,6 +1519,7 @@ if ($action === 'save' || $action === 'publish') {
 
             $sectionSeen = [];
             $itemSeen = [];
+            $seenItemPostKeys = [];
 
             $existingSections = $sectionsMap[$qid] ?? [];
             $existingItems = $itemsMap[$qid] ?? [];
@@ -1546,6 +1596,10 @@ if ($action === 'save' || $action === 'publish') {
                         $conditionOperator = '';
                         $conditionValue = '';
                     }
+                    if ($linkIdChangedToUnsafe($itemId, $linkId, $existingItems)) {
+                        throw new InvalidArgumentException($unsafeLinkIdMessage($linkId, $text));
+                    }
+                    $assertUniquePostKey($seenItemPostKeys, $linkId, $text);
 
                     if ($itemId && isset($existingItems[$itemId])) {
                         $updateItemStmt->execute($buildItemUpdateValues($sectionId, $linkId, $text, $type, $itemOrder, $weight, $allowMultiple, $isRequired, $requiresCorrect, $conditionSource, $conditionOperator, $conditionValue, $itemActive, $itemId));
@@ -1612,6 +1666,10 @@ if ($action === 'save' || $action === 'publish') {
                     $conditionOperator = '';
                     $conditionValue = '';
                 }
+                if ($linkIdChangedToUnsafe($itemId, $linkId, $existingItems)) {
+                    throw new InvalidArgumentException($unsafeLinkIdMessage($linkId, $text));
+                }
+                $assertUniquePostKey($seenItemPostKeys, $linkId, $text);
 
                 if ($itemId && isset($existingItems[$itemId])) {
                     $updateItemStmt->execute($buildItemUpdateValues(null, $linkId, $text, $type, $rootOrder, $weight, $allowMultiple, $isRequired, $requiresCorrect, $conditionSource, $conditionOperator, $conditionValue, $itemActive, $itemId));
@@ -1749,6 +1807,12 @@ if ($action === 'save' || $action === 'publish') {
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
+        if ($e instanceof InvalidArgumentException) {
+            send_json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ], 400);
+        }
         send_json([
             'status' => 'error',
             'message' => 'Failed to persist questionnaire data',
@@ -2076,7 +2140,8 @@ if (isset($_POST['import'])) {
                             return filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         };
 
-                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, $xmlCorrectnessMap, &$importedSections, &$importedItems, &$importedOptions) {
+                        $seenImportedItemPostKeys = [];
+                        $processItems = function ($items, $sectionId = null) use (&$processItems, &$sectionOrder, &$itemOrder, $insertSectionStmt, $insertItemStmt, $insertOptionStmt, $qid, $toList, $mapType, $pdo, $isTruthy, $supportsSectionActive, $supportsSectionScoring, $supportsItemRequiresCorrect, $supportsItemActive, $supportsItemConditions, $supportsOptionCorrect, $updateSectionFlagsStmt, $updateImportedItemExtrasStmt, $forceRequiresCorrectStmt, $xmlCorrectnessMap, &$importedSections, &$importedItems, &$importedOptions, &$seenImportedItemPostKeys) {
                             $items = $toList($items);
                             foreach ($items as $it) {
                                 if (!is_array($it)) {
@@ -2126,6 +2191,21 @@ if (isset($_POST['import'])) {
                                 if ($linkId === '') {
                                     $linkId = 'i' . $itemOrder;
                                 }
+                                if (!questionnaire_link_id_is_safe($linkId)) {
+                                    throw new InvalidArgumentException(sprintf(
+                                        'Imported Question Code "%s" is not allowed. Use only letters, numbers, underscores, and hyphens.',
+                                        $linkId
+                                    ));
+                                }
+                                $postKey = questionnaire_post_item_form_key($linkId);
+                                if (isset($seenImportedItemPostKeys[$postKey])) {
+                                    throw new InvalidArgumentException(sprintf(
+                                        'Imported Question Code "%s" conflicts with "%s" after form key normalization. Use unique question codes.',
+                                        $linkId,
+                                        $seenImportedItemPostKeys[$postKey]
+                                    ));
+                                }
+                                $seenImportedItemPostKeys[$postKey] = $linkId;
                                 $correctnessFromXml = isset($xmlCorrectnessMap[$linkId]) && is_array($xmlCorrectnessMap[$linkId])
                                     ? $xmlCorrectnessMap[$linkId]
                                     : ['requires_correct' => false, 'correct_options' => []];
