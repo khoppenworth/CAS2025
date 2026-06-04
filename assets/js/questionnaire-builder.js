@@ -291,6 +291,7 @@ const Builder = (() => {
       id: item.id ?? null,
       clientId: item.clientId || uuid('i'),
       linkId: item.linkId || '',
+      original_linkId: item.original_linkId ?? item.linkId ?? '',
       text: item.text || '',
       type,
       options,
@@ -2598,6 +2599,64 @@ const Builder = (() => {
     return false;
   }
 
+  function isSafeQuestionCode(value) {
+    return /^[A-Za-z0-9_-]+$/.test(String(value || '').trim());
+  }
+
+  function normalizedQuestionPostKey(linkId) {
+    return `item_${String(linkId || '').trim()}`.replace(/[. ]/g, '_');
+  }
+
+  function validateQuestionCodes() {
+    const invalidItems = [];
+    const conflictingItems = [];
+    const visitQuestionnaire = (questionnaire) => {
+      const seenPostKeys = new Map();
+      const visitItem = (item) => {
+        if (!item) return;
+        const linkId = String(item.linkId || '').trim();
+        const original = String(item.original_linkId || '').trim();
+        if (!isSafeQuestionCode(linkId) && (!item.id || linkId !== original)) {
+          invalidItems.push(item);
+        }
+        const postKey = normalizedQuestionPostKey(linkId);
+        if (postKey) {
+          if (seenPostKeys.has(postKey)) {
+            conflictingItems.push(item);
+          } else {
+            seenPostKeys.set(postKey, item);
+          }
+        }
+      };
+      (questionnaire.items || []).forEach(visitItem);
+      (questionnaire.sections || []).forEach((section) => (section.items || []).forEach(visitItem));
+    };
+    state.questionnaires.forEach(visitQuestionnaire);
+    if (invalidItems.length === 0 && conflictingItems.length === 0) {
+      return true;
+    }
+
+    const firstInvalid = invalidItems[0] || conflictingItems[0];
+    const itemRow = Array.from(document.querySelectorAll('[data-item]'))
+      .find((row) => row.getAttribute('data-item') === firstInvalid.clientId);
+    const field = itemRow ? itemRow.querySelector('[data-role="item-link"]') : null;
+    if (field instanceof HTMLElement) {
+      const container = findMissingContainer(field);
+      if (container) {
+        container.classList.add('qb-field--missing');
+      }
+      if (typeof field.focus === 'function') {
+        field.focus({ preventScroll: true });
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+    const message = conflictingItems.length > 0
+      ? 'Question Codes must remain unique after form key normalization. Avoid codes that only differ by dots, spaces, underscores, or existing legacy punctuation.'
+      : 'Question Code can only contain letters, numbers, underscores, and hyphens. Existing unsafe codes may remain unchanged until you rename them.';
+    renderMessage(message, 'error');
+    return false;
+  }
+
   function bindSortables() {
     if (!window.Sortable) return;
     const sectionContainer = document.querySelector('[data-role="sections"]');
@@ -2672,6 +2731,7 @@ const Builder = (() => {
     }
     if (!validateBuilderRequiredFields()) return;
     hydrateActiveQuestionnaireFromDom();
+    if (!validateQuestionCodes()) return;
     state.saving = true;
     toggleSaveButtons();
     renderMessage(publish ? 'Publishing…' : 'Saving…');
