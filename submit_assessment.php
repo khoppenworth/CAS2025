@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/scoring.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
+require_once __DIR__ . '/lib/questionnaire_visibility.php';
 if (!function_exists('canonical')) {
     require_once __DIR__ . '/lib/work_functions.php';
 }
@@ -196,94 +197,7 @@ $matchesCondition = static function (array $item, array $valuesByLinkId) use ($n
 };
 
 $user = current_user();
-try {
-    if (($user['role'] ?? '') !== 'admin') {
-        $assigned = [];
-        $departmentAssigned = [];
-        $directAssigned = [];
-        $isStaff = (($user['role'] ?? '') === 'staff');
-
-        if ($isStaff) {
-            $rawDepartment = trim((string)($user['department'] ?? ''));
-            $department = function_exists('resolve_department_slug')
-                ? resolve_department_slug($pdo, $rawDepartment)
-                : $rawDepartment;
-            if ($department !== '') {
-                $departmentStmt = $pdo->prepare(
-                    "SELECT q.id AS id, q.title AS title FROM questionnaire_department qd " .
-                    "JOIN questionnaire q ON q.id = qd.questionnaire_id " .
-                    "WHERE qd.department_slug = :department AND q.status='published' ORDER BY q.title"
-                );
-                $departmentStmt->execute([':department' => $department]);
-                foreach ($departmentStmt->fetchAll() as $row) {
-                    $questionnaireId = (int)($row['id'] ?? 0);
-                    if ($questionnaireId <= 0) {
-                        continue;
-                    }
-                    $departmentAssigned[$questionnaireId] = $row;
-                }
-            }
-
-            // Legacy fallback for environments that have not migrated defaults yet.
-            if ($departmentAssigned === []) {
-                $definitions = work_function_definitions($pdo);
-                $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
-                if ($workFunction !== '') {
-                    $workFunctionAssignments = work_function_assignments($pdo);
-                    $assignedQuestionnaireIds = array_map(
-                        'intval',
-                        $workFunctionAssignments[$workFunction] ?? []
-                    );
-
-                    if ($assignedQuestionnaireIds) {
-                        $placeholders = implode(',', array_fill(0, count($assignedQuestionnaireIds), '?'));
-                        $stmt = $pdo->prepare(
-                            "SELECT q.id AS id, q.title AS title FROM questionnaire q " .
-                            "WHERE q.id IN ($placeholders) AND q.status='published' ORDER BY q.title"
-                        );
-                        $stmt->execute($assignedQuestionnaireIds);
-                        foreach ($stmt->fetchAll() as $row) {
-                            $questionnaireId = (int)($row['id'] ?? 0);
-                            if ($questionnaireId <= 0) {
-                                continue;
-                            }
-                            $departmentAssigned[$questionnaireId] = $row;
-                        }
-                    }
-                }
-            }
-
-            $workRole = user_questionnaire_work_role($pdo, $user);
-            $departmentAssigned = filter_questionnaires_by_work_role($pdo, $departmentAssigned, $workRole);
-        }
-
-        $directAssignmentStmt = $pdo->prepare(
-            "SELECT q.id AS id, q.title AS title FROM questionnaire_assignment qa " .
-            "JOIN questionnaire q ON q.id = qa.questionnaire_id " .
-            "WHERE qa.staff_id = :staff_id AND q.status='published' ORDER BY q.title"
-        );
-        $directAssignmentStmt->execute([':staff_id' => (int)($user['id'] ?? 0)]);
-        foreach ($directAssignmentStmt->fetchAll() as $row) {
-            $questionnaireId = (int)($row['id'] ?? 0);
-            if ($questionnaireId <= 0) {
-                continue;
-            }
-            $directAssigned[$questionnaireId] = $row;
-        }
-
-        $workRole = isset($workRole) ? (string)$workRole : user_questionnaire_work_role($pdo, $user);
-        $directAssigned = filter_questionnaires_by_work_role($pdo, $directAssigned, $workRole);
-        $assigned = $departmentAssigned + $directAssigned;
-
-        $q = array_values($assigned);
-    } else {
-        $q = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title")->fetchAll();
-    }
-} catch (PDOException $e) {
-    error_log('submit_assessment questionnaire lookup failed: ' . $e->getMessage());
-    $fallback = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title");
-    $q = $fallback ? $fallback->fetchAll() : [];
-}
+$q = available_questionnaires_for_user($pdo, is_array($user) ? $user : []);
 $currentAssessmentYear = (int)date('Y');
 $earliestSelectableAssessmentYear = $currentAssessmentYear - 1;
 $periods = $pdo->query(
