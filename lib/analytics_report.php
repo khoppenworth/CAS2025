@@ -564,16 +564,32 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $palette = analytics_report_palette_colors($cfg);
 
     $questionnaireChartData = $snapshot['questionnaire_chart'] ?? [];
-    $questionnaireChartImage = analytics_report_generate_bar_chart($questionnaireChartData, $palette, [
+    $competencyAreaChartData = [];
+    $competencyAreaLegendRows = [];
+    foreach (array_values($questionnaireChartData) as $index => $point) {
+        $code = 'CA' . ($index + 1);
+        $score = isset($point['value']) && is_numeric($point['value']) ? (float)$point['value'] : null;
+        $competencyAreaChartData[] = array_merge($point, [
+            'label' => $code,
+            'full_label' => (string)($point['label'] ?? 'Competency Area'),
+        ]);
+        $competencyAreaLegendRows[] = [
+            $code,
+            (string)($point['label'] ?? 'Competency Area'),
+            $score !== null ? number_format($score, 1) . '%' : '—',
+            analytics_report_format_number($point['count'] ?? 0),
+        ];
+    }
+    $questionnaireChartImage = analytics_report_generate_bar_chart($competencyAreaChartData, $palette, [
         'max_value' => 100,
         'value_suffix' => '%',
         'decimal_places' => 1,
     ]);
     if ($questionnaireChartImage) {
         $chartsAdded = true;
-        $label = 'Average score by questionnaire';
-        if ($questionnaireChartData) {
-            $label .= ' (top ' . count($questionnaireChartData) . ')';
+        $label = 'Average score by competency area';
+        if ($competencyAreaChartData) {
+            $label .= ' (top ' . count($competencyAreaChartData) . ')';
         }
         $pdf->addParagraph($label);
         $pdf->addImageBlock(
@@ -582,6 +598,10 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             $questionnaireChartImage['height'],
             520.0
         );
+        $pdf->addParagraph('Legend: CA bars show average score (%) for each competency area; the mapping below expands each CA code.', 9.5);
+        if ($competencyAreaLegendRows) {
+            $pdf->addTable(['CA', 'Competency Area', 'Average Score', 'Responses'], $competencyAreaLegendRows, [8, 42, 14, 12], 9.0);
+        }
     }
 
     $workFunctionChartData = $snapshot['work_function_chart'] ?? [];
@@ -599,6 +619,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             $workFunctionChartImage['height'],
             520.0
         );
+        $pdf->addParagraph('Legend: each bar shows the average score (%) for the listed work function.', 9.5);
     }
 
     $periodChartData = $snapshot['period_chart'] ?? [];
@@ -615,6 +636,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             $periodChartImage['height'],
             520.0
         );
+        $pdf->addParagraph('Legend: the line shows overall average score (%) for each performance period.', 9.5);
     }
 
     $selectedPeriodChart = $snapshot['period_chart_selected'] ?? [];
@@ -632,6 +654,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
                 $selectedPeriodImage['height'],
                 520.0
             );
+            $pdf->addParagraph('Legend: the line shows average score (%) for the selected questionnaire across performance periods.', 9.5);
         }
     }
 
@@ -639,42 +662,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         $pdf->addParagraph('Not enough response data is available to generate charts yet.');
     }
 
-    if (!empty($snapshot['section_breakdowns'])) {
-        $pdf->addSubheading('Section score radar');
-        $palette = analytics_report_palette_colors($cfg);
-        $rendered = 0;
-        foreach ($snapshot['section_breakdowns'] as $radar) {
-            if ($rendered >= 4) {
-                break;
-            }
-            $titleLine = (string)($radar['title'] ?? '');
-            $period = trim((string)($radar['period'] ?? ''));
-            if ($period !== '') {
-                $titleLine = $titleLine !== '' ? $titleLine . ' · ' . $period : $period;
-            }
-            if ($titleLine !== '') {
-                $pdf->addParagraph($titleLine);
-            }
-            $chartImage = analytics_report_generate_radar_chart($radar['sections'] ?? [], $palette, [
-                'max_value' => 100,
-                'value_suffix' => '%',
-            ]);
-            if ($chartImage) {
-                $pdf->addImageBlock($chartImage['data'], $chartImage['width'], $chartImage['height'], 480.0);
-            } else {
-                $rows = [];
-                foreach ($radar['sections'] ?? [] as $section) {
-                    $label = (string)($section['label'] ?? 'Section');
-                    $score = isset($section['score']) ? number_format((float)$section['score'], 1) . '%' : '—';
-                    $rows[] = [$label, $score];
-                }
-                if ($rows) {
-                    $pdf->addTable(['Section', 'Score'], $rows, [48, 12]);
-                }
-            }
-            $rendered++;
-        }
-    }
+    $pdf->addParagraph('Competency area results are shown by questionnaire using CA codes. Questionnaire-specific section visualizations are omitted because aggregating competency areas across different questionnaires would not be meaningful.', 9.5);
 
     if ($isFullCompetencyReport) {
         $pdf->addSubheading('3. Participant Overview Auto-Generated');
@@ -720,20 +708,21 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
         $pdf->addSubheading('4. Overall Competency Results Dashboard');
         $orgRows = [];
-        foreach (array_slice($snapshot['questionnaires'] ?? [], 0, 6) as $row) {
-            if (!isset($row['avg_score']) || $row['avg_score'] === null) {
+        foreach (array_slice($snapshot['questionnaire_chart'] ?? [], 0, 6) as $index => $row) {
+            if (!isset($row['value']) || $row['value'] === null) {
                 continue;
             }
-            $score = (float)$row['avg_score'];
+            $score = (float)$row['value'];
             $orgRows[] = [
-                (string)($row['title'] ?? 'Competency Area'),
+                'CA' . ($index + 1),
+                (string)($row['label'] ?? 'Competency Area'),
                 number_format($score, 1) . '%',
                 questionnaire_competency_level($score) ?: '—',
                 number_format(max(0, 100 - $score), 1) . '%',
             ];
         }
         if ($orgRows) {
-            $pdf->addTable(['Competency Area', 'Average Score (%)', 'Competency Level', 'Gap (%)'], $orgRows, [22, 14, 14, 10]);
+            $pdf->addTable(['CA', 'Competency Area', 'Average Score (%)', 'Competency Level', 'Gap (%)'], $orgRows, [7, 21, 13, 14, 10]);
         } else {
             $pdf->addParagraph('No organization-level competency rows are available yet.');
         }
@@ -755,10 +744,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         } else {
             $pdf->addParagraph('No directorate-level records are available yet.');
         }
-        $pdf->addBulletList([
-            'Heatmap visualization',
-            'Bar chart comparison across directorates',
-        ]);
+        $pdf->addParagraph('Directorate scores are summarized in the table above; no heatmap placeholder is included unless a rendered visualization is available.', 9.5);
 
         $pdf->addSubheading('6. Role-Based Analysis');
         $roleTable = [];
