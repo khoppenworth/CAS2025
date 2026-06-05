@@ -245,10 +245,33 @@ CREATE TABLE IF NOT EXISTS site_config (
   microsoft_oauth_client_secret VARCHAR(255) NULL,
   microsoft_oauth_tenant VARCHAR(255) NULL,
   color_theme VARCHAR(50) NOT NULL DEFAULT 'light',
+  brand_color VARCHAR(7) NULL,
+  local_login_enabled TINYINT(1) NOT NULL DEFAULT 1,
   enabled_locales TEXT NULL,
   upgrade_repo VARCHAR(255) NULL,
+  review_enabled TINYINT(1) NOT NULL DEFAULT 1,
   scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1,
-  email_templates LONGTEXT NULL
+  qb_danger_zone_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  email_templates LONGTEXT NULL,
+  ai_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ai_provider VARCHAR(50) NOT NULL DEFAULT 'ollama',
+  ai_base_url VARCHAR(255) NULL,
+  ai_api_key VARCHAR(255) NULL,
+  ai_model_chat VARCHAR(128) NULL,
+  ai_model_fast VARCHAR(128) NULL,
+  ai_model_fallback VARCHAR(128) NULL,
+  ai_feature_summary_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ai_feature_devplan_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ai_feature_course_rationale_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ai_placement_supervisor_review TINYINT(1) NOT NULL DEFAULT 0,
+  ai_placement_admin_analytics TINYINT(1) NOT NULL DEFAULT 0,
+  ai_timeout_seconds INT NOT NULL DEFAULT 20,
+  ai_max_output_tokens INT NOT NULL DEFAULT 700,
+  ai_temperature DECIMAL(3,2) NOT NULL DEFAULT 0.20,
+  ai_retry_count INT NOT NULL DEFAULT 1,
+  ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1,
+  ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1,
+  ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- Ensure optional site_config columns exist without relying on ADD COLUMN IF NOT EXISTS.
 SET @sc_landing_metric_submissions_exists = (
@@ -603,6 +626,22 @@ PREPARE stmt FROM @sc_brand_color_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @sc_local_login_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'local_login_enabled'
+);
+SET @sc_local_login_enabled_sql = IF(
+  @sc_local_login_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN local_login_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER brand_color',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_local_login_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @sc_smtp_enabled_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -612,7 +651,7 @@ SET @sc_smtp_enabled_exists = (
 );
 SET @sc_smtp_enabled_sql = IF(
   @sc_smtp_enabled_exists = 0,
-  'ALTER TABLE site_config ADD COLUMN smtp_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER brand_color',
+  'ALTER TABLE site_config ADD COLUMN smtp_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER local_login_enabled',
   'DO 1'
 );
 PREPARE stmt FROM @sc_smtp_enabled_sql;
@@ -779,6 +818,22 @@ PREPARE stmt FROM @sc_upgrade_repo_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @sc_review_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'review_enabled'
+);
+SET @sc_review_enabled_sql = IF(
+  @sc_review_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN review_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER upgrade_repo',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_review_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @sc_scheduled_assessments_enabled_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -788,10 +843,26 @@ SET @sc_scheduled_assessments_enabled_exists = (
 );
 SET @sc_scheduled_assessments_enabled_sql = IF(
   @sc_scheduled_assessments_enabled_exists = 0,
-  'ALTER TABLE site_config ADD COLUMN scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER upgrade_repo',
+  'ALTER TABLE site_config ADD COLUMN scheduled_assessments_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER review_enabled',
   'DO 1'
 );
 PREPARE stmt FROM @sc_scheduled_assessments_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_qb_danger_zone_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'qb_danger_zone_enabled'
+);
+SET @sc_qb_danger_zone_enabled_sql = IF(
+  @sc_qb_danger_zone_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN qb_danger_zone_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER scheduled_assessments_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_qb_danger_zone_enabled_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
@@ -804,10 +875,314 @@ SET @sc_email_templates_exists = (
 );
 SET @sc_email_templates_sql = IF(
   @sc_email_templates_exists = 0,
-  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER scheduled_assessments_enabled',
+  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER qb_danger_zone_enabled',
   'DO 1'
 );
 PREPARE stmt FROM @sc_email_templates_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_enabled'
+);
+SET @sc_ai_enabled_sql = IF(
+  @sc_ai_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER email_templates',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_provider_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_provider'
+);
+SET @sc_ai_provider_sql = IF(
+  @sc_ai_provider_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_provider VARCHAR(50) NOT NULL DEFAULT ''ollama'' AFTER ai_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_provider_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_base_url_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_base_url'
+);
+SET @sc_ai_base_url_sql = IF(
+  @sc_ai_base_url_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_base_url VARCHAR(255) NULL AFTER ai_provider',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_base_url_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_api_key_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_api_key'
+);
+SET @sc_ai_api_key_sql = IF(
+  @sc_ai_api_key_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_api_key VARCHAR(255) NULL AFTER ai_base_url',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_api_key_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_model_chat_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_model_chat'
+);
+SET @sc_ai_model_chat_sql = IF(
+  @sc_ai_model_chat_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_model_chat VARCHAR(128) NULL AFTER ai_api_key',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_model_chat_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_model_fast_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_model_fast'
+);
+SET @sc_ai_model_fast_sql = IF(
+  @sc_ai_model_fast_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_model_fast VARCHAR(128) NULL AFTER ai_model_chat',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_model_fast_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_model_fallback_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_model_fallback'
+);
+SET @sc_ai_model_fallback_sql = IF(
+  @sc_ai_model_fallback_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_model_fallback VARCHAR(128) NULL AFTER ai_model_fast',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_model_fallback_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_feature_summary_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_feature_summary_enabled'
+);
+SET @sc_ai_feature_summary_enabled_sql = IF(
+  @sc_ai_feature_summary_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_feature_summary_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_model_fallback',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_feature_summary_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_feature_devplan_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_feature_devplan_enabled'
+);
+SET @sc_ai_feature_devplan_enabled_sql = IF(
+  @sc_ai_feature_devplan_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_feature_devplan_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_feature_summary_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_feature_devplan_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_feature_course_rationale_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_feature_course_rationale_enabled'
+);
+SET @sc_ai_feature_course_rationale_enabled_sql = IF(
+  @sc_ai_feature_course_rationale_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_feature_course_rationale_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_feature_devplan_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_feature_course_rationale_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_placement_supervisor_review_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_placement_supervisor_review'
+);
+SET @sc_ai_placement_supervisor_review_sql = IF(
+  @sc_ai_placement_supervisor_review_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_placement_supervisor_review TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_feature_course_rationale_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_placement_supervisor_review_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_placement_admin_analytics_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_placement_admin_analytics'
+);
+SET @sc_ai_placement_admin_analytics_sql = IF(
+  @sc_ai_placement_admin_analytics_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_placement_admin_analytics TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_placement_supervisor_review',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_placement_admin_analytics_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_timeout_seconds_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_timeout_seconds'
+);
+SET @sc_ai_timeout_seconds_sql = IF(
+  @sc_ai_timeout_seconds_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_timeout_seconds INT NOT NULL DEFAULT 20 AFTER ai_placement_admin_analytics',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_timeout_seconds_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_max_output_tokens_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_max_output_tokens'
+);
+SET @sc_ai_max_output_tokens_sql = IF(
+  @sc_ai_max_output_tokens_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_max_output_tokens INT NOT NULL DEFAULT 700 AFTER ai_timeout_seconds',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_max_output_tokens_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_temperature_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_temperature'
+);
+SET @sc_ai_temperature_sql = IF(
+  @sc_ai_temperature_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_temperature DECIMAL(3,2) NOT NULL DEFAULT 0.20 AFTER ai_max_output_tokens',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_temperature_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_retry_count_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_retry_count'
+);
+SET @sc_ai_retry_count_sql = IF(
+  @sc_ai_retry_count_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_retry_count INT NOT NULL DEFAULT 1 AFTER ai_temperature',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_retry_count_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_require_human_approval_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_require_human_approval'
+);
+SET @sc_ai_require_human_approval_sql = IF(
+  @sc_ai_require_human_approval_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1 AFTER ai_retry_count',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_require_human_approval_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_show_generated_badge_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_show_generated_badge'
+);
+SET @sc_ai_show_generated_badge_sql = IF(
+  @sc_ai_show_generated_badge_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1 AFTER ai_require_human_approval',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_show_generated_badge_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_ai_pii_redaction_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'ai_pii_redaction_enabled'
+);
+SET @sc_ai_pii_redaction_enabled_sql = IF(
+  @sc_ai_pii_redaction_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER ai_show_generated_badge',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_ai_pii_redaction_enabled_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
@@ -840,6 +1215,7 @@ INSERT IGNORE INTO site_config (
   microsoft_oauth_tenant,
   color_theme,
   brand_color,
+  local_login_enabled,
   smtp_enabled,
   smtp_host,
   smtp_port,
@@ -851,8 +1227,29 @@ INSERT IGNORE INTO site_config (
   smtp_timeout,
   enabled_locales,
   upgrade_repo,
+  review_enabled,
   scheduled_assessments_enabled,
-  email_templates
+  qb_danger_zone_enabled,
+  email_templates,
+  ai_enabled,
+  ai_provider,
+  ai_base_url,
+  ai_api_key,
+  ai_model_chat,
+  ai_model_fast,
+  ai_model_fallback,
+  ai_feature_summary_enabled,
+  ai_feature_devplan_enabled,
+  ai_feature_course_rationale_enabled,
+  ai_placement_supervisor_review,
+  ai_placement_admin_analytics,
+  ai_timeout_seconds,
+  ai_max_output_tokens,
+  ai_temperature,
+  ai_retry_count,
+  ai_require_human_approval,
+  ai_show_generated_badge,
+  ai_pii_redaction_enabled
 ) VALUES (
   1,
   'My Performance',
@@ -882,6 +1279,7 @@ INSERT IGNORE INTO site_config (
   'common',
   'light',
   NULL,
+  1,
   0,
   NULL,
   587,
@@ -894,7 +1292,28 @@ INSERT IGNORE INTO site_config (
   '["en","fr","am"]',
   'khoppenworth/HRassessv300',
   1,
-  '{}'
+  1,
+  1,
+  '{}',
+  0,
+  'ollama',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  0,
+  0,
+  0,
+  0,
+  0,
+  20,
+  700,
+  0.20,
+  1,
+  1,
+  1,
+  1
 );
 
 -- Add supporting index for faster timeline queries without full table scans.
