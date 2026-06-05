@@ -261,9 +261,17 @@ body.md-bg {
   box-shadow: 0 12px 30px var(--app-secondary-soft);
 }
 
-.md-danger {
+.md-danger,
+.md-button.md-danger {
   background: var(--md-danger);
-  color: var(--app-text-inverse);
+  color: #ffffff;
+  box-shadow: 0 12px 30px var(--app-danger-soft);
+}
+
+.md-button.md-danger:hover,
+.md-button.md-danger:focus {
+  background: var(--semantic-danger-strong, #b91c1c);
+  color: #ffffff;
   box-shadow: 0 12px 30px var(--app-danger-soft);
 }
 

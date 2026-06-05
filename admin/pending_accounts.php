@@ -119,48 +119,52 @@ foreach ($activeStaff as $staffRow) {
     <?php if (!$pendingUsers): ?>
       <p><?=t($t,'no_pending_accounts','No accounts require approval at this time.')?></p>
     <?php else: ?>
-    <table class="md-table">
-      <thead>
-        <tr>
-          <th><?=t($t,'name','Name')?></th>
-          <th><?=t($t,'email','Email')?></th>
-          <th><?=t($t,'department','Directorate')?></th>
-          <th><?=t($t,'profile_complete','Profile Complete?')?></th>
-          <th><?=t($t,'requested_on','Requested On')?></th>
-          <th><?=t($t,'next_assessment','Next Assessment')?></th>
-          <th><?=t($t,'action','Action')?></th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php foreach ($pendingUsers as $pending): ?>
-        <tr>
-          <td><?=htmlspecialchars($pending['full_name'] ?: $pending['username'])?></td>
-          <td><?=htmlspecialchars($pending['email'] ?? '')?></td>
-          <td><?=htmlspecialchars($pending['department'] ?? '-')?></td>
-          <td><?=$pending['profile_completed'] ? t($t,'yes','Yes') : t($t,'no','No')?></td>
-          <td><?=htmlspecialchars($pending['created_at'])?></td>
-          <td>
-            <form method="post" class="md-inline-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>">
-              <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-              <input type="hidden" name="id" value="<?=$pending['id']?>">
-              <input type="date" name="next_assessment_date" value="<?=htmlspecialchars($pending['next_assessment_date'] ?? '')?>" placeholder="YYYY-MM-DD">
-              <div class="md-inline-actions">
-                <button class="md-button md-primary" type="submit" name="action" value="approve"><?=t($t,'approve','Approve')?></button>
-                <button class="md-button" type="submit" name="action" value="set-date"><?=t($t,'save','Save')?></button>
+    <div class="md-table-responsive pending-accounts-table-wrap">
+      <table class="md-table pending-accounts-table">
+        <thead>
+          <tr>
+            <th><?=t($t,'name','Name')?></th>
+            <th><?=t($t,'email','Email')?></th>
+            <th><?=t($t,'department','Directorate')?></th>
+            <th><?=t($t,'profile_complete','Profile Complete?')?></th>
+            <th><?=t($t,'requested_on','Requested On')?></th>
+            <th><?=t($t,'review_actions','Review Actions')?></th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($pendingUsers as $pending): ?>
+          <tr>
+            <td><?=htmlspecialchars($pending['full_name'] ?: $pending['username'])?></td>
+            <td><?=htmlspecialchars($pending['email'] ?? '')?></td>
+            <td><?=htmlspecialchars($pending['department'] ?? '-')?></td>
+            <td><?=$pending['profile_completed'] ? t($t,'yes','Yes') : t($t,'no','No')?></td>
+            <td><?=htmlspecialchars($pending['created_at'])?></td>
+            <td>
+              <div class="pending-account-actions">
+                <form method="post" class="md-inline-form pending-account-decision-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>">
+                  <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                  <input type="hidden" name="id" value="<?=$pending['id']?>">
+                  <label class="pending-account-date-field">
+                    <span><?=t($t,'next_assessment','Next Assessment')?></span>
+                    <input type="date" name="next_assessment_date" value="<?=htmlspecialchars($pending['next_assessment_date'] ?? '')?>" placeholder="YYYY-MM-DD">
+                  </label>
+                  <div class="md-inline-actions pending-account-primary-actions">
+                    <button class="md-button md-primary" type="submit" name="action" value="approve"><?=t($t,'approve','Approve')?></button>
+                    <button class="md-button" type="submit" name="action" value="set-date"><?=t($t,'save','Save')?></button>
+                  </div>
+                </form>
+                <form method="post" class="pending-account-disable-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>" onsubmit="return confirm('<?=htmlspecialchars(t($t,'confirm_disable','Disable this account?'), ENT_QUOTES, 'UTF-8')?>');">
+                  <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                  <input type="hidden" name="id" value="<?=$pending['id']?>">
+                  <button class="md-button md-danger" type="submit" name="action" value="disable"><?=t($t,'disable','Disable')?></button>
+                </form>
               </div>
-            </form>
-          </td>
-          <td>
-            <form method="post" class="md-inline-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>" onsubmit="return confirm('<?=htmlspecialchars(t($t,'confirm_disable','Disable this account?'), ENT_QUOTES, 'UTF-8')?>');">
-              <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-              <input type="hidden" name="id" value="<?=$pending['id']?>">
-              <button class="md-button md-danger" type="submit" name="action" value="disable"><?=t($t,'disable','Disable')?></button>
-            </form>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
     <?php endif; ?>
   </div>
 
@@ -170,18 +174,19 @@ foreach ($activeStaff as $staffRow) {
     <?php if (!$activeStaff): ?>
       <p><?=t($t,'no_active_staff','No active staff records available.')?></p>
     <?php else: ?>
-    <table class="md-table">
-      <thead>
-        <tr>
-          <th><?=t($t,'name','Name')?></th>
-          <th><?=t($t,'email','Email')?></th>
-          <th><?=t($t,'next_assessment','Next Assessment')?></th>
-          <th><?=t($t,'last_approved','Approved On')?></th>
-          <th><?=t($t,'change_next_assessment_date','Change Next Assessment Date')?></th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php foreach ($activeStaff as $staff): ?>
+    <div class="md-table-responsive scheduled-assessments-table-wrap">
+      <table class="md-table scheduled-assessments-table">
+        <thead>
+          <tr>
+            <th><?=t($t,'name','Name')?></th>
+            <th><?=t($t,'email','Email')?></th>
+            <th><?=t($t,'next_assessment','Next Assessment')?></th>
+            <th><?=t($t,'last_approved','Approved On')?></th>
+            <th><?=t($t,'change_next_assessment_date','Change Next Assessment Date')?></th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($activeStaff as $staff): ?>
         <tr>
           <td><?=htmlspecialchars($staff['full_name'] ?: $staff['username'])?></td>
           <td><?=htmlspecialchars($staff['email'] ?? '')?></td>
@@ -202,9 +207,10 @@ foreach ($activeStaff as $staffRow) {
             </form>
           </td>
         </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
     <?php endif; ?>
   </div>
   <?php endif; ?>
