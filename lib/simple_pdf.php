@@ -423,6 +423,112 @@ class SimplePdfDocument
         $this->addSpacer(6.0);
     }
 
+    public function addBorderlessTable(array $headers, array $rows, array $columnWidths, float $fontSize = 10.0): void
+    {
+        $this->ensurePage();
+        $resolvedWidths = $this->resolveTableColumnWidthsInPoints($columnWidths);
+        $lineHeight = $this->lineHeight($fontSize, 1.3);
+        $cellPaddingX = 6.0;
+        $cellPaddingY = 3.5;
+        $headerFill = [245, 247, 250];
+        $rowFill = [250, 252, 255];
+        $ruleColor = [226, 232, 240];
+
+        $buildRowLayout = function (array $row, ?int $maxCellLines = null) use ($resolvedWidths, $fontSize, $cellPaddingX, $cellPaddingY, $lineHeight): array {
+            $cellLines = [];
+            $maxLines = 1;
+            foreach ($resolvedWidths as $index => $width) {
+                $value = trim((string)($row[$index] ?? ''));
+                $availableTextWidth = max(20.0, $width - ($cellPaddingX * 2));
+                $wrapped = $this->wrapTextToWidth($value, $fontSize, $availableTextWidth);
+                if ($wrapped === []) {
+                    $wrapped = [''];
+                }
+                if ($maxCellLines !== null && count($wrapped) > $maxCellLines) {
+                    $wrapped = $this->truncateWrappedLines($wrapped, $maxCellLines);
+                }
+                $cellLines[$index] = $wrapped;
+                $maxLines = max($maxLines, count($wrapped));
+            }
+
+            return [
+                'lines' => $cellLines,
+                'height' => ($maxLines * $lineHeight) + ($cellPaddingY * 2),
+            ];
+        };
+
+        $renderRowLayout = function (array $layout, bool $isHeader, bool $alternate = false) use (
+            $resolvedWidths,
+            $fontSize,
+            $lineHeight,
+            $cellPaddingX,
+            $cellPaddingY,
+            $headerFill,
+            $rowFill,
+            $ruleColor
+        ): void {
+            $rowHeight = (float)($layout['height'] ?? 0.0);
+            $cellLines = $layout['lines'] ?? [];
+            $x = $this->marginLeft;
+            $rowTopY = $this->cursorY;
+            $rowBottomY = $rowTopY - $rowHeight;
+            $totalWidth = array_sum($resolvedWidths);
+
+            if ($isHeader) {
+                $this->drawFilledRect($this->marginLeft, $rowBottomY, $totalWidth, $rowHeight, $headerFill);
+            } elseif ($alternate) {
+                $this->drawFilledRect($this->marginLeft, $rowBottomY, $totalWidth, $rowHeight, $rowFill);
+            }
+
+            foreach ($resolvedWidths as $index => $width) {
+                $textY = $rowTopY - $cellPaddingY - $fontSize;
+                foreach (($cellLines[$index] ?? ['']) as $line) {
+                    $font = $isHeader || $index === 0 ? 'F2' : 'F1';
+                    $this->drawText($line, $font, $fontSize, $x + $cellPaddingX, $textY);
+                    $textY -= $lineHeight;
+                }
+                $x += $width;
+            }
+
+            $this->drawLineWithColor($this->marginLeft, $rowBottomY, $this->marginLeft + $totalWidth, $rowBottomY, $ruleColor, 0.35);
+            $this->cursorY = $rowBottomY;
+        };
+
+        $headerValues = array_values($headers);
+        $hasHeader = array_filter($headerValues, static fn($value): bool => trim((string)$value) !== '') !== [];
+        $headerLayout = $hasHeader ? $buildRowLayout($headerValues, 2) : null;
+        $maxBodyLines = null;
+        $rowLayouts = [];
+        foreach (array_values($rows) as $row) {
+            $rowLayouts[] = $buildRowLayout((array)$row, $maxBodyLines);
+        }
+
+        if ($rowLayouts === []) {
+            if ($headerLayout !== null) {
+                $this->ensureSpace(((float)$headerLayout['height']) + 2.0);
+                $renderRowLayout($headerLayout, true);
+            }
+            $this->addSpacer(6.0);
+            return;
+        }
+
+        foreach ($rowLayouts as $rowIndex => $rowLayout) {
+            $required = (float)$rowLayout['height'];
+            $isPageBreak = ($rowIndex === 0) || ($this->cursorY - $required <= $this->marginBottom);
+            if ($isPageBreak && $headerLayout !== null) {
+                $headerPlusFirstData = (float)$headerLayout['height'] + $required + 2.0;
+                $this->ensureSpace($headerPlusFirstData);
+                $renderRowLayout($headerLayout, true);
+            } else {
+                $this->ensureSpace($required + 2.0);
+            }
+
+            $this->ensureSpace(((float)$rowLayout['height']) + 2.0);
+            $renderRowLayout($rowLayout, false, ($rowIndex % 2) === 1);
+        }
+        $this->addSpacer(6.0);
+    }
+
     public function addImageBlock(string $binary, int $pixelWidth, int $pixelHeight, ?float $maxDisplayWidth = null): void
     {
         if ($binary === '' || $pixelWidth <= 0 || $pixelHeight <= 0) {
@@ -494,7 +600,7 @@ class SimplePdfDocument
         $usableRowHeight = max(36.0, $availableHeight - max(0.0, $headerHeight) - 4.0);
         $lineSpace = max($lineHeight, $usableRowHeight - ($cellPaddingY * 2));
 
-        return max(1, (int)floor($lineSpace / $lineHeight));
+        return max(1, min(12, (int)floor($lineSpace / $lineHeight)));
     }
 
     private function truncateWrappedLines(array $lines, int $maxLines): array
@@ -1213,7 +1319,7 @@ class SimplePdfDocument
         if (function_exists('iconv')) {
             $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
             if (is_string($converted) && $converted !== '') {
-                return $converted;
+                return str_replace(chr(0x85), '…', $converted);
             }
         }
 

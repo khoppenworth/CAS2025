@@ -445,20 +445,29 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     }
 
     $departmentsCovered = count($snapshot['department_analysis'] ?? []);
+    $pdf->ensureSpaceForBlock(190.0);
     $pdf->addSubheading('1. Executive Summary');
-    $pdf->addParagraph('Assessment Period: ' . $assessmentPeriod);
-    $pdf->addParagraph('Total Participants: ' . analytics_report_format_number($snapshot['total_participants'] ?? 0));
-    $pdf->addParagraph('Directorates Covered: ' . analytics_report_format_number($departmentsCovered));
-    $pdf->addParagraph('Assessment Date: ' . app_format_display_date($generatedAt, $locale, $cfg));
-    $pdf->addParagraph('Overall Organizational Competency Score: ' . analytics_report_format_score($avgScore));
-    $pdf->addParagraph('Competency Level Classification: ' . $competencyLevel);
-    $pdf->addBulletList([
-        'Below Basics (0–49%)',
-        'Introductory (50–59%)',
-        'Essential (60–69%)',
-        'Advanced (70–84%)',
-        'Strategic (85% and above)',
-    ]);
+    $pdf->addBorderlessTable([
+        'Summary item',
+        'Value',
+    ], [
+        ['Assessment Period', $assessmentPeriod],
+        ['Total Participants', analytics_report_format_number($snapshot['total_participants'] ?? 0)],
+        ['Directorates Covered', analytics_report_format_number($departmentsCovered)],
+        ['Assessment Date', app_format_display_date($generatedAt, $locale, $cfg)],
+        ['Overall Organizational Competency Score', analytics_report_format_score($avgScore)],
+        ['Competency Level Classification', $competencyLevel],
+    ], [48, 52], 9.8);
+    $pdf->addBorderlessTable([
+        'Competency level scale',
+        'Range',
+    ], [
+        ['Below Basics', '0–49%'],
+        ['Introductory', '50–59%'],
+        ['Essential', '60–69%'],
+        ['Advanced', '70–84%'],
+        ['Strategic', '85% and above'],
+    ], [44, 56], 9.2);
 
     $topStrengths = [];
     $topGaps = [];
@@ -513,6 +522,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addParagraph('Directorates with highest and lowest performance:', 10.5);
     $pdf->addBulletList([$highestDepartment . ' / ' . $lowestDepartment], 10.5);
 
+    $pdf->ensureSpaceForBlock(130.0);
     $pdf->addSubheading('Questionnaire performance');
     $questionnaireRows = [];
     foreach ($snapshot['questionnaires'] as $row) {
@@ -550,6 +560,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
             ];
         }
         if ($workRows) {
+            $pdf->ensureSpaceForBlock(110.0);
             $pdf->addSubheading('Performance by work function');
             $pdf->addTable(
                 ['Work function', 'Responses', 'Approved', 'Avg', 'Competency'],
@@ -559,6 +570,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
     }
 
+    $pdf->ensureSpaceForBlock(180.0);
     $pdf->addSubheading('Performance charts');
     $chartsAdded = false;
     $palette = analytics_report_palette_colors($cfg);
@@ -665,6 +677,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
     $pdf->addParagraph('Competency area results are shown by questionnaire using CA codes. Questionnaire-specific section visualizations are omitted because aggregating competency areas across different questionnaires would not be meaningful.', 9.5);
 
     if ($isFullCompetencyReport) {
+        $pdf->ensureSpaceForBlock(170.0);
         $pdf->addSubheading('3. Participant Overview Auto-Generated');
         $roleRows = $snapshot['role_overview'] ?? [];
         $directorCount = 0;
@@ -706,6 +719,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
         $pdf->addBulletList($genderLines ?: ['No gender data available']);
 
+        $pdf->ensureSpaceForBlock(145.0);
         $pdf->addSubheading('4. Overall Competency Results Dashboard');
         $orgRows = [];
         foreach (array_slice($snapshot['questionnaire_chart'] ?? [], 0, 6) as $index => $row) {
@@ -728,6 +742,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
         $pdf->addParagraph('(Gap % = 100% – actual score OR based on required benchmark level)');
 
+        $pdf->ensureSpaceForBlock(140.0);
         $pdf->addSubheading('5. Directorate-Level Analysis');
         $deptRows = [];
         foreach (array_slice($snapshot['department_analysis'] ?? [], 0, 10) as $row) {
@@ -746,6 +761,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
         }
         $pdf->addParagraph('Directorate scores are summarized in the table above; no heatmap placeholder is included unless a rendered visualization is available.', 9.5);
 
+        $pdf->ensureSpaceForBlock(140.0);
         $pdf->addSubheading('6. Role-Based Analysis');
         $roleTable = [];
         foreach (array_slice($roleRows, 0, 10) as $row) {
@@ -772,6 +788,7 @@ function analytics_report_render_pdf(array $snapshot, array $cfg): string
 
     if ($isFullCompetencyReport && !empty($snapshot['user_breakdown'])) {
         $selectedTitle = trim((string)($snapshot['selected_questionnaire_title'] ?? ''));
+        $pdf->ensureSpaceForBlock(150.0);
         $pdf->addSubheading('Full Competency Report Contributors' . ($selectedTitle !== '' ? ': ' . $selectedTitle : ''));
         $detailRows = [];
         foreach ($snapshot['user_breakdown'] as $row) {
