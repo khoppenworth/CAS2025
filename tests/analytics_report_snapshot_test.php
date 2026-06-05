@@ -21,24 +21,24 @@ $pdo->exec('CREATE TABLE performance_period (id INTEGER PRIMARY KEY, label TEXT,
 $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, full_name TEXT, work_function TEXT)');
 $pdo->exec('CREATE TABLE questionnaire_work_function (questionnaire_id INT, work_function TEXT)');
 
-$pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES (1, 'Annual Review', 'published')");
+$pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES (1, 'Annual Review', 'published'), (2, 'Leadership Readiness', 'published')");
 $pdo->exec("INSERT INTO questionnaire_section (id, questionnaire_id, title, order_index, is_active) VALUES (1, 1, 'Core Competencies', 1, 1)");
 $pdo->exec("INSERT INTO questionnaire_item (id, questionnaire_id, section_id, linkId, type, allow_multiple, weight_percent, order_index, is_active) VALUES\n    (1, 1, 1, 'likert_a', 'likert', 0, NULL, 1, 1),\n    (2, 1, 1, 'bool_a', 'boolean', 0, 20, 2, 1)");
 $pdo->exec("INSERT INTO performance_period (id, label, period_start) VALUES (1, 'FY2023', '2023-01-01'), (2, 'FY2024', '2024-01-01')");
 $pdo->exec("INSERT INTO users (id, username, full_name, work_function) VALUES\n    (1, 'staff1', 'Staff One', 'finance'),\n    (2, 'staff2', 'Staff Two', 'hrm')");
 $pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (1, 'finance')");
 
-$pdo->exec("INSERT INTO questionnaire_response (id, user_id, questionnaire_id, performance_period_id, status, score, created_at, reviewed_at) VALUES\n    (1, 1, 1, 1, 'approved', 85, '2024-01-01 09:00:00', '2024-01-02 00:00:00'),\n    (2, 2, 1, 2, 'submitted', 60, '2024-02-15 08:00:00', NULL)");
+$pdo->exec("INSERT INTO questionnaire_response (id, user_id, questionnaire_id, performance_period_id, status, score, created_at, reviewed_at) VALUES\n    (1, 1, 1, 1, 'approved', 85, '2024-01-01 09:00:00', '2024-01-02 00:00:00'),\n    (2, 2, 1, 2, 'submitted', 60, '2024-02-15 08:00:00', NULL),\n    (3, 1, 2, 2, 'approved', 90, '2024-03-01 09:00:00', '2024-03-02 00:00:00')");
 $pdo->exec("INSERT INTO questionnaire_response_item (response_id, linkId, answer) VALUES\n    (1, 'likert_a', '[{\"valueInteger\":5,\"valueString\":\"5\"}]'),\n    (1, 'bool_a', '[{\"valueBoolean\":true}]'),\n    (2, 'likert_a', '[{\"valueInteger\":3,\"valueString\":\"3\"}]'),\n    (2, 'bool_a', '[{\"valueBoolean\":false}]')");
 
 $snapshot = analytics_report_snapshot($pdo, 1, true);
 
-if ($snapshot['summary']['total_responses'] !== 2) {
-    fwrite(STDERR, "Expected two responses in summary.\n");
+if ($snapshot['summary']['total_responses'] !== 3) {
+    fwrite(STDERR, "Expected three responses in summary.\n");
     exit(1);
 }
 
-if ($snapshot['summary']['approved_count'] !== 1 || $snapshot['summary']['submitted_count'] !== 1) {
+if ($snapshot['summary']['approved_count'] !== 2 || $snapshot['summary']['submitted_count'] !== 1) {
     fwrite(STDERR, "Status counts did not match expected values.\n");
     exit(1);
 }
@@ -77,6 +77,20 @@ $pdfOutput = analytics_report_render_pdf($snapshot, ['site_name' => 'Test Site']
 if (!str_starts_with($pdfOutput, '%PDF-1.4')) {
     fwrite(STDERR, "Analytics PDF renderer should emit a PDF document.\n");
     exit(1);
+}
+
+foreach (['Section score radar', 'radar charts', 'Heatmap visualization', 'Bar chart comparison across directorates'] as $removedReportText) {
+    if (strpos($pdfOutput, $removedReportText) !== false) {
+        fwrite(STDERR, "Overall summary PDF should not include removed radar or visualization placeholder text.\n");
+        exit(1);
+    }
+}
+
+foreach (['Average score by competency area', 'Legend: CA bars show average score', 'CA1', 'Leadership Readiness'] as $expectedReportText) {
+    if (strpos($pdfOutput, $expectedReportText) === false) {
+        fwrite(STDERR, "Overall summary PDF is missing expected competency area chart legend text: {$expectedReportText}.\n");
+        exit(1);
+    }
 }
 
 foreach (['Sign-off', 'Staff signature', 'Supervisor signature'] as $removedSigningText) {
