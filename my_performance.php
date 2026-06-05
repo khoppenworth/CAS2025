@@ -112,7 +112,7 @@ $draftResponses = $draftStmt->fetchAll(PDO::FETCH_ASSOC);
 $responses = [];
 $latestScores = [];
 $latestEntry = null;
-$belowThreshold = [];
+$currentTrainingFocus = [];
 $chartLabels = [];
 $chartScores = [];
 $timelinePoints = [];
@@ -122,10 +122,6 @@ while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
 
     $latestScores[resolve_questionnaire_family_key($row)] = $row;
     $latestEntry = $row;
-
-    if (isset($row['score']) && $row['score'] !== null && (int)$row['score'] < 100) {
-        $belowThreshold[] = $row;
-    }
 
     $chartLabels[] = resolve_timeline_label($row);
     $chartScores[] = $row['score'] !== null ? (int)$row['score'] : null;
@@ -148,6 +144,12 @@ while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
         'order' => count($timelinePoints),
     ];
 }
+foreach ($latestScores as $scoreRow) {
+    if (isset($scoreRow['score']) && $scoreRow['score'] !== null && (int)$scoreRow['score'] < 100) {
+        $currentTrainingFocus[] = $scoreRow;
+    }
+}
+
 $latestSubmissionRaw = $latestEntry['created_at'] ?? null;
 $latestSubmissionDisplay = null;
 $latestSubmissionIso = '';
@@ -444,11 +446,13 @@ $pageHelpKey = 'workspace.my_performance';
   </div>
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'training_focus','Training Focus Areas')?></h2>
-    <?php if ($belowThreshold): ?>
+    <?php if (!$responses): ?>
+      <p><?=t($t,'no_training_focus_data','No training focus data is available yet. Submit assessments to see your current status.')?></p>
+    <?php elseif ($currentTrainingFocus): ?>
       <table class="md-table">
         <thead><tr><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Period')?></th><th><?=t($t,'score','Score (%)')?></th></tr></thead>
         <tbody>
-        <?php foreach ($belowThreshold as $item): ?>
+        <?php foreach ($currentTrainingFocus as $item): ?>
           <tr>
             <td><?=htmlspecialchars($item['title'])?></td>
             <td><?=htmlspecialchars($item['period_label'])?></td>
@@ -458,7 +462,7 @@ $pageHelpKey = 'workspace.my_performance';
         </tbody>
       </table>
     <?php else: ?>
-      <p><?=t($t,'no_training_gaps','All recorded submissions achieved full marks. Great job!')?></p>
+      <p><?=t($t,'no_training_gaps','No current training gaps found.')?></p>
     <?php endif; ?>
   </div>
   <div class="md-card md-elev-2">
