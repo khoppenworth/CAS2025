@@ -432,14 +432,62 @@ try {
             ensure_site_config_schema($pdo);
             $siteConfigColumns = site_config_available_columns($pdo, true);
             $reviewColumnAvailable = isset($siteConfigColumns['review_enabled']);
+            $settingColumnLabels = [
+                'google_oauth_enabled' => t($t, 'enable_google_sign_in', 'Enable Google sign-in'),
+                'google_oauth_client_id' => t($t, 'google_client_id', 'Google Client ID'),
+                'google_oauth_client_secret' => t($t, 'google_client_secret', 'Google Client Secret'),
+                'microsoft_oauth_enabled' => t($t, 'enable_microsoft_sign_in', 'Enable Microsoft sign-in'),
+                'microsoft_oauth_client_id' => t($t, 'microsoft_client_id', 'Microsoft Client ID'),
+                'microsoft_oauth_client_secret' => t($t, 'microsoft_client_secret', 'Microsoft Client Secret'),
+                'microsoft_oauth_tenant' => t($t, 'microsoft_tenant', 'Microsoft Tenant (directory)'),
+                'local_login_enabled' => t($t, 'enable_local_login', 'Allow username/password sign-in'),
+                'smtp_enabled' => t($t, 'enable_smtp_notifications', 'Enable SMTP notifications'),
+                'smtp_host' => t($t, 'smtp_host', 'SMTP Host'),
+                'smtp_port' => t($t, 'smtp_port', 'SMTP Port'),
+                'smtp_username' => t($t, 'smtp_username', 'SMTP Username'),
+                'smtp_password' => t($t, 'smtp_password', 'SMTP Password'),
+                'smtp_encryption' => t($t, 'smtp_encryption', 'Encryption'),
+                'smtp_from_email' => t($t, 'smtp_from_email', 'From Email'),
+                'smtp_from_name' => t($t, 'smtp_from_name', 'From Name'),
+                'smtp_timeout' => t($t, 'smtp_timeout', 'Connection Timeout (seconds)'),
+                'review_enabled' => t($t, 'enable_review_feature', 'Enable supervisor review workflow'),
+                'scheduled_assessments_enabled' => t($t, 'enable_scheduled_assessments_tile', 'Show Scheduled Assessments tile'),
+                'qb_danger_zone_enabled' => t($t, 'qb_show_danger_zone', 'Show Danger Zone tile in Questionnaire Builder'),
+                'email_templates' => t($t, 'email_template_settings', 'Email Templates'),
+                'ai_enabled' => t($t, 'ai_enable_master', 'Enable AI features'),
+                'ai_provider' => t($t, 'ai_provider', 'AI Provider'),
+                'ai_base_url' => t($t, 'ai_base_url', 'AI Base URL'),
+                'ai_api_key' => t($t, 'ai_api_key', 'AI API Key'),
+                'ai_model_chat' => t($t, 'ai_model_chat', 'Chat Model'),
+                'ai_model_fast' => t($t, 'ai_model_fast', 'Fast Model'),
+                'ai_model_fallback' => t($t, 'ai_model_fallback', 'Fallback Model'),
+                'ai_feature_summary_enabled' => t($t, 'ai_feature_summary', 'Assessment response summary'),
+                'ai_feature_devplan_enabled' => t($t, 'ai_feature_devplan', 'Draft development plan'),
+                'ai_feature_course_rationale_enabled' => t($t, 'ai_feature_course_rationale', 'Training recommendation rationale'),
+                'ai_placement_supervisor_review' => t($t, 'ai_placement_supervisor_review', 'Supervisor review pages'),
+                'ai_placement_admin_analytics' => t($t, 'ai_placement_admin_analytics', 'Admin analytics pages'),
+                'ai_timeout_seconds' => t($t, 'ai_timeout_seconds', 'Timeout (seconds)'),
+                'ai_max_output_tokens' => t($t, 'ai_max_output_tokens', 'Max output tokens'),
+                'ai_temperature' => t($t, 'ai_temperature', 'Temperature'),
+                'ai_retry_count' => t($t, 'ai_retry_count', 'Retry count'),
+                'ai_require_human_approval' => t($t, 'ai_require_human_approval', 'Require human approval for AI-generated output'),
+                'ai_show_generated_badge' => t($t, 'ai_show_generated_badge', 'Display "AI-generated" indicator in the UI'),
+                'ai_pii_redaction_enabled' => t($t, 'ai_pii_redaction_enabled', 'Enable PII redaction before model requests'),
+            ];
+            $missingSettingColumns = [];
 
             foreach (array_keys($fields) as $column) {
                 if (!isset($siteConfigColumns[$column])) {
-                    if ($column === 'review_enabled') {
-                        $errors[] = t($t, 'review_column_missing_notice', 'The review workflow setting could not be saved because the database is missing the required column. Please run the latest upgrade script and try again.');
-                    }
+                    $missingSettingColumns[] = $settingColumnLabels[$column] ?? $column;
                     unset($fields[$column]);
                 }
+            }
+
+            if ($missingSettingColumns !== []) {
+                $errors[] = sprintf(
+                    t($t, 'settings_columns_missing_notice', 'Settings could not be saved because the configuration table is missing required columns for: %s. Please run the latest upgrade script and try again.'),
+                    implode(', ', $missingSettingColumns)
+                );
             }
 
             if ($fields === []) {

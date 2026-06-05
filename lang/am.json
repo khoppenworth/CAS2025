@@ -636,6 +636,7 @@
   "restore_database_hint": "ዳታቤዝን ከባክአፕ መመለስ እባክዎ ያረጋግጡ።",
   "resume": "ቀጥል",
   "review_column_missing_notice": "ለግምገማ ማሳያ የሚያስፈልጉ አምዶች ጠፍተዋል።",
+  "settings_columns_missing_notice": "ለሚከተሉት ቅንብሮች በቅንብር ሰንጠረዥ ውስጥ አስፈላጊ አምዶች ስለጎደሉ ቅንብሮች ሊቀመጡ አልቻሉም፦ %s። እባክዎ የቅርብ ጊዜውን የማሻሻያ ስክሪፕት ያስኪዱና እንደገና ይሞክሩ።",
   "review_comment": "የግምገማ አስተያየት",
   "review_disabled_notice": "የተቆጣጣሪ ግምገማዎች በአሁኑ ጊዜ በቅንብሮች ውስጥ ተዘግተዋል።",
   "review_disabled_settings_link": "የግምገማ ቅንብሮችን ያዘምኑ",

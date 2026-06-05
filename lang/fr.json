@@ -632,6 +632,7 @@
   "restore_database_hint": "Restaurer également la base de données à partir de la sauvegarde sélectionnée.",
   "resume": "Reprendre",
   "review_column_missing_notice": "Certaines colonnes requises manquent pour afficher les revues.",
+  "settings_columns_missing_notice": "Les paramètres n’ont pas pu être enregistrés car il manque des colonnes requises dans la table de configuration pour : %s. Veuillez exécuter le dernier script de mise à niveau puis réessayer.",
   "review_comment": "Commentaire",
   "review_disabled_notice": "Les revues des superviseurs sont actuellement désactivées dans les paramètres.",
   "review_disabled_settings_link": "Mettre à jour les paramètres de revue",
