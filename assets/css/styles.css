@@ -2441,9 +2441,9 @@ body.theme-dark .md-floating-save-draft {
 }
 
 .md-alert.success {
-  color: var(--status-success);
-  border-color: var(--status-success-border);
-  border-left-color: var(--status-success);
+  color: var(--status-success, #16a34a);
+  border-color: var(--status-success-border, rgba(22, 163, 74, 0.35));
+  border-left-color: var(--status-success, #16a34a);
 }
 
 .md-alert.error {
@@ -2778,9 +2778,9 @@ body.theme-dark .md-alert.error {
 }
 
 body.theme-dark .md-alert.success {
-  color: var(--status-success);
-  border-color: var(--status-success-border);
-  border-left-color: var(--status-success);
+  color: var(--status-success, #16a34a);
+  border-color: var(--status-success-border, rgba(22, 163, 74, 0.35));
+  border-left-color: var(--status-success, #16a34a);
 }
 
 body.theme-dark .md-alert.info {

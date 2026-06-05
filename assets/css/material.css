@@ -312,6 +312,12 @@ body.md-bg {
   margin: 12px 0;
 }
 
+.md-alert.success {
+  color: var(--status-success, #16a34a);
+  border-color: var(--status-success-border, rgba(22, 163, 74, 0.35));
+  border-left-color: var(--status-success, #16a34a);
+}
+
 .md-alert.info {
   color: var(--status-info);
   border-color: var(--status-info-border);
