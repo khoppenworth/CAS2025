@@ -143,6 +143,8 @@ $developmentRows = personal_report_rank_competency_rows($competencyAreaRows, fal
 $trendPoints = personal_report_trend_points($rows);
 $latestScoreValue = isset($latestEntry['score']) && $latestEntry['score'] !== null ? (float)$latestEntry['score'] : null;
 $suggestedCompletionDate = personal_report_suggested_completion_date($nextAssessmentRaw, $locale, $cfg);
+$nextAssessmentStatus = personal_report_next_assessment_status($nextAssessmentRaw);
+$scoreStatus = personal_report_score_status($latestScoreValue ?? $averageScore);
 
 $generatedAt = new DateTimeImmutable('now');
 $reportTitle = t($t, 'personal_summary_report', 'Personal Summary Report');
@@ -155,30 +157,29 @@ $pdf->setHeader(
     $logoSpec,
     analytics_report_header_style($cfg)
 );
-$userDetails = [];
+$profileRows = [];
 $nameLine = trim((string) ($user['full_name'] ?? ''));
 if ($nameLine === '') {
     $nameLine = (string) ($user['username'] ?? '');
 }
-$userDetails[] = t($t, 'employee_name', 'Name') . ': ' . $nameLine;
+$profileRows[] = [t($t, 'employee_name', 'Name'), personal_report_display_value($nameLine)];
 if (!empty($user['username'])) {
-    $userDetails[] = t($t, 'employee_username', 'Username') . ': ' . $user['username'];
+    $profileRows[] = [t($t, 'employee_username', 'Username'), personal_report_display_value((string)$user['username'])];
 }
 if ($departmentLabel !== '') {
-    $userDetails[] = t($t, 'employee_department', 'Directorate') . ': ' . $departmentLabel;
+    $profileRows[] = [t($t, 'employee_department', 'Directorate'), personal_report_display_value($departmentLabel)];
 }
 $roleKey = trim((string) ($user['role'] ?? ''));
 if ($roleKey !== '') {
-    $userDetails[] = t($t, 'employee_role', 'Role') . ': ' . ucfirst($roleKey);
+    $profileRows[] = [t($t, 'employee_role', 'Role'), ucfirst($roleKey)];
 }
 $emailValue = trim((string) ($user['email'] ?? ''));
 if ($emailValue !== '') {
-    $userDetails[] = t($t, 'employee_email', 'Email') . ': ' . $emailValue;
+    $profileRows[] = [t($t, 'employee_email', 'Email'), personal_report_display_value($emailValue)];
 }
-if ($nextAssessmentDisplay !== '') {
-    $userDetails[] = t($t, 'next_assessment', 'Next Assessment Date') . ': ' . $nextAssessmentDisplay;
-}
-$pdf->addRightAlignedText($userDetails, 10.0);
+$profileRows[] = [t($t, 'next_assessment', 'Next Assessment Date'), $nextAssessmentDisplay !== '' ? $nextAssessmentDisplay : personal_report_empty_value()];
+$pdf->ensureSpaceForBlock(85.0);
+$pdf->addKeyValueGrid($profileRows, 2, 9.5);
 $pdf->addHeading($reportTitle);
 $pdf->addParagraph(sprintf(
     '%s %s',
@@ -203,10 +204,10 @@ $highestArea = $strengthRows[0] ?? null;
 $lowestArea = $developmentRows[0] ?? null;
 $executiveRows = [
     [t($t, 'latest_score', 'Latest score'), $latestScoreValue !== null ? number_format($latestScoreValue, 1) . '%' : t($t, 'score_pending', 'Pending')],
-    [t($t, 'average_score', 'Average score (%)'), $averageScore !== null ? number_format((float)$averageScore, 1) . '%' : '—'],
-    [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : ($averageScore !== null ? questionnaire_competency_level((float)$averageScore) : '—')],
-    [t($t, 'strongest_competency_area', 'Strongest competency area'), $highestArea ? sprintf('%s (%s)', $highestArea['label'], personal_report_format_percent($highestArea['score'])) : '—'],
-    [t($t, 'priority_development_area', 'Priority development area'), $lowestArea ? sprintf('%s (%s)', $lowestArea['label'], personal_report_format_percent($lowestArea['score'])) : '—'],
+    [t($t, 'average_score', 'Average score (%)'), $averageScore !== null ? number_format((float)$averageScore, 1) . '%' : personal_report_empty_value()],
+    [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : ($averageScore !== null ? questionnaire_competency_level((float)$averageScore) : personal_report_empty_value())],
+    [t($t, 'strongest_competency_area', 'Strongest competency area'), $highestArea ? sprintf('%s (%s)', $highestArea['label'], personal_report_format_percent($highestArea['score'])) : personal_report_empty_value()],
+    [t($t, 'priority_development_area', 'Priority development area'), $lowestArea ? sprintf('%s (%s)', $lowestArea['label'], personal_report_format_percent($lowestArea['score'])) : personal_report_empty_value()],
     [t($t, 'recommended_training_courses', 'Recommended Training Courses'), (string)count($recommendedCourses)],
 ];
 if ($nextAssessmentDisplay !== '') {
@@ -218,9 +219,23 @@ $pdf->addTable([
     t($t, 'summary_item', 'Summary item'),
     t($t, 'value', 'Value'),
 ], $executiveRows, [55, 85], 9.5);
+$pdf->addStatusIndicatorRows([
+    [
+        'label' => t($t, 'score_status', 'Score status'),
+        'value' => $scoreStatus['label'],
+        'note' => $scoreStatus['note'],
+        'color' => $scoreStatus['color'],
+    ],
+    [
+        'label' => t($t, 'next_assessment_status', 'Next assessment status'),
+        'value' => $nextAssessmentStatus['label'],
+        'note' => $nextAssessmentStatus['note'],
+        'color' => $nextAssessmentStatus['color'],
+    ],
+], 9.2);
 
 $scoreInterpretationRows = personal_report_competency_scale_rows($t);
-$pdf->ensureSpaceForBlock(180.0);
+$pdf->ensureSpaceForBlock(260.0);
 $pdf->addSubheading(t($t, 'score_interpretation', 'Score Interpretation'));
 $pdf->addParagraph(t($t, 'score_interpretation_hint', 'Scores are percentage based. Higher scores indicate stronger demonstrated competency against the questionnaire criteria.'), 10.0);
 $pdf->addTable([
@@ -259,14 +274,14 @@ if ($latestEntry !== null) {
     ];
 }
 
-$pdf->ensureSpaceForBlock(160.0);
+$pdf->ensureSpaceForBlock(210.0);
 $pdf->addSubheading(t($t, 'performance_overview', 'Performance Overview'));
 $pdf->addTable([
     t($t, 'metric', 'Metric'),
     t($t, 'value', 'Value'),
 ], $summaryRows, [70, 40]);
 
-$pdf->ensureSpaceForBlock(150.0);
+$pdf->ensureSpaceForBlock(230.0);
 $pdf->addSubheading(t($t, 'latest_assessment_detail', 'Latest Assessment Detail'));
 if ($latestEntry !== null) {
     $latestDetailScore = $latestScoreValue !== null ? number_format($latestScoreValue, 1) . '%' : t($t, 'score_pending', 'Pending');
@@ -276,7 +291,7 @@ if ($latestEntry !== null) {
         [t($t, 'year', 'Year'), resolve_performance_year($latestEntry)],
         [t($t, 'status', 'Status'), t($t, 'status_' . ($latestEntry['status'] ?? 'submitted'), ucfirst((string)($latestEntry['status'] ?? 'submitted')))],
         [t($t, 'score', 'Score (%)'), $latestDetailScore],
-        [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : '—'],
+        [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : personal_report_empty_value()],
     ];
     if ($averageScore !== null && $latestScoreValue !== null) {
         $latestDetailRows[] = [
@@ -298,6 +313,7 @@ if ($sectionBreakdowns) {
     $pdf->addParagraph(t($t, 'section_breakdown_hint', 'Each radar uses short CA labels in the graph and lists the full Competency Area text in the legend below.'));
     $palette = analytics_report_palette_colors($cfg);
     foreach ($sectionBreakdowns as $radar) {
+        $pdf->ensureSpaceForBlock(470.0);
         $titleLine = (string)($radar['title'] ?? '');
         $period = trim((string)($radar['period'] ?? ''));
         if ($period !== '') {
@@ -315,7 +331,7 @@ if ($sectionBreakdowns) {
             $radarLegendRows[] = [
                 $shortLabel,
                 $fullLabel !== '' ? $fullLabel : t($t, 'competency_area', 'Competency Area'),
-                $score !== null ? number_format($score, 1) . '%' : '—',
+                $score !== null ? number_format($score, 1) . '%' : personal_report_empty_value(),
             ];
             $radarChartSections[] = [
                 'label' => $shortLabel,
@@ -343,7 +359,7 @@ if ($sectionBreakdowns) {
 }
 
 if ($competencyAreaRows) {
-    $pdf->ensureSpaceForBlock(190.0);
+    $pdf->ensureSpaceForBlock(240.0);
     $pdf->addSubheading(t($t, 'competency_gap_analysis', 'Competency Gap Analysis'));
     $gapRows = [];
     foreach ($developmentRows ?: array_slice($competencyAreaRows, 0, 6) as $areaRow) {
@@ -367,7 +383,7 @@ if ($competencyAreaRows) {
         t($t, 'recommended_action', 'Recommended action'),
     ], $gapRows, [16, 38, 60, 20, 22, 22, 42], 7.5);
 
-    $pdf->ensureSpaceForBlock(170.0);
+    $pdf->ensureSpaceForBlock(190.0);
     $pdf->addSubheading(t($t, 'strengths_and_development_areas', 'Strengths and Development Areas'));
     $strengthText = personal_report_competency_summary_text($strengthRows, $t, true);
     $developmentText = personal_report_competency_summary_text($developmentRows, $t, false);
@@ -377,7 +393,7 @@ if ($competencyAreaRows) {
     ], [[$strengthText, $developmentText]], [1, 1], 9.0);
 }
 
-$pdf->ensureSpaceForBlock(330.0);
+$pdf->ensureSpaceForBlock(380.0);
 $pdf->addSubheading(t($t, 'performance_trend', 'Performance Trend'));
 if ($trendPoints) {
     $palette = analytics_report_palette_colors($cfg);
@@ -400,7 +416,7 @@ if ($trendPoints) {
     $pdf->addParagraph(t($t, 'no_trend_data', 'Trend analysis will appear once at least one scored response is available.'));
 }
 
-$pdf->ensureSpaceForBlock(160.0);
+$pdf->ensureSpaceForBlock(210.0);
 $pdf->addSubheading(t($t, 'recent_responses', 'Recent responses'));
 if ($rows) {
     $responseRows = [];
@@ -411,8 +427,8 @@ if ($rows) {
             resolve_performance_year($row),
             (string) ($row['title'] ?? ''),
             (string) ($row['period_label'] ?? ''),
-            $scoreValue !== null ? number_format($scoreValue, 0) . '%' : '—',
-            $scoreValue !== null ? questionnaire_competency_level($scoreValue) : '—',
+            $scoreValue !== null ? number_format($scoreValue, 0) . '%' : personal_report_empty_value(),
+            $scoreValue !== null ? questionnaire_competency_level($scoreValue) : personal_report_empty_value(),
             t($t, 'status_' . ($row['status'] ?? 'submitted'), ucfirst((string) ($row['status'] ?? 'submitted'))),
         ];
     }
@@ -428,17 +444,17 @@ if ($rows) {
     $pdf->addParagraph(t($t, 'no_submissions_yet', 'No submissions recorded yet. Complete your first assessment to see insights.'));
 }
 
-$pdf->ensureSpaceForBlock(210.0);
+$pdf->ensureSpaceForBlock(260.0);
 $pdf->addSubheading(t($t, 'recommended_training_courses', 'Recommended Training Courses'));
 if ($recommendedCourses) {
     $courseRows = [];
     foreach ($recommendedCourses as $course) {
         $courseRows[] = [
-            trim((string)($course['code'] ?? '')) !== '' ? (string)$course['code'] : '—',
+            trim((string)($course['code'] ?? '')) !== '' ? (string)$course['code'] : personal_report_empty_value(),
             (string)($course['title'] ?? ''),
             (string)($course['_priority'] ?? personal_report_priority_label(isset($course['_matched_score']) ? (float)$course['_matched_score'] : null)),
             (string)($course['_reason'] ?? ''),
-            sprintf('%d – %d%%', (int)($course['min_score'] ?? 0), (int)($course['max_score'] ?? 100)),
+            sprintf('%d - %d%%', (int)($course['min_score'] ?? 0), (int)($course['max_score'] ?? 100)),
             (string)($course['moodle_url'] ?? ''),
         ];
     }
@@ -454,7 +470,7 @@ if ($recommendedCourses) {
     $pdf->addParagraph(t($t, 'no_courses_available', 'No targeted courses found for your current scores. Please contact your supervisor for tailored learning paths.'));
 }
 
-$pdf->ensureSpaceForBlock(190.0);
+$pdf->ensureSpaceForBlock(230.0);
 $pdf->addSubheading(t($t, 'personal_improvement_plan', 'Personal Improvement Plan'));
 $improvementRows = personal_report_improvement_plan_rows($developmentRows, $recommendedCourses, $suggestedCompletionDate, $t);
 $pdf->addTable([
@@ -464,6 +480,10 @@ $pdf->addTable([
     t($t, 'target_date', 'Target date'),
     t($t, 'status', 'Status'),
 ], $improvementRows, [52, 60, 44, 28, 26], 8.0);
+
+$pdf->ensureSpaceForBlock(120.0);
+$pdf->addSubheading(t($t, 'recommended_next_actions', 'Recommended Next Actions'));
+$pdf->addBulletList(personal_report_action_options($developmentRows, $recommendedCourses, $nextAssessmentStatus, $t), 9.0);
 
 $pdf->ensureSpaceForBlock(180.0);
 $pdf->addSubheading(t($t, 'methodology_and_notes', 'Methodology and Notes'));
@@ -497,10 +517,95 @@ exit;
 function personal_report_format_percent(?float $value): string
 {
     if ($value === null) {
-        return '—';
+        return personal_report_empty_value();
     }
 
     return number_format(max(0.0, min(100.0, (float)$value)), 1) . '%';
+}
+
+function personal_report_empty_value(): string
+{
+    return 'No data';
+}
+
+function personal_report_display_value(?string $value): string
+{
+    $value = trim((string)$value);
+    return $value !== '' ? $value : personal_report_empty_value();
+}
+
+function personal_report_next_assessment_status(string $nextAssessmentRaw): array
+{
+    $nextAssessmentRaw = trim($nextAssessmentRaw);
+    if ($nextAssessmentRaw === '') {
+        return [
+            'label' => 'No date set',
+            'note' => 'Set a next assessment date to track review timing.',
+            'color' => [148, 163, 184],
+        ];
+    }
+
+    try {
+        $today = new DateTimeImmutable('today');
+        $target = new DateTimeImmutable($nextAssessmentRaw);
+        $target = $target->setTime(0, 0);
+    } catch (Throwable $e) {
+        return [
+            'label' => 'Date unavailable',
+            'note' => 'The next assessment date could not be interpreted.',
+            'color' => [148, 163, 184],
+        ];
+    }
+
+    $days = (int)$today->diff($target)->format('%r%a');
+    if ($days < 0) {
+        return [
+            'label' => 'Late',
+            'note' => sprintf('Assessment is %d day(s) overdue. Please schedule follow-up.', abs($days)),
+            'color' => [220, 38, 38],
+        ];
+    }
+    if ($days <= 14) {
+        return [
+            'label' => 'Due soon',
+            'note' => sprintf('Assessment is due in %d day(s). Prepare the review now.', $days),
+            'color' => [245, 158, 11],
+        ];
+    }
+
+    return [
+        'label' => 'On track',
+        'note' => sprintf('Assessment is %d day(s) away.', $days),
+        'color' => [22, 163, 74],
+    ];
+}
+
+function personal_report_score_status(?float $score): array
+{
+    if ($score === null) {
+        return [
+            'label' => 'No score yet',
+            'note' => 'Complete an assessment to show score bracket status.',
+            'color' => [148, 163, 184],
+        ];
+    }
+
+    $level = questionnaire_competency_level($score);
+    $palette = match ($level) {
+        'Strategic' => [22, 163, 74],
+        'Advanced' => [37, 99, 235],
+        'Essential' => [245, 158, 11],
+        'Introductory' => [249, 115, 22],
+        'Below Basics' => [220, 38, 38],
+        default => [148, 163, 184],
+    };
+    $details = questionnaire_competency_details($score);
+
+    return [
+        'label' => $level !== '' ? $level : 'Unclassified',
+        'note' => $details['interpretation'] !== '' ? $details['interpretation'] : 'Score bracket based on the current scoring bands.',
+        'color' => $palette,
+    ];
 }
 
 function personal_report_priority_label(?float $score): string
@@ -522,7 +627,7 @@ function personal_report_course_reason(array $scoreRow, array $course, array $tr
 {
     $score = isset($scoreRow['score']) && $scoreRow['score'] !== null ? (float)$scoreRow['score'] : null;
     $questionnaire = trim((string)($scoreRow['title'] ?? ''));
-    $band = sprintf('%d–%d%%', (int)($course['min_score'] ?? 0), (int)($course['max_score'] ?? 100));
+    $band = sprintf('%d-%d%%', (int)($course['min_score'] ?? 0), (int)($course['max_score'] ?? 100));
     if ($score === null) {
         return t($translations, 'course_reason_pending_score', 'Mapped to your role and pending score review.');
     }
@@ -613,7 +718,7 @@ function personal_report_competency_scale_rows(array $translations): array
         $name = (string)($band['name'] ?? '');
         $details = questionnaire_competency_details((float)($band['min_pct'] ?? 0.0));
         $rows[] = [
-            sprintf('%d–%d%%', (int)round((float)$band['min_pct']), (int)round((float)$band['max_pct'])),
+            sprintf('%d-%d%%', (int)round((float)$band['min_pct']), (int)round((float)$band['max_pct'])),
             $name,
             $details['interpretation'] !== '' ? $details['interpretation'] : t($translations, 'competency_level_description', 'Competency level description'),
         ];
@@ -691,6 +796,33 @@ function personal_report_improvement_plan_rows(array $developmentRows, array $re
     }
 
     return $rows;
+}
+
+function personal_report_action_options(array $developmentRows, array $recommendedCourses, array $nextAssessmentStatus, array $translations): array
+{
+    $actions = [];
+    if ($developmentRows) {
+        $primary = (string)($developmentRows[0]['label'] ?? 'priority development area');
+        $actions[] = sprintf('Focus first on %s and agree one measurable improvement target with your supervisor.', $primary);
+    } else {
+        $actions[] = t($translations, 'action_review_section_scores', 'Review section scores with your supervisor once competency area data is available.');
+    }
+
+    if ($recommendedCourses) {
+        $firstCourse = trim((string)($recommendedCourses[0]['title'] ?? ''));
+        $actions[] = $firstCourse !== ''
+            ? sprintf('Start the highest priority course: %s.', $firstCourse)
+            : t($translations, 'action_start_training', 'Start the highest priority recommended training course.');
+    } else {
+        $actions[] = t($translations, 'action_request_course_mapping', 'Ask HR or L&D to confirm whether a suitable course should be mapped to your score band.');
+    }
+
+    $actions[] = t($translations, 'action_capture_evidence', 'Capture evidence of practice improvements before the next assessment.');
+    if (($nextAssessmentStatus['label'] ?? '') === 'Late' || ($nextAssessmentStatus['label'] ?? '') === 'Due soon') {
+        $actions[] = t($translations, 'action_schedule_review', 'Schedule the next assessment or review conversation as soon as possible.');
+    }
+
+    return $actions;
 }
 
 function personal_report_methodology_notes(array $sectionBreakdowns, array $rows, array $recommendedCourses, array $translations): array
