@@ -229,6 +229,17 @@ class SimplePdfDocument
         }
     }
 
+    public function addPageBreak(): void
+    {
+        $this->startNewPage();
+    }
+
+    public function ensureSpaceForBlock(float $points): void
+    {
+        $this->ensurePage();
+        $this->ensureSpace(max(0.0, $points));
+    }
+
     public function addTable(array $headers, array $rows, array $columnWidths, float $fontSize = 10.0): void
     {
         $this->ensurePage();
