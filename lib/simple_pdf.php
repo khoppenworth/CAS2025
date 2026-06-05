@@ -158,10 +158,94 @@ class SimplePdfDocument
 
     public function addBulletList(array $lines, float $fontSize = 11.0): void
     {
-        $bulletPrefix = '• ';
+        $bulletPrefix = '- ';
         foreach ($lines as $line) {
             $this->addTextBlock($bulletPrefix . (string)$line, $fontSize, 'F1', 1.35, false);
         }
+        $this->addSpacer(4.0);
+    }
+
+    public function addKeyValueGrid(array $rows, int $columns = 2, float $fontSize = 9.5): void
+    {
+        $this->ensurePage();
+        $columns = max(1, min(3, $columns));
+        $availableWidth = $this->width - $this->marginLeft - $this->marginRight;
+        $columnGap = 18.0;
+        $columnWidth = ($availableWidth - ($columnGap * ($columns - 1))) / $columns;
+        $labelWidth = min(78.0, $columnWidth * 0.42);
+        $valueWidth = max(20.0, $columnWidth - $labelWidth - 4.0);
+        $lineHeight = $this->lineHeight($fontSize, 1.3);
+        $pairs = array_values(array_filter($rows, static fn($row): bool => is_array($row) && count($row) >= 2));
+
+        for ($offset = 0; $offset < count($pairs); $offset += $columns) {
+            $rowPairs = array_slice($pairs, $offset, $columns);
+            $maxLines = 1;
+            $wrapped = [];
+            foreach ($rowPairs as $index => $pair) {
+                $label = trim((string)($pair[0] ?? ''));
+                $value = trim((string)($pair[1] ?? ''));
+                $labelLines = $this->wrapTextToWidth($label, $fontSize, $labelWidth);
+                $valueLines = $this->wrapTextToWidth($value, $fontSize, $valueWidth);
+                $wrapped[$index] = [$labelLines, $valueLines];
+                $maxLines = max($maxLines, count($labelLines), count($valueLines));
+            }
+
+            $rowHeight = ($maxLines * $lineHeight) + 6.0;
+            $this->ensureSpace($rowHeight);
+            $topY = $this->cursorY;
+            foreach ($rowPairs as $index => $pair) {
+                $x = $this->marginLeft + ($index * ($columnWidth + $columnGap));
+                [$labelLines, $valueLines] = $wrapped[$index];
+                $textY = $topY - $fontSize;
+                foreach ($labelLines as $line) {
+                    $this->drawText($line, 'F2', $fontSize, $x, $textY);
+                    $textY -= $lineHeight;
+                }
+                $textY = $topY - $fontSize;
+                foreach ($valueLines as $line) {
+                    $this->drawText($line, 'F1', $fontSize, $x + $labelWidth + 4.0, $textY);
+                    $textY -= $lineHeight;
+                }
+            }
+            $this->cursorY -= $rowHeight;
+        }
+
+        $this->addSpacer(4.0);
+    }
+
+    public function addStatusIndicatorRows(array $rows, float $fontSize = 9.5): void
+    {
+        $this->ensurePage();
+        $lineHeight = $this->lineHeight($fontSize, 1.35);
+        $labelWidth = 145.0;
+        $circleRadius = 4.5;
+        $valueX = $this->marginLeft + $labelWidth + 18.0;
+        $noteX = $valueX + 145.0;
+        $noteWidth = max(80.0, $this->width - $this->marginRight - $noteX);
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $label = trim((string)($row['label'] ?? ''));
+            $value = trim((string)($row['value'] ?? ''));
+            $note = trim((string)($row['note'] ?? ''));
+            $rgb = is_array($row['color'] ?? null) ? $row['color'] : [148, 163, 184];
+            $noteLines = $note !== '' ? $this->wrapTextToWidth($note, $fontSize, $noteWidth) : [''];
+            $rowHeight = max($lineHeight, count($noteLines) * $lineHeight) + 4.0;
+            $this->ensureSpace($rowHeight);
+            $baselineY = $this->cursorY - $fontSize;
+            $this->drawText($label, 'F2', $fontSize, $this->marginLeft, $baselineY);
+            $this->drawFilledCircle($this->marginLeft + $labelWidth + 6.0, $baselineY + ($fontSize / 2) - 1.0, $circleRadius, $rgb);
+            $this->drawText($value, 'F1', $fontSize, $valueX, $baselineY);
+            $noteY = $baselineY;
+            foreach ($noteLines as $line) {
+                $this->drawText($line, 'F1', $fontSize, $noteX, $noteY);
+                $noteY -= $lineHeight;
+            }
+            $this->cursorY -= $rowHeight;
+        }
+
         $this->addSpacer(4.0);
     }
 
@@ -227,6 +311,17 @@ class SimplePdfDocument
         if ($this->cursorY <= $this->marginBottom) {
             $this->startNewPage();
         }
+    }
+
+    public function addPageBreak(): void
+    {
+        $this->startNewPage();
+    }
+
+    public function ensureSpaceForBlock(float $points): void
+    {
+        $this->ensurePage();
+        $this->ensureSpace(max(0.0, $points));
     }
 
     public function addTable(array $headers, array $rows, array $columnWidths, float $fontSize = 10.0): void
@@ -587,7 +682,7 @@ class SimplePdfDocument
         $lineHeight = $this->lineHeight($fontSize, $lineSpacing);
         foreach ($lines as $line) {
             $this->ensureSpace($lineHeight);
-            $this->writeTextLine($line, $fontKey, $fontSize);
+            $this->writeTextLineAt($line, $fontKey, $fontSize, $this->cursorY - $fontSize);
             $this->cursorY -= $lineHeight;
         }
         if ($addSpacer) {
@@ -624,9 +719,13 @@ class SimplePdfDocument
 
     private function writeTextLine(string $text, string $fontKey, float $fontSize): void
     {
+        $this->writeTextLineAt($text, $fontKey, $fontSize, $this->cursorY);
+    }
+
+    private function writeTextLineAt(string $text, string $fontKey, float $fontSize, float $y): void
+    {
         $escaped = $this->escapeText($text);
         $x = $this->marginLeft;
-        $y = $this->cursorY;
         $this->currentOps[] = sprintf('BT /%s %.2f Tf 1 0 0 1 %.2f %.2f Tm (%s) Tj ET', $fontKey, $fontSize, $x, $y, $escaped);
     }
 
@@ -716,6 +815,53 @@ class SimplePdfDocument
             $this->formatFloat($y),
             $this->formatFloat($width),
             $this->formatFloat($height)
+        );
+    }
+
+    private function drawFilledCircle(float $centerX, float $centerY, float $radius, array $rgb): void
+    {
+        if ($radius <= 0.0) {
+            return;
+        }
+        $r = $this->formatFloat(max(0, min(255, (float)($rgb[0] ?? 0))) / 255);
+        $g = $this->formatFloat(max(0, min(255, (float)($rgb[1] ?? 0))) / 255);
+        $b = $this->formatFloat(max(0, min(255, (float)($rgb[2] ?? 0))) / 255);
+        $k = 0.5522847498;
+        $c = $radius * $k;
+        $x = $centerX;
+        $y = $centerY;
+
+        $this->currentOps[] = sprintf(
+            'q %s %s %s rg %s %s m %s %s %s %s %s %s c %s %s %s %s %s %s c %s %s %s %s %s %s c %s %s %s %s %s %s c f Q',
+            $r,
+            $g,
+            $b,
+            $this->formatFloat($x + $radius),
+            $this->formatFloat($y),
+            $this->formatFloat($x + $radius),
+            $this->formatFloat($y + $c),
+            $this->formatFloat($x + $c),
+            $this->formatFloat($y + $radius),
+            $this->formatFloat($x),
+            $this->formatFloat($y + $radius),
+            $this->formatFloat($x - $c),
+            $this->formatFloat($y + $radius),
+            $this->formatFloat($x - $radius),
+            $this->formatFloat($y + $c),
+            $this->formatFloat($x - $radius),
+            $this->formatFloat($y),
+            $this->formatFloat($x - $radius),
+            $this->formatFloat($y - $c),
+            $this->formatFloat($x - $c),
+            $this->formatFloat($y - $radius),
+            $this->formatFloat($x),
+            $this->formatFloat($y - $radius),
+            $this->formatFloat($x + $c),
+            $this->formatFloat($y - $radius),
+            $this->formatFloat($x + $radius),
+            $this->formatFloat($y - $c),
+            $this->formatFloat($x + $radius),
+            $this->formatFloat($y)
         );
     }
 
@@ -1043,8 +1189,35 @@ class SimplePdfDocument
 
     private function escapeText(string $text): string
     {
+        $text = $this->normalizePdfText($text);
         $text = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $text);
         return preg_replace("/[\r\n]+/", ' ', $text);
+    }
+
+    private function normalizePdfText(string $text): string
+    {
+        $text = str_replace(
+            [
+                chr(0xE2) . chr(0x80) . chr(0x94),
+                chr(0xE2) . chr(0x80) . chr(0x93),
+                chr(0xE2) . chr(0x80) . chr(0xA2),
+                chr(0xE2) . chr(0x80) . chr(0x98),
+                chr(0xE2) . chr(0x80) . chr(0x99),
+                chr(0xE2) . chr(0x80) . chr(0x9C),
+                chr(0xE2) . chr(0x80) . chr(0x9D),
+                chr(0xC2) . chr(0xA0),
+            ],
+            ['-', '-', '-', "'", "'", '"', '"', ' '],
+            $text
+        );
+        if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
+            if (is_string($converted) && $converted !== '') {
+                return $converted;
+            }
+        }
+
+        return preg_replace('/[^\\x09\\x0A\\x0D\\x20-\\x7E]/', '?', $text) ?? $text;
     }
 
     private function formatTableRow(array $row, array $columnWidths): string
