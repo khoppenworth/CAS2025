@@ -111,7 +111,7 @@ foreach ($activeStaff as $staffRow) {
 </head>
 <body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__.'/../templates/header.php'; ?>
-<section class="md-section">
+<section class="md-section pending-accounts-page">
   <div class="md-card md-elev-2">
     <h2 class="md-card-title"><?=t($t,'pending_accounts','User Approval')?></h2>
     <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
@@ -199,7 +199,7 @@ foreach ($activeStaff as $staffRow) {
             <?php endif; ?>
           </td>
           <td>
-            <form method="post" class="md-inline-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>">
+            <form method="post" class="md-inline-form scheduled-assessment-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>">
               <input type="hidden" name="csrf" value="<?=csrf_token()?>">
               <input type="hidden" name="id" value="<?=$staff['id']?>">
               <input type="date" name="next_assessment_date" value="<?=htmlspecialchars($staff['next_assessment_date'] ?? '')?>">
