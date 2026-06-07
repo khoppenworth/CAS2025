@@ -4608,7 +4608,7 @@ body.theme-dark.md-bg:not(.landing-body) {
 
 .md-overview-details dt {
   margin: 0 0 0.2rem;
-  color: var(--app-muted-light);
+  color: var(--app-primary);
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -4617,12 +4617,13 @@ body.theme-dark.md-bg:not(.landing-body) {
 
 .md-overview-details dd {
   margin: 0;
-  color: var(--app-text);
+  color: var(--app-text-primary, var(--app-heading, var(--md-primary-dark)));
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .md-overview-footnote {
   margin: 0.85rem 0 0;
-  color: var(--app-muted-light);
+  color: var(--app-text-secondary, var(--md-muted));
+  font-weight: 600;
 }
