@@ -348,6 +348,184 @@ function questionnaire_item_matches_condition(array $item, array $valuesByLinkId
     return $equals;
 }
 
+
+/**
+ * Extract string-like answer values from a stored QuestionnaireResponse answer set.
+ *
+ * @param array<int, mixed> $answerSet
+ * @return array<int, string>
+ */
+function questionnaire_answer_string_values(array $answerSet): array
+{
+    $values = [];
+    foreach ($answerSet as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        if (array_key_exists('valueString', $entry) && is_scalar($entry['valueString'])) {
+            $text = trim((string)$entry['valueString']);
+            if ($text !== '') {
+                $values[] = $text;
+            }
+        }
+        if (isset($entry['valueCoding']) && is_array($entry['valueCoding'])) {
+            foreach (['code', 'display'] as $codingKey) {
+                if (isset($entry['valueCoding'][$codingKey]) && is_scalar($entry['valueCoding'][$codingKey])) {
+                    $text = trim((string)$entry['valueCoding'][$codingKey]);
+                    if ($text !== '') {
+                        $values[] = $text;
+                    }
+                }
+            }
+        }
+    }
+    return array_values(array_unique($values));
+}
+
+/**
+ * Extract the first numeric answer value from a stored answer set.
+ *
+ * @param array<int, mixed> $answerSet
+ */
+function questionnaire_answer_integer_value(array $answerSet): ?int
+{
+    foreach ($answerSet as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        if (isset($entry['valueInteger']) && is_numeric($entry['valueInteger'])) {
+            return (int)$entry['valueInteger'];
+        }
+        if (isset($entry['valueString']) && is_scalar($entry['valueString'])) {
+            $text = trim((string)$entry['valueString']);
+            if (preg_match('/^([1-5])/', $text, $matches)) {
+                return (int)$matches[1];
+            }
+            if (is_numeric($text)) {
+                $candidate = (int)$text;
+                if ($candidate >= 1 && $candidate <= 5) {
+                    return $candidate;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Calculate achieved and possible weighted points for one questionnaire item.
+ *
+ * @param array<string, mixed> $item
+ * @param array<int, mixed> $answerSet
+ * @param array<int, string> $validOptions
+ * @return array{possible:float, achieved:float, answered:bool}
+ */
+function questionnaire_score_answer(array $item, array $answerSet, array $validOptions = [], string $correctValue = ''): array
+{
+    $weight = isset($item['weight']) && is_numeric($item['weight'])
+        ? (float)$item['weight']
+        : (isset($item['computed_weight']) && is_numeric($item['computed_weight']) ? (float)$item['computed_weight'] : 0.0);
+    if ($weight <= 0.0 || !questionnaire_section_included_in_scoring($item)) {
+        return ['possible' => 0.0, 'achieved' => 0.0, 'answered' => false];
+    }
+
+    $type = strtolower((string)($item['type'] ?? ''));
+    $allowMultiple = !empty($item['allow_multiple']);
+    $strings = questionnaire_answer_string_values($answerSet);
+    $answered = $strings !== [];
+    $achieved = 0.0;
+
+    if ($type === 'boolean') {
+        $answered = false;
+        foreach ($answerSet as $entry) {
+            if (!is_array($entry) || !array_key_exists('valueBoolean', $entry)) {
+                continue;
+            }
+            $answered = true;
+            if (!empty($entry['valueBoolean'])) {
+                $achieved = $weight;
+                break;
+            }
+        }
+    } elseif ($type === 'likert') {
+        $scoreValue = questionnaire_answer_integer_value($answerSet);
+        if ($scoreValue !== null) {
+            $answered = true;
+            $scaleMax = 5;
+            if ($validOptions !== []) {
+                $scaleMax = max(1, count($validOptions));
+            }
+            $achieved = $weight * (max(0, min($scoreValue, $scaleMax)) / $scaleMax);
+        } elseif ($strings !== [] && $validOptions !== []) {
+            $selected = $strings[0];
+            $optionIndex = array_search($selected, $validOptions, true);
+            if ($optionIndex !== false) {
+                $answered = true;
+                $scaleMax = max(1, count($validOptions));
+                $achieved = $weight * (($optionIndex + 1) / $scaleMax);
+            }
+        }
+    } elseif ($type === 'choice') {
+        $answered = $strings !== [];
+        if ($answered && $allowMultiple) {
+            $achieved = $weight;
+        } elseif ($answered) {
+            $selected = (string)($strings[0] ?? '');
+            if (questionnaire_item_uses_correct_answer($item)) {
+                if ($correctValue !== '' && $selected === $correctValue) {
+                    $achieved = $weight;
+                }
+            } else {
+                $achieved = $weight;
+            }
+        }
+    } else {
+        $answered = $strings !== [];
+        if ($answered) {
+            $achieved = $weight;
+        }
+    }
+
+    return [
+        'possible' => $weight,
+        'achieved' => max(0.0, min($weight, $achieved)),
+        'answered' => $answered,
+    ];
+}
+
+/**
+ * Calculate an overall weighted percentage for a response.
+ *
+ * @param array<int, array<string, mixed>> $items
+ * @param array<string, array<int, mixed>> $answersByLinkId
+ * @param array<int, array{values?:array<int,string>,correct?:string}> $optionMap
+ */
+function questionnaire_calculate_response_score(array $items, array $answersByLinkId, array $optionMap = []): ?float
+{
+    $conditionValues = questionnaire_collect_condition_values_from_answers($answersByLinkId);
+    $possible = 0.0;
+    $achieved = 0.0;
+    foreach ($items as $item) {
+        if (!questionnaire_item_matches_condition($item, $conditionValues)) {
+            continue;
+        }
+        $itemId = (int)($item['id'] ?? 0);
+        $answerSet = $answersByLinkId[(string)($item['linkId'] ?? '')] ?? [];
+        $score = questionnaire_score_answer(
+            $item,
+            is_array($answerSet) ? $answerSet : [],
+            $optionMap[$itemId]['values'] ?? [],
+            (string)($optionMap[$itemId]['correct'] ?? '')
+        );
+        $possible += $score['possible'];
+        $achieved += $score['achieved'];
+    }
+    if ($possible <= 0.0) {
+        return null;
+    }
+    return max(0.0, min(100.0, ($achieved / $possible) * 100.0));
+}
+
 /**
  * Resolve a competency level label from a score percentage.
  */

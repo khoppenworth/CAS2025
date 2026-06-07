@@ -49,3 +49,23 @@ if (questionnaire_resolve_effective_weight($nonScorable, $singleChoiceWeights, $
 }
 
 echo "Questionnaire scoring tests passed.\n";
+
+$weightedItems = [
+    ['id' => 10, 'linkId' => 'knowledge', 'type' => 'choice', 'allow_multiple' => 0, 'requires_correct' => 1, 'weight' => 40, 'include_in_scoring' => 1],
+    ['id' => 11, 'linkId' => 'confidence', 'type' => 'likert', 'allow_multiple' => 0, 'weight' => 60, 'include_in_scoring' => 1],
+];
+$weightedAnswers = [
+    'knowledge' => [['valueString' => 'Correct']],
+    'confidence' => [['valueInteger' => 3, 'valueString' => '3 - Satisfactory']],
+];
+$weightedOptions = [
+    10 => ['values' => ['Correct', 'Wrong'], 'correct' => 'Correct'],
+    11 => ['values' => ['1', '2', '3', '4', '5']],
+];
+$weightedScore = questionnaire_calculate_response_score($weightedItems, $weightedAnswers, $weightedOptions);
+if ($weightedScore === null || abs($weightedScore - 76.0) > 0.001) {
+    fwrite(STDERR, sprintf("Expected weighted mixed-method score of 76.0, received %s.\n", var_export($weightedScore, true)));
+    exit(1);
+}
+
+echo "Weighted response scoring tests passed.\n";
