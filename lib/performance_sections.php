@@ -213,7 +213,7 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
 
     $responseIds = array_keys($responseMeta);
     $answersByResponse = [];
-    $correctByItem = [];
+    $optionMap = [];
     if ($responseIds) {
         $answerPlaceholder = implode(',', array_fill(0, count($responseIds), '?'));
         $answerStmt = $pdo->prepare(
@@ -243,15 +243,20 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
         $itemIds = array_values(array_unique($itemIds));
         $optionPlaceholder = implode(',', array_fill(0, count($itemIds), '?'));
         $optStmt = $pdo->prepare(
-            "SELECT questionnaire_item_id, value FROM questionnaire_item_option " .
-            "WHERE questionnaire_item_id IN ($optionPlaceholder) AND is_correct=1 " .
+            "SELECT questionnaire_item_id, value, is_correct FROM questionnaire_item_option " .
+            "WHERE questionnaire_item_id IN ($optionPlaceholder) " .
             "ORDER BY questionnaire_item_id, order_index, id"
         );
         $optStmt->execute($itemIds);
         foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $itemId = (int)$row['questionnaire_item_id'];
-            if (!isset($correctByItem[$itemId])) {
-                $correctByItem[$itemId] = (string)($row['value'] ?? '');
+            $value = trim((string)($row['value'] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $optionMap[$itemId]['values'][] = $value;
+            if (!empty($row['is_correct']) && empty($optionMap[$itemId]['correct'])) {
+                $optionMap[$itemId]['correct'] = $value;
             }
         }
     }
@@ -273,16 +278,16 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             $sid = $section['id'];
             $sectionStats[$sid] = [
                 'label' => (string)$section['title'],
-                'total' => 0,
-                'correct' => 0,
+                'possible' => 0.0,
+                'achieved' => 0.0,
             ];
             $orderedSections[] = $sid;
         }
         $unassignedKey = 'unassigned';
         $sectionStats[$unassignedKey] = [
             'label' => $generalLabel,
-            'total' => 0,
-            'correct' => 0,
+            'possible' => 0.0,
+            'achieved' => 0.0,
         ];
 
         $answers = $answersByResponse[$responseId] ?? [];
@@ -295,31 +300,32 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             if (!isset($sectionStats[$sectionKey])) {
                 $sectionStats[$sectionKey] = [
                     'label' => $sectionFallback,
-                    'total' => 0,
-                    'correct' => 0,
+                    'possible' => 0.0,
+                    'achieved' => 0.0,
                 ];
                 if ($sectionKey !== $unassignedKey) {
                     $orderedSections[] = $sectionKey;
                 }
             }
-            if (!questionnaire_section_included_in_scoring($item) || !questionnaire_item_uses_correct_answer($item)) {
-                continue;
-            }
-            $correctValue = (string)($correctByItem[(int)($item['id'] ?? 0)] ?? '');
-            if ($correctValue === '') {
-                continue;
-            }
-            $sectionStats[$sectionKey]['total'] += 1;
+            $itemId = (int)($item['id'] ?? 0);
             $answerSet = $answers[$item['linkId']] ?? [];
-            if (questionnaire_answer_is_correct($answerSet, $correctValue)) {
-                $sectionStats[$sectionKey]['correct'] += 1;
+            $score = questionnaire_score_answer(
+                $item,
+                is_array($answerSet) ? $answerSet : [],
+                $optionMap[$itemId]['values'] ?? [],
+                (string)($optionMap[$itemId]['correct'] ?? '')
+            );
+            if ($score['possible'] <= 0.0) {
+                continue;
             }
+            $sectionStats[$sectionKey]['possible'] += $score['possible'];
+            $sectionStats[$sectionKey]['achieved'] += $score['achieved'];
         }
 
         $sections = [];
         foreach ($orderedSections as $sid) {
             $stat = $sectionStats[$sid] ?? null;
-            if (!$stat || $stat['total'] <= 0) {
+            if (!$stat || $stat['possible'] <= 0.0) {
                 continue;
             }
             $label = trim((string)$stat['label']);
@@ -328,14 +334,14 @@ function compute_section_breakdowns(PDO $pdo, array $responses, array $translati
             }
             $sections[] = [
                 'label' => $label,
-                'score' => round(($stat['correct'] / $stat['total']) * 100, 1),
+                'score' => round(($stat['achieved'] / $stat['possible']) * 100, 1),
             ];
         }
 
-        if ($sectionStats[$unassignedKey]['total'] > 0) {
+        if ($sectionStats[$unassignedKey]['possible'] > 0.0) {
             $sections[] = [
                 'label' => $sectionStats[$unassignedKey]['label'],
-                'score' => round(($sectionStats[$unassignedKey]['correct'] / $sectionStats[$unassignedKey]['total']) * 100, 1),
+                'score' => round(($sectionStats[$unassignedKey]['achieved'] / $sectionStats[$unassignedKey]['possible']) * 100, 1),
             ];
         }
 

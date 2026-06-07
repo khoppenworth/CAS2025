@@ -95,7 +95,7 @@ function analytics_decode_answer_json($raw): array
 }
 
 /**
- * Fetch correct-answer scoring items for the supplied questionnaire identifiers.
+ * Fetch weighted scoring items for the supplied questionnaire identifiers.
  *
  * @return array<int, array<int, array<string, mixed>>> keyed by questionnaire id.
  */
@@ -112,7 +112,7 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
     $conditionSelect = analytics_supports_item_conditions($pdo)
         ? 'qi.condition_source_linkid, qi.condition_operator, qi.condition_value, '
         : 'NULL AS condition_source_linkid, NULL AS condition_operator, NULL AS condition_value, ';
-    $sql = 'SELECT qi.id, qi.questionnaire_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, '
+    $sql = 'SELECT qi.id, qi.questionnaire_id, qi.linkId, qi.type, qi.allow_multiple, qi.requires_correct, COALESCE(qi.weight_percent,0) AS weight_percent, '
         . $conditionSelect
         . $includeSelect
         . 'FROM questionnaire_item qi '
@@ -139,47 +139,52 @@ function analytics_fetch_scoring_items(PDO $pdo, array $questionnaireIds): array
             'condition_operator' => (string)($row['condition_operator'] ?? ''),
             'condition_value' => (string)($row['condition_value'] ?? ''),
             'include_in_scoring' => !empty($row['include_in_scoring']),
+            'weight_percent' => (float)($row['weight_percent'] ?? 0),
         ];
         if ($itemId > 0) {
             $itemIds[] = $itemId;
         }
     }
 
-    $correctByItem = [];
+    $optionMap = [];
     if ($itemIds) {
         $itemIds = array_values(array_unique($itemIds));
         $optionPlaceholder = implode(',', array_fill(0, count($itemIds), '?'));
         $optStmt = $pdo->prepare(
-            "SELECT questionnaire_item_id, value FROM questionnaire_item_option " .
-            "WHERE questionnaire_item_id IN ($optionPlaceholder) AND is_correct=1 " .
+            "SELECT questionnaire_item_id, value, is_correct FROM questionnaire_item_option " .
+            "WHERE questionnaire_item_id IN ($optionPlaceholder) " .
             "ORDER BY questionnaire_item_id, order_index, id"
         );
         $optStmt->execute($itemIds);
         foreach ($optStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $itemId = (int)$row['questionnaire_item_id'];
-            if (!isset($correctByItem[$itemId])) {
-                $correctByItem[$itemId] = (string)($row['value'] ?? '');
+            $value = trim((string)($row['value'] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $optionMap[$itemId]['values'][] = $value;
+            if (!empty($row['is_correct']) && empty($optionMap[$itemId]['correct'])) {
+                $optionMap[$itemId]['correct'] = $value;
             }
         }
     }
 
     $itemsByQuestionnaire = [];
     foreach ($rawItems as $qid => $items) {
+        $singleChoiceWeights = questionnaire_even_single_choice_weights($items);
+        $likertWeights = questionnaire_even_likert_weights($items);
         foreach ($items as $item) {
-            if (!questionnaire_item_uses_correct_answer($item) || !questionnaire_section_included_in_scoring($item)) {
-                continue;
-            }
-            $correctValue = (string)($correctByItem[(int)($item['id'] ?? 0)] ?? '');
-            if ($correctValue === '') {
-                continue;
-            }
-            $itemsByQuestionnaire[$qid][] = [
-                'linkId' => (string)($item['linkId'] ?? ''),
-                'correct_value' => $correctValue,
-                'condition_source_linkid' => (string)($item['condition_source_linkid'] ?? ''),
-                'condition_operator' => (string)($item['condition_operator'] ?? ''),
-                'condition_value' => (string)($item['condition_value'] ?? ''),
-            ];
+            $type = (string)($item['type'] ?? '');
+            $item['weight'] = questionnaire_resolve_effective_weight(
+                $item,
+                $singleChoiceWeights,
+                $likertWeights,
+                !in_array($type, ['display', 'group', 'section'], true)
+            );
+            $itemId = (int)($item['id'] ?? 0);
+            $item['option_values'] = $optionMap[$itemId]['values'] ?? [];
+            $item['correct_value'] = (string)($optionMap[$itemId]['correct'] ?? '');
+            $itemsByQuestionnaire[$qid][] = $item;
         }
     }
     return $itemsByQuestionnaire;
@@ -217,31 +222,23 @@ function analytics_fetch_answers(PDO $pdo, array $responseIds): array
 }
 
 /**
- * Calculate a correct-answer score for a response.
+ * Calculate a weighted score for a response.
  */
 function analytics_compute_response_score(array $items, array $answers): ?float
 {
-    $correctCount = 0;
-    $totalCount = 0;
-    $conditionValues = questionnaire_collect_condition_values_from_answers($answers);
+    $optionMap = [];
     foreach ($items as $item) {
-        if (!questionnaire_item_matches_condition($item, $conditionValues)) {
+        $itemId = (int)($item['id'] ?? 0);
+        if ($itemId <= 0) {
             continue;
         }
-        $correctValue = (string)($item['correct_value'] ?? '');
-        if ($correctValue === '') {
-            continue;
-        }
-        $totalCount++;
-        $answerSet = $answers[(string)($item['linkId'] ?? '')] ?? [];
-        if (questionnaire_answer_is_correct($answerSet, $correctValue)) {
-            $correctCount++;
-        }
+        $optionMap[$itemId] = [
+            'values' => $item['option_values'] ?? [],
+            'correct' => (string)($item['correct_value'] ?? ''),
+        ];
     }
-    if ($totalCount <= 0) {
-        return null;
-    }
-    return round(($correctCount / $totalCount) * 100, 1);
+    $score = questionnaire_calculate_response_score($items, $answers, $optionMap);
+    return $score === null ? null : round($score, 1);
 }
 
 function analytics_completed_statuses(): array
@@ -2155,7 +2152,7 @@ $pageHelpKey = 'team.analytics';
     <h2 class="md-card-title"><?=t($t, 'questionnaire_performance', 'Questionnaire performance')?></h2>
     <?php if ($questionnaires): ?>
       <p class="md-upgrade-meta"><?=t($t, 'questionnaire_drilldown_hint', 'Select a questionnaire to drill into individual responses.')?></p>
-      <p class="md-upgrade-meta"><?=t($t, 'questionnaire_completion_hint', 'Questionnaire rows now show the dominant completion level, count, and percentage. Open a row for detailed drill-down or use the Report Explorer for exports.')?></p>
+      <p class="md-upgrade-meta"><?=t($t, 'questionnaire_completion_hint', 'Questionnaire rows now show total responses, the dominant completion level, number of responses in that level, and percentage. Open a row for detailed drill-down or use the Report Explorer for exports.')?></p>
       <div class="md-table-toolbar">
         <label>
           <?=t($t, 'filter_questionnaires', 'Filter questionnaires')?>

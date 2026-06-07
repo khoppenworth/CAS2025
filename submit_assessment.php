@@ -367,9 +367,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $previousItem = $itemRow;
             }
 
-            $correctCount = 0;
-            $totalCount = 0;
-
             $answersByLinkId = [];
             $submittedValuesByLinkId = $collectPostedValues($_POST);
             $missingRequired = [];
@@ -533,8 +530,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare('UPDATE questionnaire_response SET score=NULL WHERE id=?')->execute([$responseId]);
                     clear_response_training_recommendations($pdo, $responseId);
                 } else {
-                    $pctRaw = $totalCount > 0 ? ($correctCount / $totalCount) * 100 : 0.0;
-                    $pct = (int)round(max(0.0, min(100.0, $pctRaw)));
+                    $pctRaw = questionnaire_calculate_response_score($items, $answersByLinkId, $optionMap);
+                    $pct = (int)round($pctRaw !== null ? max(0.0, min(100.0, $pctRaw)) : 0.0);
                     $pdo->prepare('UPDATE questionnaire_response SET score=? WHERE id=?')->execute([$pct, $responseId]);
                     try {
                         map_response_to_training_courses($pdo, $responseId, (string)($user['work_function'] ?? ''), $pct, $qid);
