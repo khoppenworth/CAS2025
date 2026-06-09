@@ -1864,14 +1864,186 @@ CREATE TABLE IF NOT EXISTS course_catalogue (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(50) NOT NULL,
   title VARCHAR(255) NOT NULL,
+  course_objective TEXT NULL,
+  expected_competency TEXT NULL,
+  thematic_area VARCHAR(255) NULL,
+  mode_of_delivery VARCHAR(100) NULL,
+  duration VARCHAR(50) NULL,
+  ceu VARCHAR(50) NULL,
+  course_owner VARCHAR(100) NULL,
   moodle_url VARCHAR(255) NULL,
-  recommended_for ENUM('finance','general_service','hrm','ict','leadership_tn','legal_service','pme','quantification','records_documentation','security_driver','security','tmd','wim','cmd','communication','dfm','driver','ethics') NOT NULL,
+  recommended_for VARCHAR(100) NOT NULL,
   questionnaire_id INT NULL,
   min_score INT NOT NULL DEFAULT 0,
-  max_score INT NOT NULL DEFAULT 99,
+  max_score INT NOT NULL DEFAULT 100,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+
+SET @cc_course_objective_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'course_objective'
+);
+SET @cc_course_objective_sql = IF(
+  @cc_course_objective_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN course_objective TEXT NULL AFTER title',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_course_objective_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_expected_competency_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'expected_competency'
+);
+SET @cc_expected_competency_sql = IF(
+  @cc_expected_competency_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN expected_competency TEXT NULL AFTER course_objective',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_expected_competency_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_thematic_area_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'thematic_area'
+);
+SET @cc_thematic_area_sql = IF(
+  @cc_thematic_area_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN thematic_area VARCHAR(255) NULL AFTER expected_competency',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_thematic_area_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_mode_of_delivery_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'mode_of_delivery'
+);
+SET @cc_mode_of_delivery_sql = IF(
+  @cc_mode_of_delivery_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN mode_of_delivery VARCHAR(100) NULL AFTER thematic_area',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_mode_of_delivery_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_duration_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'duration'
+);
+SET @cc_duration_sql = IF(
+  @cc_duration_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN duration VARCHAR(50) NULL AFTER mode_of_delivery',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_duration_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_ceu_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'ceu'
+);
+SET @cc_ceu_sql = IF(
+  @cc_ceu_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN ceu VARCHAR(50) NULL AFTER duration',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_ceu_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_course_owner_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'course_owner'
+);
+SET @cc_course_owner_sql = IF(
+  @cc_course_owner_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN course_owner VARCHAR(100) NULL AFTER ceu',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_course_owner_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_recommended_for_needs_modification = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'recommended_for'
+    AND (DATA_TYPE <> 'varchar' OR CHARACTER_MAXIMUM_LENGTH < 100)
+);
+SET @cc_recommended_for_sql = IF(
+  @cc_recommended_for_needs_modification > 0,
+  'ALTER TABLE course_catalogue MODIFY COLUMN recommended_for VARCHAR(100) NOT NULL',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_recommended_for_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_max_score_needs_modification = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'max_score'
+    AND COALESCE(COLUMN_DEFAULT, '') <> '100'
+);
+SET @cc_max_score_sql = IF(
+  @cc_max_score_needs_modification > 0,
+  'ALTER TABLE course_catalogue MODIFY COLUMN max_score INT NOT NULL DEFAULT 100',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_max_score_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @cc_is_active_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'course_catalogue'
+    AND COLUMN_NAME = 'is_active'
+);
+SET @cc_is_active_sql = IF(
+  @cc_is_active_exists = 0,
+  'ALTER TABLE course_catalogue ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER max_score',
+  'DO 1'
+);
+PREPARE stmt FROM @cc_is_active_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE course_catalogue SET is_active = 1 WHERE is_active IS NULL;
 
 CREATE TABLE IF NOT EXISTS training_recommendation (
   id INT AUTO_INCREMENT PRIMARY KEY,

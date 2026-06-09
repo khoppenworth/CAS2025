@@ -16,6 +16,13 @@ function ensure_course_recommendation_schema(PDO $pdo): void
                 . 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
                 . 'code TEXT NOT NULL, '
                 . 'title TEXT NOT NULL, '
+                . 'course_objective TEXT NULL, '
+                . 'expected_competency TEXT NULL, '
+                . 'thematic_area TEXT NULL, '
+                . 'mode_of_delivery TEXT NULL, '
+                . 'duration TEXT NULL, '
+                . 'ceu TEXT NULL, '
+                . 'course_owner TEXT NULL, '
                 . 'moodle_url TEXT NULL, '
                 . 'recommended_for TEXT NOT NULL, '
                 . 'questionnaire_id INTEGER NULL, '
@@ -41,6 +48,8 @@ function ensure_course_recommendation_schema(PDO $pdo): void
             } catch (Throwable $e) {
                 // Ignore duplicate-column errors.
             }
+            ensure_course_catalogue_metadata_columns($pdo, $driver);
+            seed_standard_course_catalogue($pdo);
             return;
         }
 
@@ -48,6 +57,13 @@ function ensure_course_recommendation_schema(PDO $pdo): void
             . 'id INT AUTO_INCREMENT PRIMARY KEY, '
             . 'code VARCHAR(50) NOT NULL, '
             . 'title VARCHAR(255) NOT NULL, '
+            . 'course_objective TEXT NULL, '
+            . 'expected_competency TEXT NULL, '
+            . 'thematic_area VARCHAR(255) NULL, '
+            . 'mode_of_delivery VARCHAR(100) NULL, '
+            . 'duration VARCHAR(50) NULL, '
+            . 'ceu VARCHAR(50) NULL, '
+            . 'course_owner VARCHAR(100) NULL, '
             . 'moodle_url VARCHAR(255) NULL, '
             . 'recommended_for VARCHAR(100) NOT NULL, '
             . 'questionnaire_id INT NULL, '
@@ -63,6 +79,29 @@ function ensure_course_recommendation_schema(PDO $pdo): void
             // Ignore duplicate-column errors.
         }
         try {
+            $columnsStmt = $pdo->query('SHOW COLUMNS FROM course_catalogue');
+            if ($columnsStmt) {
+                while ($column = $columnsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    if ((string)($column['Field'] ?? '') !== 'recommended_for') {
+                        continue;
+                    }
+                    $type = strtolower((string)($column['Type'] ?? ''));
+                    $isShortVarchar = preg_match('/varchar\((\d+)\)/', $type, $matches) === 1 && (int)$matches[1] < 100;
+                    if (!str_starts_with($type, 'varchar(') || $isShortVarchar) {
+                        $pdo->exec('ALTER TABLE course_catalogue MODIFY COLUMN recommended_for VARCHAR(100) NOT NULL');
+                    }
+                    break;
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('ensure_course_recommendation_schema recommended_for migration failed: ' . $e->getMessage());
+        }
+        try {
+            $pdo->exec('ALTER TABLE course_catalogue MODIFY COLUMN max_score INT NOT NULL DEFAULT 100');
+        } catch (Throwable $e) {
+            // Ignore engines where the column already has the desired definition.
+        }
+        try {
             $pdo->exec('CREATE INDEX idx_course_catalogue_match ON course_catalogue (recommended_for, questionnaire_id, min_score, max_score)');
         } catch (Throwable $e) {
             // Ignore duplicate index errors.
@@ -72,6 +111,8 @@ function ensure_course_recommendation_schema(PDO $pdo): void
         } catch (Throwable $e) {
             // Ignore duplicate-column errors.
         }
+        ensure_course_catalogue_metadata_columns($pdo, $driver);
+        seed_standard_course_catalogue($pdo);
 
         $pdo->exec('CREATE TABLE IF NOT EXISTS training_recommendation ('
             . 'id INT AUTO_INCREMENT PRIMARY KEY, '
@@ -88,6 +129,141 @@ function ensure_course_recommendation_schema(PDO $pdo): void
 }
 
 /**
+ * Add catalogue metadata columns needed for the imported course list.
+ */
+function ensure_course_catalogue_metadata_columns(PDO $pdo, string $driver): void
+{
+    $columns = $driver === 'sqlite'
+        ? [
+            'course_objective' => 'TEXT NULL',
+            'expected_competency' => 'TEXT NULL',
+            'thematic_area' => 'TEXT NULL',
+            'mode_of_delivery' => 'TEXT NULL',
+            'duration' => 'TEXT NULL',
+            'ceu' => 'TEXT NULL',
+            'course_owner' => 'TEXT NULL',
+        ]
+        : [
+            'course_objective' => 'TEXT NULL AFTER title',
+            'expected_competency' => 'TEXT NULL AFTER course_objective',
+            'thematic_area' => 'VARCHAR(255) NULL AFTER expected_competency',
+            'mode_of_delivery' => 'VARCHAR(100) NULL AFTER thematic_area',
+            'duration' => 'VARCHAR(50) NULL AFTER mode_of_delivery',
+            'ceu' => 'VARCHAR(50) NULL AFTER duration',
+            'course_owner' => 'VARCHAR(100) NULL AFTER ceu',
+        ];
+
+    foreach ($columns as $column => $definition) {
+        try {
+            $pdo->exec(sprintf('ALTER TABLE course_catalogue ADD COLUMN %s %s', $column, $definition));
+        } catch (Throwable $e) {
+            // Ignore duplicate-column errors.
+        }
+    }
+}
+
+/**
+ * @return array<int,array<string,string>>
+ */
+function standard_course_catalogue_entries(): array
+{
+    $path = __DIR__ . '/../data/course_catalogue.php';
+    $entries = is_file($path) ? require $path : [];
+
+    return is_array($entries) ? $entries : [];
+}
+
+function normalize_course_catalogue_text(string $value): string
+{
+    return trim((string)preg_replace('/\s+/u', ' ', $value));
+}
+
+function derive_course_catalogue_code(string $title, int $position): string
+{
+    $words = preg_split('/[^A-Za-z0-9]+/', strtoupper($title), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $stopWords = ['AND', 'OF', 'THE', 'FOR', 'IN', 'ON', 'TO', 'WITH', 'A', 'AN'];
+    $letters = '';
+    foreach ($words as $word) {
+        if (in_array($word, $stopWords, true)) {
+            continue;
+        }
+        $letters .= substr($word, 0, 1);
+    }
+    $letters = substr($letters !== '' ? $letters : 'COURSE', 0, 8);
+
+    return sprintf('%s-%03d', $letters, $position);
+}
+
+function derive_course_catalogue_recommended_for(string $title, string $thematicArea): string
+{
+    $combined = strtolower($title . ' ' . $thematicArea);
+    if (str_contains($combined, 'financ')) {
+        return 'finance';
+    }
+    if (str_contains($combined, 'leadership') || str_contains($combined, 'governance') || str_contains($combined, 'quality improvement') || str_contains($combined, 'preceptor') || str_contains($combined, 'mentorship')) {
+        return 'manager';
+    }
+    if (str_contains($combined, 'warehouse') || str_contains($combined, 'inventory') || str_contains($combined, 'logistics') || str_contains($combined, 'supply chain') || str_contains($combined, 'scm') || str_contains($combined, 'procurement') || str_contains($combined, 'distribution') || str_contains($combined, 'commodity') || str_contains($combined, 'quantification') || str_contains($combined, 'medical device') || str_contains($combined, 'oxygen') || str_contains($combined, 'pharmaceutical services management') || str_contains($combined, 'digital solution')) {
+        return 'wim';
+    }
+
+    return 'expert';
+}
+
+function seed_standard_course_catalogue(PDO $pdo): void
+{
+    static $seeded = [];
+    $cacheKey = spl_object_id($pdo);
+    if (isset($seeded[$cacheKey])) {
+        return;
+    }
+    $seeded[$cacheKey] = true;
+
+    try {
+        $pdo->exec(
+            "DELETE FROM course_catalogue "
+            . "WHERE code IN ('FIN-101', 'ICT-201', 'HRM-110', 'GEN-050', 'LEAD-300', 'SAFE-210') "
+            . "AND moodle_url LIKE 'https://moodle.example.com/course/%'"
+        );
+
+        $find = $pdo->prepare('SELECT id FROM course_catalogue WHERE title = ? LIMIT 1');
+        $insert = $pdo->prepare(
+            'INSERT INTO course_catalogue ('
+            . 'code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, ceu, course_owner, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active'
+            . ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 100, 1)'
+        );
+
+        foreach (standard_course_catalogue_entries() as $index => $entry) {
+            $title = normalize_course_catalogue_text((string)($entry['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $find->execute([$title]);
+            if ($find->fetchColumn()) {
+                continue;
+            }
+
+            $thematicArea = normalize_course_catalogue_text((string)($entry['thematic_area'] ?? ''));
+            $insert->execute([
+                derive_course_catalogue_code($title, $index + 1),
+                $title,
+                normalize_course_catalogue_text((string)($entry['course_objective'] ?? '')),
+                normalize_course_catalogue_text((string)($entry['expected_competency'] ?? '')),
+                $thematicArea,
+                normalize_course_catalogue_text((string)($entry['mode_of_delivery'] ?? '')),
+                normalize_course_catalogue_text((string)($entry['duration'] ?? '')),
+                normalize_course_catalogue_text((string)($entry['ceu'] ?? '')),
+                normalize_course_catalogue_text((string)($entry['course_owner'] ?? '')),
+                null,
+                derive_course_catalogue_recommended_for($title, $thematicArea),
+            ]);
+        }
+    } catch (PDOException $e) {
+        error_log('seed_standard_course_catalogue failed: ' . $e->getMessage());
+    }
+}
+
+/**
  * @return array<int,array<string,mixed>>
  */
 function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $questionnaireId = null): array
@@ -95,7 +271,7 @@ function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $q
     try {
         if ($questionnaireId !== null && $questionnaireId > 0) {
             $stmt = $pdo->prepare(
-                'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
+                'SELECT id, code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, ceu, course_owner, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
                 . 'FROM course_catalogue '
                 . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? AND is_active = 1 '
                 . 'AND (questionnaire_id = ? OR questionnaire_id IS NULL) '
@@ -107,7 +283,7 @@ function find_course_matches(PDO $pdo, string $workFunction, int $score, ?int $q
         }
 
         $stmt = $pdo->prepare(
-            'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
+            'SELECT id, code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, ceu, course_owner, moodle_url, recommended_for, questionnaire_id, min_score, max_score '
             . 'FROM course_catalogue '
             . 'WHERE recommended_for = ? AND min_score <= ? AND max_score >= ? AND is_active = 1 '
             . 'AND questionnaire_id IS NULL '

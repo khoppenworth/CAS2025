@@ -37,6 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         $code = trim((string)($_POST['code'] ?? ''));
         $title = trim((string)($_POST['title'] ?? ''));
+        $courseObjective = trim((string)($_POST['course_objective'] ?? ''));
+        $expectedCompetency = trim((string)($_POST['expected_competency'] ?? ''));
+        $thematicArea = trim((string)($_POST['thematic_area'] ?? ''));
+        $modeOfDelivery = trim((string)($_POST['mode_of_delivery'] ?? ''));
+        $duration = trim((string)($_POST['duration'] ?? ''));
+        $ceu = trim((string)($_POST['ceu'] ?? ''));
+        $courseOwner = trim((string)($_POST['course_owner'] ?? ''));
         $moodleUrl = trim((string)($_POST['moodle_url'] ?? ''));
         $recommendedFor = trim((string)($_POST['recommended_for'] ?? ''));
         $questionnaireId = (int)($_POST['questionnaire_id'] ?? 0);
@@ -60,9 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($errors === []) {
             $stmt = $pdo->prepare(
-                'INSERT INTO course_catalogue (code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO course_catalogue (code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, ceu, course_owner, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
-            $stmt->execute([$code, $title, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive]);
+            $stmt->execute([$code, $title, $courseObjective, $expectedCompetency, $thematicArea, $modeOfDelivery, $duration, $ceu, $courseOwner, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive]);
             $_SESSION['course_mapping_flash'] = t($t, 'course_mapping_saved', 'Course mapping saved.');
             header('Location: ' . url_for('admin/course_mappings.php'));
             exit;
@@ -73,6 +80,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $courseId = (int)($_POST['course_id'] ?? 0);
         $code = trim((string)($_POST['code'] ?? ''));
         $title = trim((string)($_POST['title'] ?? ''));
+        $courseObjective = trim((string)($_POST['course_objective'] ?? ''));
+        $expectedCompetency = trim((string)($_POST['expected_competency'] ?? ''));
+        $thematicArea = trim((string)($_POST['thematic_area'] ?? ''));
+        $modeOfDelivery = trim((string)($_POST['mode_of_delivery'] ?? ''));
+        $duration = trim((string)($_POST['duration'] ?? ''));
+        $ceu = trim((string)($_POST['ceu'] ?? ''));
+        $courseOwner = trim((string)($_POST['course_owner'] ?? ''));
         $moodleUrl = trim((string)($_POST['moodle_url'] ?? ''));
         $recommendedFor = trim((string)($_POST['recommended_for'] ?? ''));
         $questionnaireId = (int)($_POST['questionnaire_id'] ?? 0);
@@ -98,8 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($errors === []) {
-            $pdo->prepare('UPDATE course_catalogue SET code = ?, title = ?, moodle_url = ?, recommended_for = ?, questionnaire_id = ?, min_score = ?, max_score = ?, is_active = ? WHERE id = ?')
-                ->execute([$code, $title, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive, $courseId]);
+            $pdo->prepare('UPDATE course_catalogue SET code = ?, title = ?, course_objective = ?, expected_competency = ?, thematic_area = ?, mode_of_delivery = ?, duration = ?, ceu = ?, course_owner = ?, moodle_url = ?, recommended_for = ?, questionnaire_id = ?, min_score = ?, max_score = ?, is_active = ? WHERE id = ?')
+                ->execute([$code, $title, $courseObjective, $expectedCompetency, $thematicArea, $modeOfDelivery, $duration, $ceu, $courseOwner, $moodleUrl !== '' ? $moodleUrl : null, $recommendedFor, $questionnaireIdValue, $minScore, $maxScore, $isActive, $courseId]);
             $_SESSION['course_mapping_flash'] = t($t, 'course_mapping_updated', 'Course mapping updated.');
             header('Location: ' . url_for('admin/course_mappings.php'));
             exit;
@@ -118,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $listStmt = $pdo->query(
-    'SELECT id, code, title, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active '
+    'SELECT id, code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, ceu, course_owner, moodle_url, recommended_for, questionnaire_id, min_score, max_score, is_active '
     . 'FROM course_catalogue ORDER BY recommended_for, questionnaire_id IS NULL, questionnaire_id, min_score, title'
 );
 $mappings = $listStmt ? $listStmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -151,6 +165,27 @@ $drawerKey = 'admin.course_mappings';
       </label>
       <label><?=t($t, 'course', 'Course')?>
         <input class="md-input" type="text" name="title" required>
+      </label>
+      <label><?=t($t, 'thematic_area', 'Thematic Area')?>
+        <input class="md-input" type="text" name="thematic_area">
+      </label>
+      <label><?=t($t, 'mode_of_delivery', 'Mode of Delivery')?>
+        <input class="md-input" type="text" name="mode_of_delivery">
+      </label>
+      <label><?=t($t, 'duration', 'Duration')?>
+        <input class="md-input" type="text" name="duration">
+      </label>
+      <label><?=t($t, 'ceu', 'CEU')?>
+        <input class="md-input" type="text" name="ceu">
+      </label>
+      <label><?=t($t, 'course_owner', 'Course Owner')?>
+        <input class="md-input" type="text" name="course_owner">
+      </label>
+      <label style="grid-column:1/-1;"><?=t($t, 'course_objective', 'Course Objective')?>
+        <textarea class="md-input" name="course_objective" rows="3"></textarea>
+      </label>
+      <label style="grid-column:1/-1;"><?=t($t, 'expected_competency', 'Expected Competency')?>
+        <textarea class="md-input" name="expected_competency" rows="3"></textarea>
       </label>
       <label><?=t($t, 'moodle_url', 'Moodle URL')?>
         <input class="md-input" type="url" name="moodle_url" placeholder="https://moodle.example/course/view.php?id=123">
@@ -187,7 +222,7 @@ $drawerKey = 'admin.course_mappings';
   <div class="md-card md-elev-2">
     <h3 class="md-card-title"><?=t($t, 'configured_course_mappings', 'Configured Mappings')?></h3>
     <table class="md-table">
-      <thead><tr><th><?=t($t, 'course_code', 'Course Code')?></th><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'moodle_url', 'Moodle URL')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
+      <thead><tr><th><?=t($t, 'course_code', 'Course Code')?></th><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'course_details', 'Course Details')?></th><th><?=t($t, 'delivery', 'Delivery')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'moodle_url', 'Moodle URL')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
       <tbody>
       <?php foreach ($mappings as $row): ?>
         <?php $rowQuestionnaireId = (int)($row['questionnaire_id'] ?? 0); ?>
@@ -198,6 +233,17 @@ $drawerKey = 'admin.course_mappings';
             <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
             <td><input class="md-input" type="text" name="code" value="<?=htmlspecialchars((string)$row['code'], ENT_QUOTES, 'UTF-8')?>" required></td>
             <td><input class="md-input" type="text" name="title" value="<?=htmlspecialchars((string)$row['title'], ENT_QUOTES, 'UTF-8')?>" required></td>
+            <td>
+              <label class="md-muted"><?=t($t, 'thematic_area', 'Thematic Area')?><input class="md-input" type="text" name="thematic_area" value="<?=htmlspecialchars((string)($row['thematic_area'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+              <label class="md-muted"><?=t($t, 'course_objective', 'Course Objective')?><textarea class="md-input" name="course_objective" rows="3"><?=htmlspecialchars((string)($row['course_objective'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
+              <label class="md-muted"><?=t($t, 'expected_competency', 'Expected Competency')?><textarea class="md-input" name="expected_competency" rows="3"><?=htmlspecialchars((string)($row['expected_competency'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
+            </td>
+            <td>
+              <label class="md-muted"><?=t($t, 'mode_of_delivery', 'Mode of Delivery')?><input class="md-input" type="text" name="mode_of_delivery" value="<?=htmlspecialchars((string)($row['mode_of_delivery'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+              <label class="md-muted"><?=t($t, 'duration', 'Duration')?><input class="md-input" type="text" name="duration" value="<?=htmlspecialchars((string)($row['duration'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+              <label class="md-muted"><?=t($t, 'ceu', 'CEU')?><input class="md-input" type="text" name="ceu" value="<?=htmlspecialchars((string)($row['ceu'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+              <label class="md-muted"><?=t($t, 'course_owner', 'Course Owner')?><input class="md-input" type="text" name="course_owner" value="<?=htmlspecialchars((string)($row['course_owner'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+            </td>
             <td>
               <select class="md-select" name="recommended_for" required>
                 <?php foreach ($workFunctions as $slug => $label): ?>

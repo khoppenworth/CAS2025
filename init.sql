@@ -219,11 +219,19 @@ CREATE TABLE course_catalogue (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(50) NOT NULL,
   title VARCHAR(255) NOT NULL,
+  course_objective TEXT NULL,
+  expected_competency TEXT NULL,
+  thematic_area VARCHAR(255) NULL,
+  mode_of_delivery VARCHAR(100) NULL,
+  duration VARCHAR(50) NULL,
+  ceu VARCHAR(50) NULL,
+  course_owner VARCHAR(100) NULL,
   moodle_url VARCHAR(255) NULL,
-  recommended_for ENUM('finance','general_service','hrm','ict','leadership_tn','legal_service','pme','quantification','records_documentation','security_driver','security','tmd','wim','cmd','communication','dfm','driver','ethics') NOT NULL,
+  recommended_for VARCHAR(100) NOT NULL,
   questionnaire_id INT NULL,
   min_score INT NOT NULL DEFAULT 0,
-  max_score INT NOT NULL DEFAULT 99,
+  max_score INT NOT NULL DEFAULT 100,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
