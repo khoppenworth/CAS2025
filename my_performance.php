@@ -287,7 +287,7 @@ $timelinePoints = array_map(static function ($point) {
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
-    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
+    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) AND is_active = 1 ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
     foreach ($latestScores as $scoreRow) {
         if ($scoreRow['score'] === null) {
             continue;
@@ -469,12 +469,26 @@ $pageHelpKey = 'workspace.my_performance';
     <h2 class="md-card-title"><?=t($t,'recommended_courses','Personal Improvement Plan (PIP)')?></h2>
     <?php if ($recommendedCourses): ?>
       <table class="md-table">
-        <thead><tr><th><?=t($t,'course','Course')?></th><th><?=t($t,'link','Link')?></th><th><?=t($t,'score_band','Score Band')?></th></tr></thead>
+        <thead><tr><th><?=t($t,'course','Course')?></th><th><?=t($t,'thematic_area','Thematic Area')?></th><th><?=t($t,'delivery','Delivery')?></th><th><?=t($t,'course_owner','Course Owner')?></th><th><?=t($t,'link','Link')?></th><th><?=t($t,'score_band','Score Band')?></th></tr></thead>
         <tbody>
         <?php foreach ($recommendedCourses as $course): ?>
+          <?php
+            $deliveryParts = array_values(array_filter([
+                trim((string)($course['mode_of_delivery'] ?? '')),
+                trim((string)($course['duration'] ?? '')),
+                trim((string)($course['ceu'] ?? '')) !== '' ? 'CEU: ' . trim((string)$course['ceu']) : '',
+            ], static fn($value) => $value !== ''));
+            $deliverySummary = $deliveryParts ? implode(' · ', $deliveryParts) : '—';
+          ?>
           <tr>
-            <td><?=htmlspecialchars($course['title'])?></td>
-            <td><a href="<?=htmlspecialchars($course['moodle_url'])?>" target="_blank" rel="noopener">Moodle</a></td>
+            <td>
+              <strong><?=htmlspecialchars($course['title'])?></strong>
+              <?php if (!empty($course['course_objective'])): ?><br><span class="md-muted"><?=htmlspecialchars((string)$course['course_objective'])?></span><?php endif; ?>
+            </td>
+            <td><?=htmlspecialchars((string)($course['thematic_area'] ?? '—'))?></td>
+            <td><?=htmlspecialchars($deliverySummary)?></td>
+            <td><?=htmlspecialchars((string)($course['course_owner'] ?? '—'))?></td>
+            <td><?php if (!empty($course['moodle_url'])): ?><a href="<?=htmlspecialchars($course['moodle_url'])?>" target="_blank" rel="noopener">Moodle</a><?php else: ?>—<?php endif; ?></td>
             <td><?= (int)$course['min_score'] ?> - <?= (int)$course['max_score'] ?>%</td>
           </tr>
         <?php endforeach; ?>

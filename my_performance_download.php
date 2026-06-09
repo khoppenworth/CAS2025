@@ -115,7 +115,7 @@ $averageScore = $scoredValues ? array_sum($scoredValues) / count($scoredValues) 
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
-    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
+    $courseStmt = $pdo->prepare('SELECT * FROM course_catalogue WHERE recommended_for=? AND min_score <= ? AND max_score >= ? AND (questionnaire_id = ? OR questionnaire_id IS NULL) AND is_active = 1 ORDER BY questionnaire_id IS NULL ASC, min_score ASC');
     foreach ($latestScores as $scoreRow) {
         if ($scoreRow['score'] === null) {
             continue;
