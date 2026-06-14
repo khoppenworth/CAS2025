@@ -144,22 +144,56 @@ $drawerKey = 'admin.course_mappings';
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="<?=asset_url('assets/css/material.css')?>">
 <link rel="stylesheet" href="<?=asset_url('assets/css/styles.css')?>">
+
+<style>
+  .course-mapping-hero { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; flex-wrap:wrap; }
+  .course-mapping-hero p { margin:.25rem 0; }
+  .course-mapping-form { display:grid; gap:1rem; }
+  .course-mapping-fieldset { border:1px solid var(--status-success-border); border-radius:16px; padding:1rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; }
+  .course-mapping-fieldset legend { padding:0 .4rem; font-weight:700; color:var(--app-primary); }
+  .course-mapping-full-span { grid-column:1 / -1; }
+  .course-mapping-actions { display:flex; justify-content:flex-end; gap:.75rem; align-items:center; flex-wrap:wrap; }
+  .course-mapping-toolbar { display:grid; grid-template-columns:2fr repeat(3, minmax(160px, 1fr)); gap:.75rem; margin:1rem 0; align-items:end; }
+  .course-mapping-table-wrap { overflow-x:auto; border-radius:14px; box-shadow:var(--md-shadow); }
+  .course-mapping-table { min-width:980px; box-shadow:none; }
+  .course-mapping-table td { vertical-align:top; }
+  .course-mapping-title { display:grid; gap:.3rem; min-width:220px; }
+  .course-mapping-chip { display:inline-flex; align-items:center; border-radius:999px; padding:.25rem .65rem; background:var(--status-success-soft); color:var(--app-text-secondary); font-size:.8rem; font-weight:700; }
+  .course-mapping-score { display:flex; align-items:center; gap:.35rem; white-space:nowrap; }
+  .course-mapping-score input { text-align:center; }
+  .course-mapping-details { min-width:240px; }
+  .course-mapping-details summary { cursor:pointer; font-weight:700; color:var(--app-primary); margin-bottom:.5rem; }
+  .course-mapping-detail-grid { display:grid; gap:.55rem; }
+  .course-mapping-row-actions { display:grid; gap:.5rem; min-width:110px; }
+  .course-mapping-row-actions form { margin:0; }
+  .course-mapping-empty { display:none; padding:1rem; border:1px dashed var(--status-success-border); border-radius:12px; color:var(--md-muted); }
+  @media (max-width: 900px) {
+    .course-mapping-toolbar { grid-template-columns:1fr; }
+    .course-mapping-fieldset { grid-template-columns:1fr; }
+  }
+</style>
 </head><body class="<?=htmlspecialchars(site_body_classes($cfg), ENT_QUOTES, 'UTF-8')?>">
 <?php include __DIR__ . '/../templates/header.php'; ?>
 <section class="md-section">
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t, 'course_mapping_title', 'Moodle Course Mapping')?></h2>
-    <p><?=t($t, 'course_mapping_summary', 'Map questionnaire + score ranges to external Moodle courses.')?></p>
-    <p class="md-muted"><?=t($t, 'course_mapping_summary_tiers', 'Tip: create multiple rows per questionnaire (basic, advanced, optional advanced) using different score bands.')?></p>
+    <div class="course-mapping-hero">
+      <div>
+        <h2 class="md-card-title"><?=t($t, 'course_mapping_title', 'Moodle Course Mapping')?></h2>
+        <p><?=t($t, 'course_mapping_summary', 'Map questionnaire + score ranges to external Moodle courses.')?></p>
+        <p class="md-muted"><?=t($t, 'course_mapping_summary_tiers', 'Tip: create multiple rows per questionnaire (basic, advanced, optional advanced) using different score bands.')?></p>
+      </div>
+      <a class="md-button md-outline" href="#configured-mappings"><?=t($t, 'view_configured_mappings', 'View configured mappings')?></a>
+    </div>
 
     <?php if ($msg): ?><div class="md-alert success"><?=htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
     <?php foreach ($errors as $error): ?>
       <div class="md-alert warning"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div>
     <?php endforeach; ?>
 
-    <form method="post" class="md-form-grid">
+    <form method="post" class="course-mapping-form">
       <input type="hidden" name="csrf" value="<?=csrf_token()?>">
       <input type="hidden" name="action" value="create">
+      <fieldset class="course-mapping-fieldset"><legend><?=t($t, 'course_details', 'Course Details')?></legend>
       <label><?=t($t, 'course_code', 'Course Code')?>
         <input class="md-input" type="text" name="code" required>
       </label>
@@ -181,13 +215,15 @@ $drawerKey = 'admin.course_mappings';
       <label><?=t($t, 'course_owner', 'Course Owner')?>
         <input class="md-input" type="text" name="course_owner">
       </label>
-      <label style="grid-column:1/-1;"><?=t($t, 'course_objective', 'Course Objective')?>
+      <label class="course-mapping-full-span"><?=t($t, 'course_objective', 'Course Objective')?>
         <textarea class="md-input" name="course_objective" rows="3"></textarea>
       </label>
-      <label style="grid-column:1/-1;"><?=t($t, 'expected_competency', 'Expected Competency')?>
+      <label class="course-mapping-full-span"><?=t($t, 'expected_competency', 'Expected Competency')?>
         <textarea class="md-input" name="expected_competency" rows="3"></textarea>
       </label>
-      <label><?=t($t, 'moodle_url', 'Moodle URL')?>
+      </fieldset>
+      <fieldset class="course-mapping-fieldset"><legend><?=t($t, 'recommendation_rules', 'Recommendation Rules')?></legend>
+      <label class="course-mapping-full-span"><?=t($t, 'moodle_url', 'Moodle URL')?>
         <input class="md-input" type="url" name="moodle_url" placeholder="https://moodle.example/course/view.php?id=123">
       </label>
       <label><?=t($t, 'work_function', 'Work Function')?>
@@ -215,44 +251,81 @@ $drawerKey = 'admin.course_mappings';
       <label class="md-check">
         <input type="checkbox" name="is_active" value="1" checked> <?=t($t, 'active', 'Active')?>
       </label>
-      <button type="submit" class="md-button"><?=t($t, 'save', 'Save')?></button>
+      </fieldset>
+      <div class="course-mapping-actions"><button type="submit" class="md-button"><?=t($t, 'save', 'Save')?></button></div>
     </form>
   </div>
 
-  <div class="md-card md-elev-2">
+  <div class="md-card md-elev-2" id="configured-mappings">
     <h3 class="md-card-title"><?=t($t, 'configured_course_mappings', 'Configured Mappings')?></h3>
-    <table class="md-table">
-      <thead><tr><th><?=t($t, 'course_code', 'Course Code')?></th><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'course_details', 'Course Details')?></th><th><?=t($t, 'delivery', 'Delivery')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'moodle_url', 'Moodle URL')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
-      <tbody>
-      <?php foreach ($mappings as $row): ?>
-        <?php $rowQuestionnaireId = (int)($row['questionnaire_id'] ?? 0); ?>
-        <tr>
-          <form method="post">
-            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-            <input type="hidden" name="action" value="update">
-            <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
-            <td><input class="md-input" type="text" name="code" value="<?=htmlspecialchars((string)$row['code'], ENT_QUOTES, 'UTF-8')?>" required></td>
-            <td><input class="md-input" type="text" name="title" value="<?=htmlspecialchars((string)$row['title'], ENT_QUOTES, 'UTF-8')?>" required></td>
+    <p class="md-muted"><?=t($t, 'course_mapping_filter_help', 'Search and filter mappings, then expand details only when you need to edit course metadata.')?></p>
+
+    <div class="course-mapping-toolbar" role="search" aria-label="<?=htmlspecialchars(t($t, 'filter_course_mappings', 'Filter course mappings'), ENT_QUOTES, 'UTF-8')?>">
+      <label><?=t($t, 'search', 'Search')?>
+        <input class="md-input" type="search" id="mapping-search" placeholder="<?=htmlspecialchars(t($t, 'search_course_mappings_placeholder', 'Course code, title, Moodle URL...'), ENT_QUOTES, 'UTF-8')?>">
+      </label>
+      <label><?=t($t, 'work_function', 'Work Function')?>
+        <select class="md-select" id="mapping-work-filter">
+          <option value=""><?=t($t, 'all', 'All')?></option>
+          <?php foreach ($workFunctions as $slug => $label): ?>
+            <option value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label><?=t($t, 'questionnaire', 'Questionnaire')?>
+        <select class="md-select" id="mapping-questionnaire-filter">
+          <option value=""><?=t($t, 'all', 'All')?></option>
+          <option value="0"><?=t($t, 'all_questionnaires', 'All Questionnaires')?></option>
+          <?php foreach ($questionnaireOptions as $qid => $qTitle): ?>
+            <option value="<?= (int)$qid ?>"><?=htmlspecialchars($qTitle, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label><?=t($t, 'status', 'Status')?>
+        <select class="md-select" id="mapping-status-filter">
+          <option value=""><?=t($t, 'all', 'All')?></option>
+          <option value="active"><?=t($t, 'active', 'Active')?></option>
+          <option value="inactive"><?=t($t, 'inactive', 'Inactive')?></option>
+        </select>
+      </label>
+    </div>
+    <div class="course-mapping-empty" id="mapping-empty"><?=t($t, 'course_mapping_no_matches', 'No mappings match the current filters.')?></div>
+
+    <div class="course-mapping-table-wrap">
+      <table class="md-table course-mapping-table">
+        <thead><tr><th><?=t($t, 'course', 'Course')?></th><th><?=t($t, 'work_function', 'Work Function')?></th><th><?=t($t, 'questionnaire', 'Questionnaire')?></th><th><?=t($t, 'score_band', 'Score Band')?></th><th><?=t($t, 'status', 'Status')?></th><th><?=t($t, 'more_details', 'More Details')?></th><th><?=t($t, 'actions', 'Actions')?></th></tr></thead>
+        <tbody>
+        <?php foreach ($mappings as $row): ?>
+          <?php
+            $rowId = (int)$row['id'];
+            $rowQuestionnaireId = (int)($row['questionnaire_id'] ?? 0);
+            $rowWorkFunction = (string)($row['recommended_for'] ?? '');
+            $rowStatus = ((int)($row['is_active'] ?? 1) === 1) ? 'active' : 'inactive';
+            $rowSearch = strtolower(trim(implode(' ', [
+                (string)($row['code'] ?? ''),
+                (string)($row['title'] ?? ''),
+                (string)($row['thematic_area'] ?? ''),
+                (string)($row['mode_of_delivery'] ?? ''),
+                (string)($row['course_owner'] ?? ''),
+                (string)($row['moodle_url'] ?? ''),
+            ])));
+          ?>
+          <tr class="course-mapping-row" data-search="<?=htmlspecialchars($rowSearch, ENT_QUOTES, 'UTF-8')?>" data-work-function="<?=htmlspecialchars($rowWorkFunction, ENT_QUOTES, 'UTF-8')?>" data-questionnaire="<?= (int)$rowQuestionnaireId ?>" data-status="<?=htmlspecialchars($rowStatus, ENT_QUOTES, 'UTF-8')?>">
             <td>
-              <label class="md-muted"><?=t($t, 'thematic_area', 'Thematic Area')?><input class="md-input" type="text" name="thematic_area" value="<?=htmlspecialchars((string)($row['thematic_area'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-              <label class="md-muted"><?=t($t, 'course_objective', 'Course Objective')?><textarea class="md-input" name="course_objective" rows="3"><?=htmlspecialchars((string)($row['course_objective'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
-              <label class="md-muted"><?=t($t, 'expected_competency', 'Expected Competency')?><textarea class="md-input" name="expected_competency" rows="3"><?=htmlspecialchars((string)($row['expected_competency'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
+              <div class="course-mapping-title">
+                <label class="md-muted"><?=t($t, 'course_code', 'Course Code')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="code" value="<?=htmlspecialchars((string)$row['code'], ENT_QUOTES, 'UTF-8')?>" required></label>
+                <label><?=t($t, 'course', 'Course')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="title" value="<?=htmlspecialchars((string)$row['title'], ENT_QUOTES, 'UTF-8')?>" required></label>
+              </div>
             </td>
             <td>
-              <label class="md-muted"><?=t($t, 'mode_of_delivery', 'Mode of Delivery')?><input class="md-input" type="text" name="mode_of_delivery" value="<?=htmlspecialchars((string)($row['mode_of_delivery'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-              <label class="md-muted"><?=t($t, 'duration', 'Duration')?><input class="md-input" type="text" name="duration" value="<?=htmlspecialchars((string)($row['duration'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-              <label class="md-muted"><?=t($t, 'ceu', 'CEU')?><input class="md-input" type="text" name="ceu" value="<?=htmlspecialchars((string)($row['ceu'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-              <label class="md-muted"><?=t($t, 'course_owner', 'Course Owner')?><input class="md-input" type="text" name="course_owner" value="<?=htmlspecialchars((string)($row['course_owner'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
-            </td>
-            <td>
-              <select class="md-select" name="recommended_for" required>
+              <select form="course-update-<?= $rowId ?>" class="md-select" name="recommended_for" required>
                 <?php foreach ($workFunctions as $slug => $label): ?>
                   <option value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>" <?=((string)$row['recommended_for'] === (string)$slug ? 'selected' : '')?>><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></option>
                 <?php endforeach; ?>
               </select>
             </td>
             <td>
-              <select class="md-select" name="questionnaire_id">
+              <select form="course-update-<?= $rowId ?>" class="md-select" name="questionnaire_id">
                 <option value="0" <?=($rowQuestionnaireId <= 0 ? 'selected' : '')?>><?=t($t, 'all_questionnaires', 'All Questionnaires')?></option>
                 <?php foreach ($questionnaireOptions as $qid => $qTitle): ?>
                   <option value="<?= (int)$qid ?>" <?=($rowQuestionnaireId === (int)$qid ? 'selected' : '')?>><?=htmlspecialchars($qTitle, ENT_QUOTES, 'UTF-8')?></option>
@@ -260,29 +333,77 @@ $drawerKey = 'admin.course_mappings';
               </select>
             </td>
             <td>
-              <input class="md-input" style="width:70px" type="number" name="min_score" min="0" max="100" value="<?= (int)$row['min_score'] ?>" required>
-              -
-              <input class="md-input" style="width:70px" type="number" name="max_score" min="0" max="100" value="<?= (int)$row['max_score'] ?>" required>%
+              <div class="course-mapping-score">
+                <input form="course-update-<?= $rowId ?>" class="md-input" style="width:70px" type="number" name="min_score" min="0" max="100" value="<?= (int)$row['min_score'] ?>" required>
+                <span aria-hidden="true">–</span>
+                <input form="course-update-<?= $rowId ?>" class="md-input" style="width:70px" type="number" name="max_score" min="0" max="100" value="<?= (int)$row['max_score'] ?>" required><span>%</span>
+              </div>
             </td>
+            <td><label class="md-check"><input form="course-update-<?= $rowId ?>" type="checkbox" name="is_active" value="1" <?=((int)($row['is_active'] ?? 1) === 1 ? 'checked' : '')?>> <span class="course-mapping-chip"><?=($rowStatus === 'active' ? t($t, 'active', 'Active') : t($t, 'inactive', 'Inactive'))?></span></label></td>
             <td>
-              <label class="md-check"><input type="checkbox" name="is_active" value="1" <?=((int)($row['is_active'] ?? 1) === 1 ? 'checked' : '')?>> <?=((int)($row['is_active'] ?? 1) === 1 ? t($t, 'active', 'Active') : t($t, 'inactive', 'Inactive'))?></label>
+              <details class="course-mapping-details">
+                <summary><?=t($t, 'edit_details', 'Edit details')?></summary>
+                <div class="course-mapping-detail-grid">
+                  <label class="md-muted"><?=t($t, 'thematic_area', 'Thematic Area')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="thematic_area" value="<?=htmlspecialchars((string)($row['thematic_area'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'mode_of_delivery', 'Mode of Delivery')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="mode_of_delivery" value="<?=htmlspecialchars((string)($row['mode_of_delivery'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'duration', 'Duration')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="duration" value="<?=htmlspecialchars((string)($row['duration'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'ceu', 'CEU')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="ceu" value="<?=htmlspecialchars((string)($row['ceu'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'course_owner', 'Course Owner')?><input form="course-update-<?= $rowId ?>" class="md-input" type="text" name="course_owner" value="<?=htmlspecialchars((string)($row['course_owner'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'moodle_url', 'Moodle URL')?><input form="course-update-<?= $rowId ?>" class="md-input" type="url" name="moodle_url" value="<?=htmlspecialchars((string)($row['moodle_url'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
+                  <label class="md-muted"><?=t($t, 'course_objective', 'Course Objective')?><textarea form="course-update-<?= $rowId ?>" class="md-input" name="course_objective" rows="3"><?=htmlspecialchars((string)($row['course_objective'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
+                  <label class="md-muted"><?=t($t, 'expected_competency', 'Expected Competency')?><textarea form="course-update-<?= $rowId ?>" class="md-input" name="expected_competency" rows="3"><?=htmlspecialchars((string)($row['expected_competency'] ?? ''), ENT_QUOTES, 'UTF-8')?></textarea></label>
+                </div>
+              </details>
             </td>
-            <td><input class="md-input" type="url" name="moodle_url" value="<?=htmlspecialchars((string)($row['moodle_url'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></td>
-            <td>
-              <button type="submit" class="md-button md-outline"><?=t($t, 'save', 'Save')?></button>
-          </form>
-            <form method="post" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_mapping', 'Delete this mapping?'), ENT_QUOTES, 'UTF-8')?>');" style="margin-top:8px;">
-              <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-              <input type="hidden" name="action" value="delete">
-              <input type="hidden" name="course_id" value="<?= (int)$row['id'] ?>">
-              <button type="submit" class="md-button md-outline danger"><?=t($t, 'delete', 'Delete')?></button>
-            </form>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+            <td class="course-mapping-row-actions">
+              <form id="course-update-<?= $rowId ?>" method="post">
+                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="course_id" value="<?= $rowId ?>">
+                <button type="submit" class="md-button md-outline"><?=t($t, 'save', 'Save')?></button>
+              </form>
+              <form method="post" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'confirm_delete_mapping', 'Delete this mapping?'), ENT_QUOTES, 'UTF-8')?>');">
+                <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="course_id" value="<?= $rowId ?>">
+                <button type="submit" class="md-button md-outline danger"><?=t($t, 'delete', 'Delete')?></button>
+              </form>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
   </div>
+  <script>
+    (function () {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('.course-mapping-row'));
+      var search = document.getElementById('mapping-search');
+      var work = document.getElementById('mapping-work-filter');
+      var questionnaire = document.getElementById('mapping-questionnaire-filter');
+      var status = document.getElementById('mapping-status-filter');
+      var empty = document.getElementById('mapping-empty');
+      function applyFilters() {
+        var term = (search && search.value ? search.value : '').trim().toLowerCase();
+        var workValue = work ? work.value : '';
+        var questionnaireValue = questionnaire ? questionnaire.value : '';
+        var statusValue = status ? status.value : '';
+        var visible = 0;
+        rows.forEach(function (row) {
+          var matches = (!term || (row.dataset.search || '').indexOf(term) !== -1)
+            && (!workValue || row.dataset.workFunction === workValue)
+            && (!questionnaireValue || row.dataset.questionnaire === questionnaireValue)
+            && (!statusValue || row.dataset.status === statusValue);
+          row.hidden = !matches;
+          if (matches) { visible += 1; }
+        });
+        if (empty) { empty.style.display = visible === 0 ? 'block' : 'none'; }
+      }
+      [search, work, questionnaire, status].forEach(function (control) {
+        if (control) { control.addEventListener('input', applyFilters); control.addEventListener('change', applyFilters); }
+      });
+    })();
+  </script>
 </section>
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 </body></html>
