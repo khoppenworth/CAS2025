@@ -66,6 +66,23 @@ $msgVariant = $msg !== '' ? 'success' : '';
 if ($msg !== '') {
     unset($_SESSION['admin_users_flash']);
 }
+function user_email_exists(PDO $pdo, string $email, ?int $excludeId = null): bool
+{
+    $normalizedEmail = strtolower(trim($email));
+    if ($normalizedEmail === '') {
+        return false;
+    }
+    $sql = 'SELECT COUNT(*) FROM users WHERE email IS NOT NULL AND TRIM(email) <> \'\' AND LOWER(TRIM(email)) = LOWER(?)';
+    $params = [$normalizedEmail];
+    if ($excludeId !== null) {
+        $sql .= ' AND id <> ?';
+        $params[] = $excludeId;
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
 $roleOptions = [
     [
         'role_key' => 'staff',
@@ -96,6 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create'])) {
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
+        $email = strtolower(trim((string)($_POST['email'] ?? '')));
+        $email = $email !== '' ? $email : null;
         $role = $_POST['role'] ?? 'staff';
         $workFunction = trim((string)($_POST['work_function'] ?? ''));
         $accountStatus = $_POST['account_status'] ?? 'active';
@@ -136,6 +155,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($cadre === '') {
                 $msg = t($t,'invalid_team_department','Select a valid team in the department.');
                 $msgVariant = 'error';
+            } elseif ($email !== null && user_email_exists($pdo, $email)) {
+                $msg = t($t, 'email_exists', 'A user with that email already exists.');
+                $msgVariant = 'error';
             } else {
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 try {
@@ -145,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hash,
                         $role,
                         $_POST['full_name'] ?? null,
-                        $_POST['email'] ?? null,
+                        $email,
                         $department,
                         $cadre,
                         $workFunction,
@@ -172,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $msgVariant = 'success';
                 } catch (PDOException $e) {
                     if ((int)$e->getCode() === 23000) {
-                        $msg = t($t, 'username_exists', 'A user with that username already exists.');
+                        $msg = t($t, 'username_or_email_exists', 'A user with that username or email already exists.');
                         $msgVariant = 'error';
                     } else {
                         error_log('Admin user create failed: ' . $e->getMessage());

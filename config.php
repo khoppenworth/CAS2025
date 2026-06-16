@@ -1103,6 +1103,23 @@ function ensure_users_schema(PDO $pdo): void
     } catch (PDOException $e) {
         error_log('ensure_users_schema SSO identity index failed: ' . $e->getMessage());
     }
+
+
+    try {
+        $emailIndexStmt = $pdo->query("SHOW INDEX FROM users WHERE Key_name = 'uniq_users_email'");
+        if ($emailIndexStmt && !$emailIndexStmt->fetch()) {
+            $duplicateEmailStmt = $pdo->query("SELECT LOWER(TRIM(email)) AS normalized_email, COUNT(*) AS matches FROM users WHERE email IS NOT NULL AND TRIM(email) <> '' GROUP BY LOWER(TRIM(email)) HAVING COUNT(*) > 1 LIMIT 1");
+            if ($duplicateEmailStmt && !$duplicateEmailStmt->fetch()) {
+                $pdo->exec("UPDATE users SET email = NULL WHERE email IS NOT NULL AND TRIM(email) = ''");
+                $pdo->exec('UPDATE users SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL');
+                $pdo->exec('ALTER TABLE users ADD UNIQUE KEY uniq_users_email (email)');
+            } else {
+                error_log('ensure_users_schema email unique index skipped because duplicate account emails exist. Resolve duplicates, then rerun schema checks.');
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_users_schema email unique index failed: ' . $e->getMessage());
+    }
 }
 
 function ensure_competency_reporting_schema(PDO $pdo): void

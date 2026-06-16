@@ -95,7 +95,7 @@ if ($profileStatus >= 400) {
 }
 
 $identity = extract_identity($profileData, $provider, $tokenData, $providerConfig);
-$email = $identity['email'];
+$email = normalize_account_email((string)$identity['email']);
 $displayName = $identity['display_name'];
 $subject = $identity['subject'];
 if ($email === '') {
@@ -409,6 +409,11 @@ function base64url_decode(string $value): string
     return $decoded;
 }
 
+function normalize_account_email(string $email): string
+{
+    return strtolower(trim($email));
+}
+
 function lookup_user_by_identity(PDO $pdo, string $provider, string $email, string $subject)
 {
     if ($subject !== '') {
@@ -420,11 +425,16 @@ function lookup_user_by_identity(PDO $pdo, string $provider, string $email, stri
         }
     }
 
-    $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
-    if ($user) {
-        return $user;
+    $normalizedEmail = normalize_account_email($email);
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE email IS NOT NULL AND TRIM(email) <> \'\' AND LOWER(TRIM(email)) = LOWER(?) ORDER BY id ASC LIMIT 2');
+    $stmt->execute([$normalizedEmail]);
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (count($users) > 1) {
+        error_log('Duplicate account email detected during SSO lookup: ' . $normalizedEmail);
+        oauth_fail('More than one account uses ' . $normalizedEmail . '. Please contact your administrator to merge or disable the duplicate account before using Google sign-in.', $provider);
+    }
+    if (count($users) === 1) {
+        return $users[0];
     }
 
     return false;
@@ -461,6 +471,7 @@ function link_sso_identity(PDO $pdo, array $user, string $provider, string $subj
 
 function create_sso_user(PDO $pdo, string $email, string $displayName, string $provider, string $subject)
 {
+    $email = normalize_account_email($email);
     $username = generate_unique_username($pdo, $email, $displayName);
     if ($username === '') {
         return false;
@@ -469,17 +480,25 @@ function create_sso_user(PDO $pdo, string $email, string $displayName, string $p
     $hash = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare('INSERT INTO users (username, password, role, full_name, email, profile_completed, account_status, sso_provider, sso_subject, language) VALUES (?,?,?,?,?,0,?, ?, ?, ?)');
     $language = 'en';
-    $stmt->execute([
-        $username,
-        $hash,
-        'staff',
-        $displayName !== '' ? $displayName : null,
-        $email !== '' ? $email : null,
-        'pending',
-        $provider,
-        $subject !== '' ? $subject : null,
-        $language,
-    ]);
+    try {
+        $stmt->execute([
+            $username,
+            $hash,
+            'staff',
+            $displayName !== '' ? $displayName : null,
+            $email !== '' ? $email : null,
+            'pending',
+            $provider,
+            $subject !== '' ? $subject : null,
+            $language,
+        ]);
+    } catch (PDOException $e) {
+        if ((int)$e->getCode() === 23000) {
+            error_log('SSO user create uniqueness conflict: ' . $e->getMessage());
+            oauth_fail('An account already exists for ' . $email . '. Please try signing in again or contact your administrator.', $provider);
+        }
+        throw $e;
+    }
     $id = (int)$pdo->lastInsertId();
     $lookup = $pdo->prepare('SELECT * FROM users WHERE id = ?');
     $lookup->execute([$id]);

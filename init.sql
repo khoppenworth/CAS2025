@@ -118,6 +118,7 @@ CREATE TABLE users (
   sso_subject VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_sso_identity (sso_provider, sso_subject),
+  UNIQUE KEY uniq_users_email (email),
   FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
