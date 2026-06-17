@@ -3,6 +3,7 @@
 DROP TABLE IF EXISTS training_recommendation;
 DROP TABLE IF EXISTS analytics_report_schedule;
 DROP TABLE IF EXISTS questionnaire_assignment;
+DROP TABLE IF EXISTS questionnaire_team;
 DROP TABLE IF EXISTS questionnaire_work_function;
 DROP TABLE IF EXISTS work_function_catalog;
 DROP TABLE IF EXISTS course_catalogue;
@@ -335,6 +336,15 @@ INSERT INTO competency_level_band (name, min_pct, max_pct, rank_order, is_system
 
 INSERT INTO competency_benchmark_policy (scope_type, scope_id, required_pct, effective_from, effective_to, created_by)
 VALUES ('organization', NULL, 80.00, NULL, NULL, NULL);
+
+
+CREATE TABLE questionnaire_team (
+  questionnaire_id INT NOT NULL,
+  team_slug VARCHAR(120) NOT NULL,
+  PRIMARY KEY (questionnaire_id, team_slug),
+  KEY idx_questionnaire_team_team (team_slug),
+  CONSTRAINT fk_questionnaire_team_questionnaire FOREIGN KEY (questionnaire_id) REFERENCES questionnaire(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE questionnaire_assignment (
   staff_id INT NOT NULL,

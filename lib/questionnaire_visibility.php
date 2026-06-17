@@ -11,6 +11,23 @@ if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/department_teams.php';
 }
 
+
+/**
+ * @param list<array<string,mixed>> $rows
+ * @return array<int,array<string,mixed>>
+ */
+function questionnaire_rows_by_id(array $rows): array
+{
+    $indexed = [];
+    foreach ($rows as $row) {
+        $questionnaireId = (int)($row['id'] ?? 0);
+        if ($questionnaireId > 0) {
+            $indexed[$questionnaireId] = $row;
+        }
+    }
+    return $indexed;
+}
+
 /**
  * Return the published questionnaires that the supplied user may access.
  *
@@ -36,6 +53,7 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
     }
 
     $departmentAssigned = [];
+    $teamAssigned = [];
     $directAssigned = [];
     $isStaff = (($user['role'] ?? '') === 'staff');
     $workRole = user_questionnaire_work_role($pdo, $user);
@@ -65,8 +83,32 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
             }
         }
 
+        $rawTeam = trim((string)($user['cadre'] ?? ''));
+        $team = function_exists('resolve_department_team_slug')
+            ? resolve_department_team_slug($pdo, $rawTeam, $department)
+            : $rawTeam;
+
+        if ($team !== '') {
+            try {
+                $teamStmt = $pdo->prepare(
+                    "SELECT q.id AS id, q.title AS title FROM questionnaire_team qt " .
+                    "JOIN questionnaire q ON q.id = qt.questionnaire_id " .
+                    "WHERE qt.team_slug = :team AND q.status='published' ORDER BY q.title"
+                );
+                $teamStmt->execute([':team' => $team]);
+                foreach ($teamStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $questionnaireId = (int)($row['id'] ?? 0);
+                    if ($questionnaireId > 0) {
+                        $teamAssigned[$questionnaireId] = $row;
+                    }
+                }
+            } catch (PDOException $e) {
+                error_log('available_questionnaires_for_user team lookup failed: ' . $e->getMessage());
+            }
+        }
+
         // Legacy fallback for environments that still store defaults by work function.
-        if ($departmentAssigned === []) {
+        if ($departmentAssigned === [] && $teamAssigned === []) {
             $definitions = work_function_definitions($pdo);
             $workFunction = canonical_work_function_key(trim((string)($user['work_function'] ?? '')), $definitions);
             if ($workFunction !== '') {
@@ -93,7 +135,8 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
             }
         }
 
-        $departmentAssigned = filter_questionnaires_by_work_role($pdo, $departmentAssigned, $workRole);
+        $departmentAssigned = questionnaire_rows_by_id(filter_questionnaires_by_work_role($pdo, $departmentAssigned, $workRole));
+        $teamAssigned = questionnaire_rows_by_id(filter_questionnaires_by_work_role($pdo, $teamAssigned, $workRole));
     }
 
     try {
@@ -113,8 +156,8 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
         error_log('available_questionnaires_for_user direct assignment lookup failed: ' . $e->getMessage());
     }
 
-    $directAssigned = filter_questionnaires_by_work_role($pdo, $directAssigned, $workRole);
-    $assigned = $departmentAssigned + $directAssigned;
+    $directAssigned = questionnaire_rows_by_id(filter_questionnaires_by_work_role($pdo, $directAssigned, $workRole));
+    $assigned = $departmentAssigned + $teamAssigned + $directAssigned;
 
     return array_values($assigned);
 }

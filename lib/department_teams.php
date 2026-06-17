@@ -407,6 +407,89 @@ function ensure_questionnaire_department_schema(PDO $pdo): void
     }
 }
 
+
+function ensure_questionnaire_team_schema(PDO $pdo): void
+{
+    $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
+    try {
+        if ($driver === 'sqlite') {
+            $pdo->exec('CREATE TABLE IF NOT EXISTS questionnaire_team ('
+                . 'questionnaire_id INTEGER NOT NULL, '
+                . 'team_slug TEXT NOT NULL, '
+                . 'PRIMARY KEY (questionnaire_id, team_slug)'
+                . ')');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_questionnaire_team_team ON questionnaire_team (team_slug)');
+            return;
+        }
+
+        $pdo->exec('CREATE TABLE IF NOT EXISTS questionnaire_team ('
+            . 'questionnaire_id INT NOT NULL, '
+            . 'team_slug VARCHAR(120) NOT NULL, '
+            . 'PRIMARY KEY (questionnaire_id, team_slug), '
+            . 'KEY idx_questionnaire_team_team (team_slug)'
+            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        $cols = $pdo->query('SHOW COLUMNS FROM questionnaire_team');
+        if ($cols) {
+            while ($c = $cols->fetch(PDO::FETCH_ASSOC)) {
+                $field = (string)($c['Field'] ?? '');
+                $type = strtolower((string)($c['Type'] ?? ''));
+                if ($field === 'team_slug' && preg_match('/varchar\((\d+)\)/', $type, $matches) && (int)$matches[1] < 120) {
+                    $pdo->exec('ALTER TABLE questionnaire_team MODIFY COLUMN team_slug VARCHAR(120) NOT NULL');
+                }
+            }
+        }
+        try {
+            $pdo->exec('CREATE INDEX idx_questionnaire_team_team ON questionnaire_team (team_slug)');
+        } catch (Throwable $e) {
+            // ignore duplicate index errors
+        }
+    } catch (PDOException $e) {
+        error_log('ensure_questionnaire_team_schema failed: ' . $e->getMessage());
+    }
+}
+
+function resolve_department_team_slug(PDO $pdo, string $value, string $departmentSlug = ''): string
+{
+    $value = trim($value);
+    if ($value === '' || is_placeholder_team_value($value)) {
+        return '';
+    }
+
+    $departmentSlug = trim($departmentSlug);
+    $catalog = department_team_catalog($pdo);
+
+    if (isset($catalog[$value]) && ($catalog[$value]['archived_at'] ?? null) === null) {
+        $teamDepartment = trim((string)($catalog[$value]['department_slug'] ?? ''));
+        if ($departmentSlug === '' || $teamDepartment === $departmentSlug) {
+            return $value;
+        }
+    }
+
+    $canonical = canonical_department_team_slug($value);
+    if ($canonical !== '' && isset($catalog[$canonical]) && ($catalog[$canonical]['archived_at'] ?? null) === null) {
+        $teamDepartment = trim((string)($catalog[$canonical]['department_slug'] ?? ''));
+        if ($departmentSlug === '' || $teamDepartment === $departmentSlug) {
+            return $canonical;
+        }
+    }
+
+    foreach ($catalog as $slug => $record) {
+        if (($record['archived_at'] ?? null) !== null) {
+            continue;
+        }
+        $teamDepartment = trim((string)($record['department_slug'] ?? ''));
+        if ($departmentSlug !== '' && $teamDepartment !== $departmentSlug) {
+            continue;
+        }
+        if (strcasecmp($value, (string)($record['label'] ?? '')) === 0) {
+            return $slug;
+        }
+    }
+
+    return '';
+}
+
 /** @return array<string,array{label:string,sort_order:int,archived_at:?string}> */
 function department_catalog(PDO $pdo): array
 {
@@ -596,6 +679,8 @@ function team_label(PDO $pdo, string $teamSlug): string
 
     return $teamSlug;
 }
+
+
 
 
 /** @return array<string,array{label:string,sort_order:int,archived_at:?string}> */
