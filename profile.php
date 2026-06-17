@@ -15,6 +15,8 @@ $error = '';
 $workFunctionOptions = work_function_choices($pdo);
 $departmentOptions = department_options($pdo);
 $teamCatalog = department_team_catalog($pdo);
+$genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
+$genderLabels = gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
 $forcePasswordReset = !empty($user['must_reset_password']);
@@ -245,7 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $markFieldError($fieldErrors, 'email');
         $error = t($t,'invalid_email','Provide a valid email address.');
-    } elseif (!in_array($gender, ['female','male','other','prefer_not_say'], true)) {
+    } elseif (!in_array($gender, $genderOptions, true)) {
         $markFieldError($fieldErrors, 'gender');
         $error = t($t,'invalid_gender','Select a valid gender option.');
     } elseif (!isset($departmentOptions[$department])) {
@@ -413,10 +415,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <select name="gender" required>
           <?php $gval = $formValues['gender']; ?>
           <option value="" disabled <?= $gval ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
-          <option value="female" <?=$gval==='female'?'selected':''?>><?=t($t,'female','Female')?></option>
-          <option value="male" <?=$gval==='male'?'selected':''?>><?=t($t,'male','Male')?></option>
-          <option value="other" <?=$gval==='other'?'selected':''?>><?=t($t,'other','Other')?></option>
-          <option value="prefer_not_say" <?=$gval==='prefer_not_say'?'selected':''?>><?=t($t,'prefer_not_say','Prefer not to say')?></option>
+          <?php foreach ($genderOptions as $genderOption): ?>
+            <option value="<?=htmlspecialchars($genderOption, ENT_QUOTES, 'UTF-8')?>" <?=$gval===$genderOption?'selected':''?>><?=htmlspecialchars($genderLabels[$genderOption] ?? $genderOption, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
         </select>
       </label>
       <label class="<?=htmlspecialchars($fieldClass('phone_local', true) . ' md-field-inline', ENT_QUOTES, 'UTF-8')?>">

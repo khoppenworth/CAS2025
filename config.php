@@ -567,7 +567,8 @@ function ensure_site_config_schema(PDO $pdo): void {
         'ai_retry_count' => 'ALTER TABLE site_config ADD COLUMN ai_retry_count INT NOT NULL DEFAULT 1',
         'ai_require_human_approval' => 'ALTER TABLE site_config ADD COLUMN ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1',
         'ai_show_generated_badge' => 'ALTER TABLE site_config ADD COLUMN ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1',
-        'ai_pii_redaction_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1'
+        'ai_pii_redaction_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1',
+        'gender_options' => 'ALTER TABLE site_config ADD COLUMN gender_options TEXT NULL'
     ];
 
     foreach ($schema as $field => $sql) {
@@ -778,7 +779,48 @@ function site_config_defaults(): array
         'ai_require_human_approval' => 1,
         'ai_show_generated_badge' => 1,
         'ai_pii_redaction_enabled' => 1,
+        'gender_options' => ['female', 'male', 'prefer_not_say'],
     ];
+}
+
+function gender_option_labels(array $t = []): array
+{
+    return [
+        'female' => t($t, 'female', 'Female'),
+        'male' => t($t, 'male', 'Male'),
+        'other' => t($t, 'other', 'Other'),
+        'prefer_not_say' => t($t, 'prefer_not_say', 'Prefer not to say'),
+    ];
+}
+
+function normalize_gender_options($value): array
+{
+    $allowed = array_keys(gender_option_labels());
+    if (is_string($value)) {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $value = $decoded;
+        } else {
+            $value = array_map('trim', explode(',', $value));
+        }
+    }
+    if (!is_array($value)) {
+        $value = ['female', 'male', 'prefer_not_say'];
+    }
+    $normalized = [];
+    foreach ($value as $option) {
+        $option = strtolower(trim((string)$option));
+        if (in_array($option, $allowed, true) && !in_array($option, $normalized, true)) {
+            $normalized[] = $option;
+        }
+    }
+    return $normalized !== [] ? $normalized : ['female', 'male', 'prefer_not_say'];
+}
+
+function encode_gender_options(array $options): string
+{
+    $json = json_encode(normalize_gender_options($options));
+    return $json === false ? '["female","male","prefer_not_say"]' : $json;
 }
 
 /** get_site_config(): fetch branding and contact settings (singleton row id=1) */
@@ -803,6 +845,7 @@ function get_site_config(PDO $pdo): array
     $merged['landing_background_path'] = normalize_landing_background_path($merged['landing_background_path'] ?? null);
     $merged['enabled_locales'] = site_enabled_locales($merged);
     $merged['email_templates'] = normalize_email_templates($merged['email_templates'] ?? []);
+    $merged['gender_options'] = normalize_gender_options($merged['gender_options'] ?? []);
     remember_available_locales($merged['enabled_locales']);
 
     return $merged;
