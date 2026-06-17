@@ -42,6 +42,7 @@ $allDepartmentOptions = [];
 foreach ($departments as $depSlug => $depRecord) {
     $allDepartmentOptions[$depSlug] = (string)($depRecord['label'] ?? $depSlug);
 }
+ensure_questionnaire_team_schema($pdo);
 $teams = department_team_catalog($pdo);
 $workRoles = work_function_catalog($pdo);
 
@@ -91,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode = (string)($_POST['mode'] ?? '');
     $currentTab = trim((string)($_POST['current_tab'] ?? ''));
-    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'defaults'], true)) {
+    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'defaults', 'team-defaults'], true)) {
         $currentTab = '';
     }
     try {
@@ -167,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $teamLabel = (string)($teams[$slug]['label'] ?? '');
             $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
+            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug = ?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_archived','Team archived.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
@@ -222,6 +224,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $_SESSION[$flashKey] = t($t,'work_function_defaults_saved','Default questionnaire assignments updated.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'team_assignments_save') {
+            $input = $_POST['team_assignments'] ?? [];
+            if (!is_array($input)) {
+                throw new InvalidArgumentException(t($t,'work_function_defaults_invalid_payload','The selections could not be processed.'));
+            }
+            $activeTeams = [];
+            foreach ($teams as $teamSlug => $record) {
+                if (($record['archived_at'] ?? null) === null) {
+                    $activeTeams[$teamSlug] = true;
+                }
+            }
+            $pdo->beginTransaction();
+            $pdo->exec('DELETE FROM questionnaire_team');
+            $insert = $pdo->prepare('INSERT INTO questionnaire_team (questionnaire_id, team_slug) VALUES (?, ?)');
+            foreach ($input as $teamSlug => $qidList) {
+                $teamSlug = trim((string)$teamSlug);
+                if (!isset($activeTeams[$teamSlug]) || !is_array($qidList)) continue;
+                $seen = [];
+                foreach ($qidList as $qidRaw) {
+                    $qid = (int)$qidRaw;
+                    if ($qid <= 0 || !isset($questionnaireIds[$qid]) || isset($seen[$qid])) continue;
+                    $insert->execute([$qid, $teamSlug]);
+                    $seen[$qid] = true;
+                }
+            }
+            $pdo->commit();
+            $_SESSION[$flashKey] = t($t,'team_questionnaire_defaults_saved','Team questionnaire assignments updated.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'team_assignments_clone_department') {
+            $sourceDepartment = trim((string)($_POST['source_department'] ?? ''));
+            if (!isset($departmentOptions[$sourceDepartment])) {
+                throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
+            }
+            $targetTeams = [];
+            foreach ($teams as $teamSlug => $record) {
+                if (($record['archived_at'] ?? null) === null && (string)($record['department_slug'] ?? '') === $sourceDepartment) {
+                    $targetTeams[$teamSlug] = true;
+                }
+            }
+            if ($targetTeams === []) {
+                throw new InvalidArgumentException(t($t,'team_defaults_no_target_teams','No active teams were found for that directorate.'));
+            }
+            $sourceQuestionnaireIds = [];
+            $sourceAssignStmt = $pdo->prepare('SELECT questionnaire_id FROM questionnaire_department WHERE department_slug = ?');
+            $sourceAssignStmt->execute([$sourceDepartment]);
+            foreach ($sourceAssignStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $qid = (int)($row['questionnaire_id'] ?? 0);
+                if ($qid > 0 && isset($questionnaireIds[$qid])) {
+                    $sourceQuestionnaireIds[$qid] = true;
+                }
+            }
+            $pdo->beginTransaction();
+            $deleteStmt = $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug = ?');
+            $insertStmt = $pdo->prepare('INSERT INTO questionnaire_team (questionnaire_id, team_slug) VALUES (?, ?)');
+            foreach (array_keys($targetTeams) as $teamSlug) {
+                $deleteStmt->execute([$teamSlug]);
+                foreach (array_keys($sourceQuestionnaireIds) as $qid) {
+                    $insertStmt->execute([$qid, $teamSlug]);
+                }
+            }
+            $pdo->commit();
+            $_SESSION[$flashKey] = t($t,'team_questionnaire_defaults_cloned','Directorate assignments copied to its teams.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'assignments_bulk_clone') {
@@ -303,6 +370,59 @@ if ($assignments === []) {
     } catch (PDOException $e) {
         error_log('work_function_defaults legacy fallback failed: ' . $e->getMessage());
     }
+}
+
+
+$teamAssignments = [];
+try {
+    $teamAssignStmt = $pdo->query('SELECT questionnaire_id, team_slug FROM questionnaire_team');
+    if ($teamAssignStmt) {
+        foreach ($teamAssignStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $teamSlug = trim((string)($row['team_slug'] ?? ''));
+            $qid = (int)($row['questionnaire_id'] ?? 0);
+            if ($teamSlug !== '' && $qid > 0) {
+                $teamAssignments[$teamSlug][$qid] = true;
+            }
+        }
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults team assignment fetch failed: ' . $e->getMessage());
+}
+
+$teamAssignmentCounts = [];
+try {
+    $teamAssignmentCountStmt = $pdo->query(
+        "SELECT team_slug, COUNT(DISTINCT questionnaire_id) AS selected_count
+         FROM questionnaire_team
+         GROUP BY team_slug"
+    );
+    if ($teamAssignmentCountStmt) {
+        foreach ($teamAssignmentCountStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $teamSlug = trim((string)($row['team_slug'] ?? ''));
+            if ($teamSlug !== '') {
+                $teamAssignmentCounts[$teamSlug] = (int)($row['selected_count'] ?? 0);
+            }
+        }
+    }
+} catch (PDOException $e) {
+    error_log('work_function_defaults team assignment count failed: ' . $e->getMessage());
+}
+foreach ($teams as $teamSlug => $_teamRecord) {
+    if (!isset($teamAssignmentCounts[$teamSlug])) {
+        $teamAssignmentCounts[$teamSlug] = 0;
+    }
+}
+
+$teamsByDepartment = [];
+foreach ($teams as $teamSlug => $record) {
+    if (($record['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $depSlug = trim((string)($record['department_slug'] ?? ''));
+    if ($depSlug === '' || !isset($departmentOptions[$depSlug])) {
+        continue;
+    }
+    $teamsByDepartment[$depSlug][$teamSlug] = $record;
 }
 
 
@@ -397,7 +517,8 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <a class="md-tab-chip is-active" id="tab-departments" data-tab-target="departments" href="#departments" role="tab" aria-controls="departments" aria-selected="true">Directorates</a>
       <a class="md-tab-chip" id="tab-teams" data-tab-target="teams" href="#teams" role="tab" aria-controls="teams" aria-selected="false">Teams</a>
       <a class="md-tab-chip" id="tab-roles" data-tab-target="roles" href="#roles" role="tab" aria-controls="roles" aria-selected="false">Work Roles</a>
-      <a class="md-tab-chip" id="tab-defaults" data-tab-target="defaults" href="#defaults" role="tab" aria-controls="defaults" aria-selected="false">Questionnaire Defaults</a>
+      <a class="md-tab-chip" id="tab-defaults" data-tab-target="defaults" href="#defaults" role="tab" aria-controls="defaults" aria-selected="false">Directorate Defaults</a>
+      <a class="md-tab-chip" id="tab-team-defaults" data-tab-target="team-defaults" href="#team-defaults" role="tab" aria-controls="team-defaults" aria-selected="false">Team Defaults</a>
     </div>
 
     <div class="md-filter-row">
@@ -603,6 +724,59 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         </form>
       </div>
     </section>
+
+    <section class="md-defaults-group md-pane" id="team-defaults" data-pane role="tabpanel" aria-labelledby="tab-team-defaults">
+      <div class="md-defaults-header">
+        <span><?=htmlspecialchars(t($t,'team_questionnaire_defaults','Team questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($questionnaires)?> <?=htmlspecialchars(t($t,'questionnaires','Questionnaires'), ENT_QUOTES, 'UTF-8')?></span>
+      </div>
+      <div class="md-defaults-group-body md-assignment-picker">
+        <form method="post" class="md-compact-actions" style="margin-bottom:.8rem; padding:.65rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <input type="hidden" name="mode" value="team_assignments_clone_department">
+          <label class="md-field">
+            <span><?=htmlspecialchars(t($t,'copy_department_assignments_to_teams','Copy directorate assignments to teams in'), ENT_QUOTES, 'UTF-8')?></span>
+            <select name="source_department" required>
+              <option value=""><?=htmlspecialchars(t($t,'select','Select'), ENT_QUOTES, 'UTF-8')?></option>
+              <?php foreach ($departmentOptions as $depSlug => $depLabel): ?>
+                <option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <button type="submit" class="md-button md-outline"><?=htmlspecialchars(t($t,'copy_assignments','Copy Assignments'), ENT_QUOTES, 'UTF-8')?></button>
+        </form>
+        <form method="post" class="md-compact-actions">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>"><input type="hidden" name="mode" value="team_assignments_save">
+          <div class="md-table-wrap" style="width:100%;">
+            <table class="md-table">
+              <thead><tr><th>Directorate</th><th>Team</th><th>Questionnaires</th><th>Selected</th></tr></thead>
+              <tbody>
+              <?php foreach ($teamsByDepartment as $depSlug => $departmentTeams): ?>
+                <?php foreach ($departmentTeams as $teamSlug => $teamRecord): ?>
+                  <tr>
+                    <td><?=htmlspecialchars($departmentOptions[$depSlug] ?? $depSlug, ENT_QUOTES, 'UTF-8')?></td>
+                    <td><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></td>
+                    <td>
+                      <div class="md-assignment-options" data-assignment-options>
+                        <?php foreach ($questionnaires as $q): $qid=(int)$q['id']; ?>
+                          <label>
+                            <input type="checkbox" name="team_assignments[<?=htmlspecialchars($teamSlug, ENT_QUOTES, 'UTF-8')?>][]" value="<?=$qid?>" <?=isset($teamAssignments[$teamSlug][$qid])?'checked':''?>>
+                            <span><?=htmlspecialchars((string)($q['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire')), ENT_QUOTES, 'UTF-8')?></span>
+                          </label>
+                        <?php endforeach; ?>
+                      </div>
+                    </td>
+                    <td data-selected-count><?= (int)($teamAssignmentCounts[$teamSlug] ?? 0) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+          <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
+        </form>
+      </div>
+    </section>
   </div>
 </section>
 <?php include __DIR__ . '/../templates/footer.php'; ?>
@@ -690,8 +864,8 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         input.value = activePaneId || 'departments';
       });
     });
-    var assignmentTable = document.querySelector('.md-assignment-picker table');
-    if (assignmentTable) {
+    var assignmentTables = document.querySelectorAll('.md-assignment-picker table');
+    assignmentTables.forEach(function (assignmentTable) {
       var syncSelectedCounts = function () {
         var rows = assignmentTable.querySelectorAll('tbody tr');
         rows.forEach(function (row) {
@@ -707,7 +881,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         syncSelectedCounts();
       });
       syncSelectedCounts();
-    }
+    });
   });
 </script>
 </body></html>

@@ -11,7 +11,9 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 
+ensure_questionnaire_team_schema($pdo);
 $departmentChoices = department_options($pdo);
+$teamChoices = department_team_catalog($pdo);
 $assignmentsByDepartment = [];
 try {
     $assignmentStmt = $pdo->query("SELECT qd.department_slug, q.id, q.title, q.description FROM questionnaire_department qd JOIN questionnaire q ON q.id = qd.questionnaire_id WHERE q.status='published' ORDER BY qd.department_slug ASC, q.title ASC");
@@ -52,6 +54,38 @@ if (!$assignmentsByDepartment) {
     } catch (PDOException $e) {
         error_log('questionnaire_assignments legacy fallback failed: ' . $e->getMessage());
     }
+}
+
+$assignmentsByTeam = [];
+try {
+    $teamAssignmentStmt = $pdo->query("SELECT qt.team_slug, q.id, q.title, q.description FROM questionnaire_team qt JOIN questionnaire q ON q.id = qt.questionnaire_id WHERE q.status='published' ORDER BY qt.team_slug ASC, q.title ASC");
+    if ($teamAssignmentStmt) {
+        foreach ($teamAssignmentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $team = trim((string)($row['team_slug'] ?? ''));
+            if ($team === '') {
+                continue;
+            }
+            $assignmentsByTeam[$team][] = [
+                'id' => (int)($row['id'] ?? 0),
+                'title' => trim((string)($row['title'] ?? '')),
+                'description' => trim((string)($row['description'] ?? '')),
+            ];
+        }
+    }
+} catch (PDOException $e) {
+    error_log('questionnaire_assignments team fetch failed: ' . $e->getMessage());
+}
+
+$activeTeamsByDepartment = [];
+foreach ($teamChoices as $teamSlug => $teamRecord) {
+    if (($teamRecord['archived_at'] ?? null) !== null) {
+        continue;
+    }
+    $departmentSlug = trim((string)($teamRecord['department_slug'] ?? ''));
+    if ($departmentSlug === '' || !isset($departmentChoices[$departmentSlug])) {
+        continue;
+    }
+    $activeTeamsByDepartment[$departmentSlug][$teamSlug] = $teamRecord;
 }
 ?>
 <!doctype html>
@@ -97,6 +131,39 @@ if (!$assignmentsByDepartment) {
             <?php endif; ?>
           </td>
         </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+
+    <h3><?=htmlspecialchars(t($t,'team_questionnaire_defaults','Team questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></h3>
+    <table class="md-table">
+      <thead>
+        <tr>
+          <th><?=t($t,'department','Directorate')?></th>
+          <th><?=t($t,'team','Team')?></th>
+          <th><?=t($t,'questionnaires','Questionnaires')?></th>
+        </tr>
+      </thead>
+      <tbody>
+      <?php foreach ($activeTeamsByDepartment as $depSlug => $departmentTeams): ?>
+        <?php foreach ($departmentTeams as $teamSlug => $teamRecord): ?>
+          <?php $items = $assignmentsByTeam[$teamSlug] ?? []; ?>
+          <tr>
+            <td><?=htmlspecialchars($departmentChoices[$depSlug] ?? $depSlug, ENT_QUOTES, 'UTF-8')?></td>
+            <td><?=htmlspecialchars((string)($teamRecord['label'] ?? $teamSlug), ENT_QUOTES, 'UTF-8')?></td>
+            <td>
+              <?php if (!$items): ?>
+                <span class="md-muted"><?=t($t,'assignment_no_defaults_for_function','No questionnaires are assigned yet.')?></span>
+              <?php else: ?>
+                <ul>
+                  <?php foreach ($items as $item): ?>
+                    <li><strong><?=htmlspecialchars($item['title'] ?: t($t,'untitled_questionnaire','Untitled questionnaire'), ENT_QUOTES, 'UTF-8')?></strong></li>
+                  <?php endforeach; ?>
+                </ul>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
       <?php endforeach; ?>
       </tbody>
     </table>

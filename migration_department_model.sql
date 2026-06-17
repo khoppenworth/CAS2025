@@ -41,6 +41,13 @@ CREATE TABLE IF NOT EXISTS questionnaire_department (
   PRIMARY KEY (questionnaire_id, department_slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS questionnaire_team (
+  questionnaire_id INT NOT NULL,
+  team_slug VARCHAR(120) NOT NULL,
+  PRIMARY KEY (questionnaire_id, team_slug),
+  KEY idx_questionnaire_team_team (team_slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 2) Seed departments from the former work-function set
 INSERT INTO department_catalog (slug, label, sort_order)
 VALUES

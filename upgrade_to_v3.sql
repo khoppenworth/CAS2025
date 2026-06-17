@@ -2140,3 +2140,44 @@ SET @qi_condition_value_sql = IF(
 PREPARE stmt FROM @qi_condition_value_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- Team-level questionnaire defaults. Safe to run repeatedly on existing installs.
+CREATE TABLE IF NOT EXISTS questionnaire_team (
+  questionnaire_id INT NOT NULL,
+  team_slug VARCHAR(120) NOT NULL,
+  PRIMARY KEY (questionnaire_id, team_slug),
+  KEY idx_questionnaire_team_team (team_slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @questionnaire_team_slug_len = (
+  SELECT COALESCE(CHARACTER_MAXIMUM_LENGTH, 0)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_team'
+    AND COLUMN_NAME = 'team_slug'
+  LIMIT 1
+);
+SET @questionnaire_team_slug_sql = IF(
+  @questionnaire_team_slug_len > 0 AND @questionnaire_team_slug_len < 120,
+  'ALTER TABLE questionnaire_team MODIFY COLUMN team_slug VARCHAR(120) NOT NULL',
+  'DO 1'
+);
+PREPARE stmt FROM @questionnaire_team_slug_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @questionnaire_team_index_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'questionnaire_team'
+    AND INDEX_NAME = 'idx_questionnaire_team_team'
+);
+SET @questionnaire_team_index_sql = IF(
+  @questionnaire_team_index_exists = 0,
+  'CREATE INDEX idx_questionnaire_team_team ON questionnaire_team (team_slug)',
+  'DO 1'
+);
+PREPARE stmt FROM @questionnaire_team_index_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
