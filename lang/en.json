@@ -885,5 +885,10 @@
   "enable_scheduled_assessments_tile": "Show Scheduled Assessments tile",
   "scheduled_assessments_disabled": "Scheduled assessments are currently disabled.",
   "scheduled_assessments_tile_hint": "Enable this tile for supervisors and administrators to schedule next assessment dates for active staff.",
-  "invalid_experience_band_order": "Total years of experience must be equal to or greater than EPSS experience."
+  "invalid_experience_band_order": "Total years of experience must be equal to or greater than EPSS experience.",
+  "submitted_assessments": "Submitted Assessments",
+  "submitted_assessments_hint": "Only submitted and approved assessments are included. Scores are shown per questionnaire and are not averaged across different questionnaires.",
+  "filter_by_questionnaire": "Filter by questionnaire",
+  "apply_filter": "Apply filter",
+  "questionnaire_filter_active": "Showing submitted assessments for %s only."
 }
