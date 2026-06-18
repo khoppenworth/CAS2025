@@ -271,7 +271,8 @@ CREATE TABLE IF NOT EXISTS site_config (
   ai_retry_count INT NOT NULL DEFAULT 1,
   ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1,
   ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1,
-  ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1
+  ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  gender_options TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- Ensure optional site_config columns exist without relying on ADD COLUMN IF NOT EXISTS.
 SET @sc_landing_metric_submissions_exists = (
@@ -1185,6 +1186,26 @@ SET @sc_ai_pii_redaction_enabled_sql = IF(
 PREPARE stmt FROM @sc_ai_pii_redaction_enabled_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+SET @sc_gender_options_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'gender_options'
+);
+SET @sc_gender_options_sql = IF(
+  @sc_gender_options_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN gender_options TEXT NULL AFTER ai_pii_redaction_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_gender_options_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE site_config
+SET gender_options = '["female","male","prefer_not_say"]'
+WHERE gender_options IS NULL OR TRIM(gender_options) = '';
 
 INSERT IGNORE INTO site_config (
   id,

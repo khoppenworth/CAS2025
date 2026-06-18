@@ -81,7 +81,8 @@ CREATE TABLE site_config (
   ai_retry_count INT NOT NULL DEFAULT 1,
   ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1,
   ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1,
-  ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1
+  ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  gender_options TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE users (
@@ -440,7 +441,8 @@ INSERT INTO site_config (
   ai_retry_count,
   ai_require_human_approval,
   ai_show_generated_badge,
-  ai_pii_redaction_enabled
+  ai_pii_redaction_enabled,
+  gender_options
 ) VALUES (
   1,
   'My Performance',
@@ -504,7 +506,8 @@ INSERT INTO site_config (
   1,
   1,
   1,
-  1
+  1,
+  '["female","male","prefer_not_say"]'
 );
 
 -- default users are disabled by default; update the passwords and enable accounts after installation

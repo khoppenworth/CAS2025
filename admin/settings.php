@@ -220,6 +220,8 @@ try {
     $errors = [];
     $enabledLocales = site_enabled_locales($cfg);
     $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+    $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
+    $genderOptionLabels = gender_option_labels($t);
 
     $emailTemplateDefinitions = [];
     foreach (email_template_registry() as $key => $definition) {
@@ -260,6 +262,7 @@ try {
             $cfg = get_site_config($pdo);
             $enabledLocales = site_enabled_locales($cfg);
             $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+            $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
         } else {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
         $scheduled_assessments_enabled = isset($_POST['scheduled_assessments_enabled']) ? 1 : 0;
@@ -322,6 +325,12 @@ try {
         $ai_require_human_approval = isset($_POST['ai_require_human_approval']) ? 1 : 0;
         $ai_show_generated_badge = isset($_POST['ai_show_generated_badge']) ? 1 : 0;
         $ai_pii_redaction_enabled = isset($_POST['ai_pii_redaction_enabled']) ? 1 : 0;
+
+        $genderOptionsInput = $_POST['gender_options'] ?? [];
+        if (!is_array($genderOptionsInput)) {
+            $genderOptionsInput = [];
+        }
+        $selectedGenderOptions = normalize_gender_options($genderOptionsInput);
 
         $enabledLocalesInput = $_POST['enabled_locales'] ?? [];
         if (!is_array($enabledLocalesInput)) {
@@ -413,6 +422,7 @@ try {
             'ai_require_human_approval' => $ai_require_human_approval,
             'ai_show_generated_badge' => $ai_show_generated_badge,
             'ai_pii_redaction_enabled' => $ai_pii_redaction_enabled,
+            'gender_options' => encode_gender_options($selectedGenderOptions),
         ];
 
         if ($aiConnectionAction === 'test') {
@@ -427,6 +437,7 @@ try {
             }
             $cfg = array_merge($cfg, $fields);
             $enabledLocales = enforce_locale_requirements($selectedLocales);
+            $genderOptions = $selectedGenderOptions;
             $emailTemplates = normalize_email_templates($emailTemplates);
         } else {
             ensure_site_config_schema($pdo);
@@ -473,6 +484,7 @@ try {
                 'ai_require_human_approval' => t($t, 'ai_require_human_approval', 'Require human approval for AI-generated output'),
                 'ai_show_generated_badge' => t($t, 'ai_show_generated_badge', 'Display "AI-generated" indicator in the UI'),
                 'ai_pii_redaction_enabled' => t($t, 'ai_pii_redaction_enabled', 'Enable PII redaction before model requests'),
+                'gender_options' => t($t, 'gender_options_setting', 'Available gender options'),
             ];
             $missingSettingColumns = [];
 
@@ -531,10 +543,12 @@ try {
                 $cfg = get_site_config($pdo);
                 $enabledLocales = site_enabled_locales($cfg);
                 $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+                $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
             }
         }
         if ($errors !== []) {
             $enabledLocales = $selectedLocales;
+            $genderOptions = $selectedGenderOptions ?? $genderOptions;
         }
         }
     }
@@ -559,6 +573,12 @@ try {
     $msg = $msg ?? '';
     if (!isset($emailTemplates) || !is_array($emailTemplates)) {
         $emailTemplates = default_email_templates();
+    }
+    if (!isset($genderOptions) || !is_array($genderOptions)) {
+        $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
+    }
+    if (!isset($genderOptionLabels) || !is_array($genderOptionLabels)) {
+        $genderOptionLabels = gender_option_labels($t);
     }
 
     $fatalError = APP_DEBUG ? $e->getMessage() : t($t, 'unexpected_error_notice', 'An unexpected error occurred while loading the settings.');
@@ -629,6 +649,22 @@ $pageHelpKey = 'admin.settings';
       <?php endforeach; ?>
       <div class="md-help-note">
         <?=render_help_icon(t($t,'language_required_notice','At least English or French must remain enabled.'), true)?>
+      </div>
+      <h3 class="md-subhead">
+        <?=t($t,'profile_demographics_settings','Profile demographics')?>
+        <?=render_help_icon(t($t,'gender_options_setting_hint','Choose which gender values appear on the profile form. Use this list to align deployments with local requirements.'), true)?>
+      </h3>
+      <?php foreach ($genderOptionLabels as $genderOption => $genderLabel): ?>
+        <?php $isChecked = in_array($genderOption, $genderOptions, true); ?>
+        <div class="md-control">
+          <label>
+            <input type="checkbox" name="gender_options[]" value="<?=htmlspecialchars($genderOption, ENT_QUOTES, 'UTF-8')?>" <?=$isChecked ? 'checked' : ''?>>
+            <span><?=htmlspecialchars($genderLabel, ENT_QUOTES, 'UTF-8')?></span>
+          </label>
+        </div>
+      <?php endforeach; ?>
+      <div class="md-help-note">
+        <?=render_help_icon(t($t,'gender_options_default_notice','For Ethiopia, leave Other unchecked. If all options are unchecked, the system restores Female, Male, and Prefer not to say.'), true)?>
       </div>
       <h3 class="md-subhead">
         <?=t($t,'review_settings','Reviews')?>

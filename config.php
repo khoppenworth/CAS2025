@@ -567,7 +567,8 @@ function ensure_site_config_schema(PDO $pdo): void {
         'ai_retry_count' => 'ALTER TABLE site_config ADD COLUMN ai_retry_count INT NOT NULL DEFAULT 1',
         'ai_require_human_approval' => 'ALTER TABLE site_config ADD COLUMN ai_require_human_approval TINYINT(1) NOT NULL DEFAULT 1',
         'ai_show_generated_badge' => 'ALTER TABLE site_config ADD COLUMN ai_show_generated_badge TINYINT(1) NOT NULL DEFAULT 1',
-        'ai_pii_redaction_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1'
+        'ai_pii_redaction_enabled' => 'ALTER TABLE site_config ADD COLUMN ai_pii_redaction_enabled TINYINT(1) NOT NULL DEFAULT 1',
+        'gender_options' => 'ALTER TABLE site_config ADD COLUMN gender_options TEXT NULL'
     ];
 
     foreach ($schema as $field => $sql) {
@@ -778,7 +779,48 @@ function site_config_defaults(): array
         'ai_require_human_approval' => 1,
         'ai_show_generated_badge' => 1,
         'ai_pii_redaction_enabled' => 1,
+        'gender_options' => ['female', 'male', 'prefer_not_say'],
     ];
+}
+
+function gender_option_labels(array $t = []): array
+{
+    return [
+        'female' => t($t, 'female', 'Female'),
+        'male' => t($t, 'male', 'Male'),
+        'other' => t($t, 'other', 'Other'),
+        'prefer_not_say' => t($t, 'prefer_not_say', 'Prefer not to say'),
+    ];
+}
+
+function normalize_gender_options($value): array
+{
+    $allowed = ['female', 'male', 'other', 'prefer_not_say'];
+    if (is_string($value)) {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $value = $decoded;
+        } else {
+            $value = array_map('trim', explode(',', $value));
+        }
+    }
+    if (!is_array($value)) {
+        $value = ['female', 'male', 'prefer_not_say'];
+    }
+    $normalized = [];
+    foreach ($value as $option) {
+        $option = strtolower(trim((string)$option));
+        if (in_array($option, $allowed, true) && !in_array($option, $normalized, true)) {
+            $normalized[] = $option;
+        }
+    }
+    return $normalized !== [] ? $normalized : ['female', 'male', 'prefer_not_say'];
+}
+
+function encode_gender_options(array $options): string
+{
+    $json = json_encode(normalize_gender_options($options));
+    return $json === false ? '["female","male","prefer_not_say"]' : $json;
 }
 
 /** get_site_config(): fetch branding and contact settings (singleton row id=1) */
@@ -790,7 +832,7 @@ function get_site_config(PDO $pdo): array
         ensure_site_config_schema($pdo);
         $defaultTemplatesJson = encode_email_templates(default_email_templates());
         $quotedTemplates = $pdo->quote($defaultTemplatesJson);
-        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, landing_metric_submissions, landing_metric_completion, landing_metric_adoption, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, scheduled_assessments_enabled, qb_danger_zone_enabled, email_templates, ai_enabled, ai_provider, ai_base_url, ai_api_key, ai_model_chat, ai_model_fast, ai_model_fallback, ai_feature_summary_enabled, ai_feature_devplan_enabled, ai_feature_course_rationale_enabled, ai_placement_supervisor_review, ai_placement_admin_analytics, ai_timeout_seconds, ai_max_output_tokens, ai_temperature, ai_retry_count, ai_require_human_approval, ai_show_generated_badge, ai_pii_redaction_enabled) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, 1, 1, $quotedTemplates, 0, 'ollama', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0, 20, 700, 0.20, 1, 1, 1, 1)");
+        $pdo->exec("INSERT IGNORE INTO site_config (id, site_name, landing_text, address, contact, landing_metric_submissions, landing_metric_completion, landing_metric_adoption, logo_path, landing_background_path, footer_org_name, footer_org_short, footer_website_label, footer_website_url, footer_email, footer_phone, footer_hotline_label, footer_hotline_number, footer_rights, local_login_enabled, google_oauth_enabled, google_oauth_client_id, google_oauth_client_secret, microsoft_oauth_enabled, microsoft_oauth_client_id, microsoft_oauth_client_secret, microsoft_oauth_tenant, color_theme, brand_color, smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, smtp_from_email, smtp_from_name, smtp_timeout, enabled_locales, upgrade_repo, review_enabled, scheduled_assessments_enabled, qb_danger_zone_enabled, email_templates, ai_enabled, ai_provider, ai_base_url, ai_api_key, ai_model_chat, ai_model_fast, ai_model_fallback, ai_feature_summary_enabled, ai_feature_devplan_enabled, ai_feature_course_rationale_enabled, ai_placement_supervisor_review, ai_placement_admin_analytics, ai_timeout_seconds, ai_max_output_tokens, ai_temperature, ai_retry_count, ai_require_human_approval, ai_show_generated_badge, ai_pii_redaction_enabled, gender_options) VALUES (1, 'My Performance', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Ethiopian Pharmaceutical Supply Service', 'EPSS / EPS', 'epss.gov.et', 'https://epss.gov.et', 'info@epss.gov.et', '+251 11 155 9900', 'Hotline 939', '939', 'All rights reserved.', 1, 0, NULL, NULL, 0, NULL, NULL, 'common', 'light', '#2073bf', 0, NULL, 587, NULL, NULL, 'none', NULL, NULL, 20, '[\"en\",\"fr\",\"am\"]', 'khoppenworth/HRassessv300', 1, 1, 1, $quotedTemplates, 0, 'ollama', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0, 20, 700, 0.20, 1, 1, 1, 1, '[\"female\",\"male\",\"prefer_not_say\"]')");
         $cfg = $pdo->query('SELECT * FROM site_config WHERE id=1')->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('get_site_config failed: ' . $e->getMessage());
@@ -803,6 +845,7 @@ function get_site_config(PDO $pdo): array
     $merged['landing_background_path'] = normalize_landing_background_path($merged['landing_background_path'] ?? null);
     $merged['enabled_locales'] = site_enabled_locales($merged);
     $merged['email_templates'] = normalize_email_templates($merged['email_templates'] ?? []);
+    $merged['gender_options'] = normalize_gender_options($merged['gender_options'] ?? []);
     remember_available_locales($merged['enabled_locales']);
 
     return $merged;

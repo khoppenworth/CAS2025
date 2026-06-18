@@ -86,7 +86,8 @@ REPLACE INTO site_config (
   ai_retry_count,
   ai_require_human_approval,
   ai_show_generated_badge,
-  ai_pii_redaction_enabled
+  ai_pii_redaction_enabled,
+  gender_options
 ) VALUES (
   1,
   'My Performance',
@@ -150,7 +151,8 @@ REPLACE INTO site_config (
   1,
   1,
   1,
-  1
+  1,
+  '["female","male","prefer_not_say"]'
 );
 
 REPLACE INTO users (username, password, role, full_name, email, account_status, must_reset_password)
