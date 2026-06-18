@@ -8,6 +8,7 @@ $availableLocales = available_locales();
 $defaultLocale = $availableLocales[0] ?? 'en';
 $err = '';
 $localLoginEnabled = (int)($cfg['local_login_enabled'] ?? 1) === 1;
+$selfRegistrationEnabled = (int)($cfg['self_registration_enabled'] ?? 1) === 1;
 
 $oauthProviders = [];
 if (
@@ -196,6 +197,14 @@ render_login:
                 </button>
               </div>
             </form>
+            <?php if ($selfRegistrationEnabled): ?>
+            <p class="login-panel__note">
+              <?= htmlspecialchars(t($t, 'need_account', 'Need an account?'), ENT_QUOTES, 'UTF-8') ?>
+              <a class="md-login-footer-link" href="<?= htmlspecialchars(url_for('register.php'), ENT_QUOTES, 'UTF-8') ?>">
+                <?= htmlspecialchars(t($t, 'create_account', 'Create Account'), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </p>
+            <?php endif; ?>
           <?php else: ?>
             <div class="md-alert info" role="note">
               <?= htmlspecialchars(t($t, 'local_login_disabled_notice', 'Local account sign-in is disabled. Use Google single sign-on to continue.'), ENT_QUOTES, 'UTF-8') ?>

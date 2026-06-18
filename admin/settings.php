@@ -322,6 +322,7 @@ try {
         $scheduled_assessments_enabled = isset($_POST['scheduled_assessments_enabled']) ? 1 : 0;
         $qb_danger_zone_enabled = isset($_POST['qb_danger_zone_enabled']) ? 1 : 0;
         $local_login_enabled = isset($_POST['local_login_enabled']) ? 1 : 0;
+        $self_registration_enabled = isset($_POST['self_registration_enabled']) ? 1 : 0;
         $google_oauth_enabled = isset($_POST['google_oauth_enabled']) ? 1 : 0;
         $google_oauth_client_id = trim($_POST['google_oauth_client_id'] ?? '');
         $google_oauth_client_secret = trim($_POST['google_oauth_client_secret'] ?? '');
@@ -444,6 +445,7 @@ try {
             'microsoft_oauth_client_secret' => $microsoft_oauth_client_secret,
             'microsoft_oauth_tenant' => $microsoft_oauth_tenant,
             'local_login_enabled' => $local_login_enabled,
+            'self_registration_enabled' => $self_registration_enabled,
             'smtp_enabled' => $smtp_enabled,
             'smtp_host' => $smtp_host !== '' ? $smtp_host : null,
             'smtp_port' => $smtp_port > 0 ? $smtp_port : 587,
@@ -506,6 +508,7 @@ try {
                 'microsoft_oauth_client_secret' => t($t, 'microsoft_client_secret', 'Microsoft Client Secret'),
                 'microsoft_oauth_tenant' => t($t, 'microsoft_tenant', 'Microsoft Tenant (directory)'),
                 'local_login_enabled' => t($t, 'enable_local_login', 'Allow username/password sign-in'),
+                    'self_registration_enabled' => t($t, 'enable_self_registration', 'Allow users to self-register local accounts'),
                 'smtp_enabled' => t($t, 'enable_smtp_notifications', 'Enable SMTP notifications'),
                 'smtp_host' => t($t, 'smtp_host', 'SMTP Host'),
                 'smtp_port' => t($t, 'smtp_port', 'SMTP Port'),
@@ -758,6 +761,15 @@ $pageHelpKey = 'admin.settings';
         </label>
         <p class="md-help-note" style="margin: 6px 0 0;">
           <?=t($t,'local_login_toggle_hint','Disable this option to require SSO (for example, Google) on the main login page. Administrators can still use the dedicated admin login.')?>
+        </p>
+      </div>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="self_registration_enabled" value="1" <?=((int)($cfg['self_registration_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'enable_self_registration','Allow users to self-register local accounts')?></span>
+        </label>
+        <p class="md-help-note" style="margin: 6px 0 0;">
+          <?=t($t,'self_registration_toggle_hint','When enabled, the main login page shows a Create Account link and submitted registrations are created as pending staff accounts for administrator approval.')?>
         </p>
       </div>
       <div class="md-control">
