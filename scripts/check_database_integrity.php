@@ -232,6 +232,7 @@ $expectedSchemas = [
         'ai_require_human_approval' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
         'ai_show_generated_badge' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
         'ai_pii_redaction_enabled' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
+        'gender_options' => ['type' => 'text', 'null' => 'YES'],
     ],
     'users' => [
         'id' => ['type' => 'int', 'null' => 'NO', 'key' => 'PRI', 'extra' => 'auto_increment'],
@@ -240,6 +241,8 @@ $expectedSchemas = [
         'role' => ['type' => 'varchar', 'null' => 'NO', 'default' => 'staff'],
         'work_function' => ['type' => 'varchar', 'null' => 'YES'],
         'language' => ['type' => 'varchar', 'null' => 'YES'],
+        'gender' => ['type' => "enum('female','male','other','prefer_not_say')", 'null' => 'YES'],
+        'date_of_birth' => ['type' => 'date', 'null' => 'YES'],
         'account_status' => ['type' => "enum('pending','active','disabled')", 'null' => 'NO', 'default' => 'active'],
         'must_reset_password' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '0'],
         'next_assessment_date' => ['type' => 'date', 'null' => 'YES'],

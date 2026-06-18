@@ -64,7 +64,7 @@ $stmt = $pdo->prepare("SELECT qr.*, q.title, COALESCE(q.family_key, CONCAT('ques
     FROM questionnaire_response qr
     JOIN questionnaire q ON q.id = qr.questionnaire_id
     LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id
-    WHERE qr.user_id = ?
+    WHERE qr.user_id = ? AND qr.status IN ('submitted', 'approved')
     ORDER BY qr.created_at ASC");
 $stmt->execute([$userId]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -89,29 +89,14 @@ if (!empty($user['work_function'])) {
     $departmentLabel = work_function_label($pdo, (string) $user['work_function']);
 }
 
-$submittedCount = 0;
+$submittedCount = count($rows);
 $approvedCount = 0;
-$draftCount = 0;
-$rejectedCount = 0;
-$scoredValues = [];
 foreach ($rows as $row) {
-    $status = (string) ($row['status'] ?? 'submitted');
-    if ($status === 'draft') {
-        $draftCount++;
-    } elseif ($status === 'rejected') {
-        $rejectedCount++;
-    } else {
-        $submittedCount++;
-        if ($status === 'approved') {
-            $approvedCount++;
-        }
-    }
-    if (isset($row['score']) && $row['score'] !== null) {
-        $scoredValues[] = (float) $row['score'];
+    if ((string)($row['status'] ?? 'submitted') === 'approved') {
+        $approvedCount++;
     }
 }
 
-$averageScore = $scoredValues ? array_sum($scoredValues) / count($scoredValues) : null;
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
@@ -136,15 +121,13 @@ if (!empty($user['work_function'])) {
 }
 $recommendedCourses = array_slice(array_values($recommendedCourses), 0, 8);
 
-$sectionBreakdowns = compute_section_breakdowns($pdo, array_values($latestScores), $t);
-$competencyAreaRows = personal_report_competency_area_rows($sectionBreakdowns);
-$strengthRows = personal_report_rank_competency_rows($competencyAreaRows, true, 3);
-$developmentRows = personal_report_rank_competency_rows($competencyAreaRows, false, 3);
-$trendPoints = personal_report_trend_points($rows);
+// Keep the PDF deliberately simple: do not aggregate or rank competency areas across different questionnaire templates.
+$sectionBreakdowns = [];
+$developmentRows = [];
 $latestScoreValue = isset($latestEntry['score']) && $latestEntry['score'] !== null ? (float)$latestEntry['score'] : null;
 $suggestedCompletionDate = personal_report_suggested_completion_date($nextAssessmentRaw, $locale, $cfg);
 $nextAssessmentStatus = personal_report_next_assessment_status($nextAssessmentRaw);
-$scoreStatus = personal_report_score_status($latestScoreValue ?? $averageScore);
+$scoreStatus = personal_report_score_status($latestScoreValue);
 
 $generatedAt = new DateTimeImmutable('now');
 $reportTitle = t($t, 'personal_summary_report', 'Personal Summary Report');
@@ -194,20 +177,13 @@ $pdf->addBulletList([
     t($t, 'contents_executive_summary', 'Executive summary'),
     t($t, 'contents_score_interpretation', 'Score interpretation'),
     t($t, 'contents_latest_assessment', 'Latest assessment detail'),
-    t($t, 'contents_competency_results', 'Competency area results and gap analysis'),
-    t($t, 'contents_performance_trend', 'Performance trend'),
     t($t, 'contents_training_plan', 'Recommended training and personal improvement plan'),
     t($t, 'contents_history_notes', 'Recent responses, methodology, notes, and sign-off'),
 ], 10.0);
 
-$highestArea = $strengthRows[0] ?? null;
-$lowestArea = $developmentRows[0] ?? null;
 $executiveRows = [
     [t($t, 'latest_score', 'Latest score'), $latestScoreValue !== null ? number_format($latestScoreValue, 1) . '%' : t($t, 'score_pending', 'Pending')],
-    [t($t, 'average_score', 'Average score (%)'), $averageScore !== null ? number_format((float)$averageScore, 1) . '%' : personal_report_empty_value()],
-    [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : ($averageScore !== null ? questionnaire_competency_level((float)$averageScore) : personal_report_empty_value())],
-    [t($t, 'strongest_competency_area', 'Strongest competency area'), $highestArea ? sprintf('%s (%s)', $highestArea['label'], personal_report_format_percent($highestArea['score'])) : personal_report_empty_value()],
-    [t($t, 'priority_development_area', 'Priority development area'), $lowestArea ? sprintf('%s (%s)', $lowestArea['label'], personal_report_format_percent($lowestArea['score'])) : personal_report_empty_value()],
+    [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : personal_report_empty_value()],
     [t($t, 'recommended_training_courses', 'Recommended Training Courses'), (string)count($recommendedCourses)],
 ];
 if ($nextAssessmentDisplay !== '') {
@@ -245,18 +221,9 @@ $pdf->addTable([
 ], $scoreInterpretationRows, [24, 34, 92], 8.5);
 
 $summaryRows = [
-    [t($t, 'total_responses', 'Responses submitted'), (string) $submittedCount],
+    [t($t, 'total_responses', 'Submitted / approved responses'), (string) $submittedCount],
     [t($t, 'approved', 'Approved'), (string) $approvedCount],
-    [t($t, 'status_draft', 'Draft'), (string) $draftCount],
-    [t($t, 'status_rejected', 'Rejected'), (string) $rejectedCount],
 ];
-if ($averageScore !== null) {
-    $summaryRows[] = [t($t, 'average_score', 'Average score (%)'), number_format($averageScore, 1)];
-    $summaryRows[] = [
-        t($t, 'proficiency_level', 'Competency level'),
-        questionnaire_competency_level((float) $averageScore),
-    ];
-}
 if ($nextAssessmentDisplay !== '') {
     $summaryRows[] = [t($t, 'next_assessment', 'Next Assessment Date'), $nextAssessmentDisplay];
 }
@@ -276,6 +243,7 @@ if ($latestEntry !== null) {
 
 $pdf->ensureSpaceForBlock(210.0);
 $pdf->addSubheading(t($t, 'performance_overview', 'Performance Overview'));
+$pdf->addParagraph(t($t, 'submitted_assessments_hint', 'Only submitted and approved assessments are included. Scores are shown per questionnaire and are not averaged across different questionnaires.'), 9.5);
 $pdf->addTable([
     t($t, 'metric', 'Metric'),
     t($t, 'value', 'Value'),
@@ -293,127 +261,12 @@ if ($latestEntry !== null) {
         [t($t, 'score', 'Score (%)'), $latestDetailScore],
         [t($t, 'proficiency_level', 'Competency level'), $latestScoreValue !== null ? questionnaire_competency_level($latestScoreValue) : personal_report_empty_value()],
     ];
-    if ($averageScore !== null && $latestScoreValue !== null) {
-        $latestDetailRows[] = [
-            t($t, 'comparison_to_average', 'Comparison to average'),
-            sprintf('%+.1f percentage points', $latestScoreValue - (float)$averageScore),
-        ];
-    }
     $pdf->addTable([
         t($t, 'detail', 'Detail'),
         t($t, 'value', 'Value'),
     ], $latestDetailRows, [50, 90], 9.5);
 } else {
     $pdf->addParagraph(t($t, 'no_submissions_yet', 'No submissions recorded yet. Complete your first assessment to see insights.'));
-}
-
-if ($sectionBreakdowns) {
-    $pdf->ensureSpaceForBlock(490.0);
-    $pdf->addSubheading(t($t, 'section_breakdown', 'Section score radar'));
-    $pdf->addParagraph(t($t, 'section_breakdown_hint', 'Each radar uses short CA labels in the graph and lists the full Competency Area text in the legend below.'));
-    $palette = analytics_report_palette_colors($cfg);
-    foreach ($sectionBreakdowns as $radar) {
-        $pdf->ensureSpaceForBlock(470.0);
-        $titleLine = (string)($radar['title'] ?? '');
-        $period = trim((string)($radar['period'] ?? ''));
-        if ($period !== '') {
-            $titleLine = $titleLine !== '' ? $titleLine . ' · ' . $period : $period;
-        }
-        if ($titleLine !== '') {
-            $pdf->addParagraph($titleLine, 12.0);
-        }
-        $radarLegendRows = [];
-        $radarChartSections = [];
-        foreach (array_values($radar['sections'] ?? []) as $index => $section) {
-            $shortLabel = 'CA' . ($index + 1);
-            $fullLabel = trim((string)($section['label'] ?? ''));
-            $score = isset($section['score']) && is_numeric($section['score']) ? (float)$section['score'] : null;
-            $radarLegendRows[] = [
-                $shortLabel,
-                $fullLabel !== '' ? $fullLabel : t($t, 'competency_area', 'Competency Area'),
-                $score !== null ? number_format($score, 1) . '%' : personal_report_empty_value(),
-            ];
-            $radarChartSections[] = [
-                'label' => $shortLabel,
-                'score' => $score,
-            ];
-        }
-
-        $chartImage = analytics_report_generate_radar_chart($radarChartSections, $palette, [
-            'max_value' => 100,
-            'value_suffix' => '%',
-        ]);
-        if ($chartImage) {
-            $pdf->addImageBlock($chartImage['data'], $chartImage['width'], $chartImage['height'], 420.0);
-        }
-
-        if ($radarLegendRows) {
-            $pdf->addParagraph(t($t, 'competency_area_legend', 'Legend: Competency Areas'), 10.5);
-            $pdf->addTable([
-                t($t, 'short_form', 'Short form'),
-                t($t, 'competency_area', 'Competency Area'),
-                t($t, 'score', 'Score (%)'),
-            ], $radarLegendRows, [24, 116, 30], 9.0);
-        }
-    }
-}
-
-if ($competencyAreaRows) {
-    $pdf->ensureSpaceForBlock(240.0);
-    $pdf->addSubheading(t($t, 'competency_gap_analysis', 'Competency Gap Analysis'));
-    $gapRows = [];
-    foreach ($developmentRows ?: array_slice($competencyAreaRows, 0, 6) as $areaRow) {
-        $gapRows[] = [
-            (string)$areaRow['local_code'],
-            (string)$areaRow['questionnaire'],
-            (string)$areaRow['label'],
-            personal_report_format_percent($areaRow['score']),
-            personal_report_format_percent($areaRow['gap']),
-            personal_report_priority_label($areaRow['score']),
-            questionnaire_competency_recommendation($areaRow['score']),
-        ];
-    }
-    $pdf->addTable([
-        t($t, 'short_form', 'Short form'),
-        t($t, 'questionnaire', 'Questionnaire'),
-        t($t, 'competency_area', 'Competency Area'),
-        t($t, 'score', 'Score (%)'),
-        t($t, 'gap_to_target', 'Gap to 100%'),
-        t($t, 'priority', 'Priority'),
-        t($t, 'recommended_action', 'Recommended action'),
-    ], $gapRows, [16, 38, 60, 20, 22, 22, 42], 7.5);
-
-    $pdf->ensureSpaceForBlock(190.0);
-    $pdf->addSubheading(t($t, 'strengths_and_development_areas', 'Strengths and Development Areas'));
-    $strengthText = personal_report_competency_summary_text($strengthRows, $t, true);
-    $developmentText = personal_report_competency_summary_text($developmentRows, $t, false);
-    $pdf->addTable([
-        t($t, 'strengths', 'Strengths'),
-        t($t, 'development_areas', 'Development areas'),
-    ], [[$strengthText, $developmentText]], [1, 1], 9.0);
-}
-
-$pdf->ensureSpaceForBlock(380.0);
-$pdf->addSubheading(t($t, 'performance_trend', 'Performance Trend'));
-if ($trendPoints) {
-    $palette = analytics_report_palette_colors($cfg);
-    $trendImage = analytics_report_generate_line_chart($trendPoints, $palette, [
-        'max_value' => 100,
-        'value_suffix' => '%',
-        'decimal_places' => 0,
-    ]);
-    if ($trendImage) {
-        $pdf->addImageBlock($trendImage['data'], $trendImage['width'], $trendImage['height'], 430.0);
-    }
-    $trendSummaryRows = personal_report_trend_summary_rows($trendPoints, $t);
-    if ($trendSummaryRows) {
-        $pdf->addTable([
-            t($t, 'metric', 'Metric'),
-            t($t, 'value', 'Value'),
-        ], $trendSummaryRows, [55, 85], 9.0);
-    }
-} else {
-    $pdf->addParagraph(t($t, 'no_trend_data', 'Trend analysis will appear once at least one scored response is available.'));
 }
 
 $pdf->ensureSpaceForBlock(210.0);
