@@ -777,7 +777,7 @@
 
 .qb-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 240px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 220px) minmax(220px, 0.9fr);
   gap: 0.7rem;
   align-items: end;
   padding-bottom: 0.65rem;
@@ -794,6 +794,25 @@
 .qb-header input[data-role="q-title"],
 .qb-header textarea[data-role="q-description"] {
   background: var(--app-surface-alt, #fff);
+}
+
+
+.qb-work-role-scope {
+  align-self: stretch;
+}
+
+.qb-work-role-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  padding: 0.45rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-alt, #fff);
+}
+
+.qb-work-role-option {
+  margin: 0;
 }
 
 .qb-body {
