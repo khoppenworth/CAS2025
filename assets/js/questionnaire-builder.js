@@ -166,6 +166,14 @@ const Builder = (() => {
   const RAW_CAPABILITIES = window.QB_CAPABILITIES || {};
   const CAPABILITIES = {
     sectionIncludeScoring: !['0', 'false', false, 0, null, undefined].includes(RAW_CAPABILITIES.sectionIncludeScoring),
+    workFunctions: Array.isArray(RAW_CAPABILITIES.workFunctions)
+      ? RAW_CAPABILITIES.workFunctions
+          .map((role) => ({
+            key: String(role?.key || '').trim(),
+            label: String(role?.label || role?.key || '').trim(),
+          }))
+          .filter((role) => role.key !== '')
+      : [],
   };
 
   const state = {
@@ -236,6 +244,36 @@ const Builder = (() => {
     return normalizeStatusValue(questionnaire?.status) === 'published';
   }
 
+  function normalizeQuestionnaireWorkFunctions(value) {
+    const allowed = new Set(CAPABILITIES.workFunctions.map((role) => role.key));
+    const source = Array.isArray(value) ? value : [];
+    const normalized = [];
+    source.forEach((role) => {
+      const key = String(role || '').trim();
+      if (key === '' || (allowed.size > 0 && !allowed.has(key)) || normalized.includes(key)) return;
+      normalized.push(key);
+    });
+    return normalized;
+  }
+
+  function buildWorkRoleScopeEditor(questionnaire) {
+    if (CAPABILITIES.workFunctions.length === 0) {
+      return '';
+    }
+    const selected = new Set(normalizeQuestionnaireWorkFunctions(questionnaire.work_functions));
+    const options = CAPABILITIES.workFunctions.map((role) => `
+      <label class="qb-checkbox qb-work-role-option">
+        <input type="checkbox" data-role="q-work-function" value="${escapeAttr(role.key)}" ${selected.has(role.key) ? 'checked' : ''}>
+        <span>${escapeHtml(role.label || role.key)}</span>
+      </label>`).join('');
+    return `
+      <div class="qb-field qb-work-role-scope">
+        <label>Work role scope</label>
+        <div class="qb-work-role-options" data-role="q-work-functions">${options}</div>
+        <span class="qb-field-hint">Select no roles to make this questionnaire visible to all assigned roles.</span>
+      </div>`;
+  }
+
   function lockReasonFor({ publishedLocked = false, hasResponses = false } = {}) {
     if (hasResponses) return STRINGS.responseLockReason || 'This action is locked because responses already exist.';
     if (publishedLocked) return STRINGS.publishedLockReason || 'This action is locked because the questionnaire is published.';
@@ -258,7 +296,7 @@ const Builder = (() => {
       family_key: raw.family_key || '',
       sections,
       items,
-      work_functions: Array.isArray(raw.work_functions) ? [...raw.work_functions] : undefined,
+      work_functions: normalizeQuestionnaireWorkFunctions(raw.work_functions),
       hasResponses: toBoolean(raw.has_responses),
     };
   }
@@ -1001,10 +1039,14 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
+    const workFunctionInputs = card.querySelectorAll('[data-role="q-work-function"]');
 
     if (titleInput) active.title = titleInput.value;
     if (descriptionInput) active.description = descriptionInput.value;
     if (statusInput) active.status = normalizeStatusValue(statusInput.value);
+    active.work_functions = normalizeQuestionnaireWorkFunctions(
+      Array.from(workFunctionInputs).filter((input) => input.checked).map((input) => input.value)
+    );
   }
 
   function hydrateActiveQuestionnaireFromDom() {
@@ -1285,6 +1327,7 @@ const Builder = (() => {
     const titleInput = card.querySelector('[data-role="q-title"]');
     const descriptionInput = card.querySelector('[data-role="q-description"]');
     const statusInput = card.querySelector('[data-role="q-status"]');
+    const workFunctionInputs = card.querySelectorAll('[data-role="q-work-function"]');
 
     const handleTitle = () => {
       questionnaire.title = titleInput.value;
@@ -1311,6 +1354,14 @@ const Builder = (() => {
     };
     statusInput?.addEventListener('input', handleStatus);
     statusInput?.addEventListener('change', handleStatus);
+
+    const handleWorkFunctions = () => {
+      questionnaire.work_functions = normalizeQuestionnaireWorkFunctions(
+        Array.from(workFunctionInputs).filter((input) => input.checked).map((input) => input.value)
+      );
+      markDirty();
+    };
+    workFunctionInputs.forEach((input) => input.addEventListener('change', handleWorkFunctions));
   }
 
   function renderDeleteButton() {
@@ -1378,6 +1429,7 @@ const Builder = (() => {
                 .join('')}
             </select>
           </div>
+          ${buildWorkRoleScopeEditor(questionnaire)}
         </div>
         <div class="qb-body">
           <div class="qb-section-list" data-role="sections" data-q="${questionnaire.clientId}">
@@ -1972,6 +2024,13 @@ const Builder = (() => {
         questionnaire.status = normalizeStatusValue(event.target.value);
         renderTabs();
         renderSelector();
+        break;
+      case 'q-work-function':
+        questionnaire.work_functions = normalizeQuestionnaireWorkFunctions(
+          Array.from(card.querySelectorAll('[data-role="q-work-function"]'))
+            .filter((input) => input.checked)
+            .map((input) => input.value)
+        );
         break;
       case 'section-title':
       case 'section-description':
@@ -2794,9 +2853,7 @@ const Builder = (() => {
       sections: questionnaire.sections.map((section, idx) => serializeSection(section, idx + 1)),
       items: questionnaire.items.map((item, idx) => serializeItem(item, idx + 1)),
     };
-    if (Array.isArray(questionnaire.work_functions)) {
-      base.work_functions = [...questionnaire.work_functions];
-    }
+    base.work_functions = normalizeQuestionnaireWorkFunctions(questionnaire.work_functions);
     return base;
   }
 

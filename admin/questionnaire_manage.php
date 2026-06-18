@@ -2411,6 +2411,11 @@ if (isset($_POST['import'])) {
 $bootstrapQuestionnaires = qb_fetch_questionnaires($pdo);
 $qbCapabilities = [
     'sectionIncludeScoring' => qb_supports_section_include_in_scoring($pdo),
+    'workFunctions' => array_map(
+        static fn(string $key, string $label): array => ['key' => $key, 'label' => $label],
+        array_keys($workFunctionChoices),
+        array_values($workFunctionChoices)
+    ),
 ];
 $qbCssHref = asset_url('assets/css/questionnaire-builder.css');
 $qbCssVersion = @filemtime(__DIR__ . '/../assets/css/questionnaire-builder.css');

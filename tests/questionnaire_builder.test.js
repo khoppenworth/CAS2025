@@ -2,11 +2,12 @@ const fs = require('fs');
 const vm = require('vm');
 
 class FakeElement {
-  constructor({ id = null, role = null, value = '', content = '' } = {}) {
+  constructor({ id = null, role = null, value = '', content = '', checked = false } = {}) {
     this.id = id;
     this.role = role;
     this.value = value;
     this.content = content;
+    this.checked = checked;
     this.disabled = false;
     this.innerHTMLValue = '';
     this.dataset = {};
@@ -47,7 +48,8 @@ class FakeElement {
     return null;
   }
 
-  querySelectorAll() {
+  querySelectorAll(sel) {
+    if (sel === '[data-role="q-work-function"]') return this.workFunctionInputs || [];
     return [];
   }
 
@@ -92,18 +94,22 @@ class FakeDocument {
     const titleMatch = html.match(/data-role="q-title" value="([^"]*)"/);
     const descMatch = html.match(/<textarea data-role="q-description">([\s\S]*?)<\/textarea>/);
     const statusMatch = html.match(/<option value="(draft|published|inactive)"[^>]*selected/);
+    const checkedRoleValues = Array.from(html.matchAll(/data-role="q-work-function" value="([^"]*)"[^>]*checked/g)).map((match) => match[1]);
 
     const card = new FakeElement();
     card.qid = qid;
     const titleInput = new FakeElement({ role: 'q-title', value: titleMatch ? titleMatch[1] : '' });
     const descriptionInput = new FakeElement({ role: 'q-description', value: descMatch ? descMatch[1] : '' });
     const statusInput = new FakeElement({ role: 'q-status', value: statusMatch ? statusMatch[1] : 'draft' });
+    const workFunctionInputs = ['director', 'expert'].map((value) => new FakeElement({ role: 'q-work-function', value, checked: checkedRoleValues.includes(value) }));
     titleInput.card = card;
     descriptionInput.card = card;
     statusInput.card = card;
+    workFunctionInputs.forEach((input) => { input.card = card; });
     card.titleInput = titleInput;
     card.descriptionInput = descriptionInput;
     card.statusInput = statusInput;
+    card.workFunctionInputs = workFunctionInputs;
     this.card = card;
   }
 
@@ -145,6 +151,7 @@ class FakeDocument {
       title: 'Old title',
       description: '',
       status: 'draft',
+      work_functions: ['director'],
       sections: [],
       items: [{
         clientId: 'item-1',
@@ -161,6 +168,7 @@ class FakeDocument {
     }],
     QB_INITIAL_ACTIVE_ID: 1,
     QB_STRINGS: undefined,
+    QB_CAPABILITIES: { workFunctions: [{ key: 'director', label: 'Director' }, { key: 'expert', label: 'Expert' }] },
     APP_BASE_URL: '',
     Sortable: undefined,
     crypto: { randomUUID: () => 'uuid-1' },
@@ -233,6 +241,8 @@ class FakeDocument {
   document.card.titleInput.dispatch('input');
   document.card.statusInput.value = 'inactive';
   document.card.statusInput.dispatch('change');
+  document.card.workFunctionInputs.find((input) => input.value === 'expert').checked = true;
+  document.card.workFunctionInputs.find((input) => input.value === 'expert').dispatch('change');
 
   // click preview to ensure standalone preview render does not throw
   document.byId.get('qb-preview-questionnaire').dispatch('click');
@@ -255,6 +265,9 @@ class FakeDocument {
   if (!q) throw new Error('missing questionnaire in payload');
   if (q.title !== 'New title') throw new Error(`expected title to persist, got ${q.title}`);
   if (q.status !== 'inactive') throw new Error(`expected status to persist, got ${q.status}`);
+  if (JSON.stringify(q.work_functions) !== JSON.stringify(['director', 'expert'])) {
+    throw new Error(`expected work role scope to persist, got ${JSON.stringify(q.work_functions)}`);
+  }
   if (document.card?.qid !== 'q-1') {
     throw new Error(`expected active questionnaire client id to stay stable after refetch, got ${document.card?.qid}`);
   }
