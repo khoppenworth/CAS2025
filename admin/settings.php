@@ -558,31 +558,40 @@ try {
         $locale = 'en';
     }
     if (!isset($t) || !is_array($t)) {
-        $t = load_lang($locale);
+        $t = function_exists('load_lang') ? load_lang($locale) : [];
     }
     if (!isset($cfg) || !is_array($cfg)) {
-        $cfg = site_config_defaults();
+        $cfg = function_exists('site_config_defaults') ? site_config_defaults() : [];
     }
     if (!isset($enabledLocales) || !is_array($enabledLocales)) {
-        $enabledLocales = site_enabled_locales($cfg);
+        $enabledLocales = function_exists('site_enabled_locales') ? site_enabled_locales($cfg) : ['en'];
     }
     if (!isset($errors) || !is_array($errors)) {
         $errors = [];
     }
     $msg = $msg ?? '';
     if (!isset($emailTemplates) || !is_array($emailTemplates)) {
-        $emailTemplates = default_email_templates();
+        $emailTemplates = function_exists('default_email_templates') ? default_email_templates() : [];
     }
     if (!isset($genderOptions) || !is_array($genderOptions)) {
-        $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
+        $genderOptions = function_exists('normalize_gender_options')
+            ? normalize_gender_options($cfg['gender_options'] ?? [])
+            : ['female', 'male', 'prefer_not_say'];
     }
     if (!isset($genderOptionLabels) || !is_array($genderOptionLabels)) {
-        $genderOptionLabels = gender_option_labels($t);
+        $genderOptionLabels = function_exists('gender_option_labels')
+            ? gender_option_labels($t)
+            : [
+                'female' => 'Female',
+                'male' => 'Male',
+                'other' => 'Other',
+                'prefer_not_say' => 'Prefer not to say',
+            ];
     }
 
-    $fatalError = APP_DEBUG ? $e->getMessage() : t($t, 'unexpected_error_notice', 'An unexpected error occurred while loading the settings.');
+    $fatalError = (defined('APP_DEBUG') && APP_DEBUG) ? $e->getMessage() : (function_exists('t') ? t($t, 'unexpected_error_notice', 'An unexpected error occurred while loading the settings.') : 'An unexpected error occurred while loading the settings.');
     $errors[] = $fatalError;
-    if (APP_DEBUG) {
+    if (defined('APP_DEBUG') && APP_DEBUG) {
         $fatalDebugDetails = $e->getTraceAsString();
     }
 }
@@ -653,6 +662,7 @@ $pageHelpKey = 'admin.settings';
         <?=t($t,'profile_demographics_settings','Profile demographics')?>
         <?=render_help_icon(t($t,'gender_options_setting_hint','Choose which gender values appear on the profile form. Use this list to align deployments with local requirements.'), true)?>
       </h3>
+      <input type="hidden" name="gender_options" value="" disabled>
       <?php foreach ($genderOptionLabels as $genderOption => $genderLabel): ?>
         <?php $isChecked = in_array($genderOption, $genderOptions, true); ?>
         <div class="md-control">

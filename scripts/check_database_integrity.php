@@ -232,6 +232,7 @@ $expectedSchemas = [
         'ai_require_human_approval' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
         'ai_show_generated_badge' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
         'ai_pii_redaction_enabled' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
+        'gender_options' => ['type' => 'text', 'null' => 'YES'],
     ],
     'users' => [
         'id' => ['type' => 'int', 'null' => 'NO', 'key' => 'PRI', 'extra' => 'auto_increment'],
