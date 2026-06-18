@@ -179,11 +179,27 @@ if (function_exists('department_label')) {
 if ($departmentDisplay === '') {
     $departmentDisplay = (string)($user['department'] ?? '');
 }
+$profileRoleLabels = [
+    'director_branch_manager' => 'Director / Branch Manager',
+    'team_leader_coordinator' => 'Team Leader / Coordinator',
+    'officer_level_4' => 'Officer Level 4',
+    'officer_level_3' => 'Officer Level 3',
+    'officer_level_2' => 'Officer Level 2',
+    'officer_level_1' => 'Officer Level 1',
+];
+$profileRole = trim((string)($user['profile_role'] ?? ''));
+$profileRoleOther = trim((string)($user['profile_role_other'] ?? ''));
+$userWorkTitle = '';
+if ($profileRole === 'other') {
+    $userWorkTitle = $profileRoleOther;
+} elseif ($profileRole !== '') {
+    $userWorkTitle = $profileRoleLabels[$profileRole] ?? $profileRole;
+}
 $positionDisplay = $userWorkFunctionLabel !== '' ? $userWorkFunctionLabel : (string)($user['work_function'] ?? '');
 if ($positionDisplay === '') {
-    $positionDisplay = (string)($user['profile_role'] ?? '');
+    $positionDisplay = $userWorkTitle;
 }
-$overviewTitle = $latestEntry ? (string)($latestEntry['title'] ?? '') : t($t, 'performance_overview', 'My Overview');
+$overviewTitle = $userWorkTitle;
 
 $sectionBreakdownHistory = compute_section_breakdowns($pdo, $responses, $t, true);
 $radarCards = [];

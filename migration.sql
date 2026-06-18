@@ -1223,10 +1223,6 @@ PREPARE stmt FROM @sc_gender_options_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-UPDATE site_config
-SET gender_options = '["female","male","prefer_not_say"]'
-WHERE gender_options IS NULL OR TRIM(gender_options) = '';
-
 INSERT IGNORE INTO site_config (
   id,
   site_name,

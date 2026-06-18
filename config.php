@@ -795,7 +795,7 @@ function gender_option_labels(array $t = []): array
 
 function normalize_gender_options($value): array
 {
-    $allowed = ['female', 'male', 'other', 'prefer_not_say'];
+    $allowed = array_keys(gender_option_labels());
     if (is_string($value)) {
         $decoded = json_decode($value, true);
         if (is_array($decoded)) {
