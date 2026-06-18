@@ -95,27 +95,16 @@ $stmt = $pdo->prepare(
     "FROM questionnaire_response qr " .
     "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
     "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
-    "WHERE qr.user_id = ? AND (qr.status IS NULL OR qr.status <> 'draft') ORDER BY qr.created_at ASC, qr.id ASC"
+    "WHERE qr.user_id = ? AND qr.status IN ('submitted', 'approved') ORDER BY qr.created_at ASC, qr.id ASC"
 );
 $stmt->execute([$user['id']]);
 
-$draftStmt = $pdo->prepare(
-    "SELECT qr.questionnaire_id, qr.performance_period_id, q.title, COALESCE(q.family_key, CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, COALESCE(pp.label, '') AS period_label " .
-    "FROM questionnaire_response qr " .
-    "JOIN questionnaire q ON q.id = qr.questionnaire_id " .
-    "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id " .
-    "WHERE qr.user_id = ? AND qr.status = 'draft' ORDER BY qr.created_at DESC, qr.id DESC"
-);
-$draftStmt->execute([$user['id']]);
-$draftResponses = $draftStmt->fetchAll(PDO::FETCH_ASSOC);
-
 $responses = [];
+$responsesByQuestionnaire = [];
+$questionnaireOptions = [];
 $latestScores = [];
 $latestEntry = null;
 $currentTrainingFocus = [];
-$chartLabels = [];
-$chartScores = [];
-$timelinePoints = [];
 
 while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
     $responses[] = $row;
@@ -123,27 +112,23 @@ while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
     $latestScores[resolve_questionnaire_family_key($row)] = $row;
     $latestEntry = $row;
 
-    $chartLabels[] = resolve_timeline_label($row);
-    $chartScores[] = $row['score'] !== null ? (int)$row['score'] : null;
-
-    $createdAtRaw = (string)($row['created_at'] ?? '');
-    $createdIso = null;
-    if ($createdAtRaw !== '') {
-        $dtCreated = DateTime::createFromFormat('Y-m-d H:i:s', $createdAtRaw);
-        if ($dtCreated instanceof DateTime) {
-            $createdIso = $dtCreated->format(DateTime::ATOM);
-        }
+    $familyKey = resolve_questionnaire_family_key($row);
+    $responsesByQuestionnaire[$familyKey][] = $row;
+    if (!isset($questionnaireOptions[$familyKey])) {
+        $questionnaireOptions[$familyKey] = (string)($row['title'] ?? '');
     }
-    $timelinePoints[] = [
-        'label' => resolve_timeline_label($row),
-        'score' => $row['score'] !== null ? (float)$row['score'] : null,
-        'timestamp' => $createdAtRaw,
-        'timestamp_iso' => $createdIso,
-        'questionnaire' => (string)($row['title'] ?? ''),
-        'period' => (string)($row['period_label'] ?? ''),
-        'order' => count($timelinePoints),
-    ];
 }
+$selectedQuestionnaireFamily = trim((string)($_GET['questionnaire_family'] ?? ''));
+if ($selectedQuestionnaireFamily !== '' && !isset($responsesByQuestionnaire[$selectedQuestionnaireFamily])) {
+    $selectedQuestionnaireFamily = '';
+}
+$displayResponses = $selectedQuestionnaireFamily !== ''
+    ? ($responsesByQuestionnaire[$selectedQuestionnaireFamily] ?? [])
+    : $responses;
+$selectedQuestionnaireTitle = $selectedQuestionnaireFamily !== ''
+    ? ($questionnaireOptions[$selectedQuestionnaireFamily] ?? '')
+    : '';
+
 foreach ($latestScores as $scoreRow) {
     if (isset($scoreRow['score']) && $scoreRow['score'] !== null && (int)$scoreRow['score'] < 100) {
         $currentTrainingFocus[] = $scoreRow;
@@ -200,106 +185,6 @@ if ($positionDisplay === '') {
     $positionDisplay = $userWorkTitle;
 }
 $overviewTitle = $userWorkTitle;
-
-$sectionBreakdownHistory = compute_section_breakdowns($pdo, $responses, $t, true);
-$radarCards = [];
-foreach ($sectionBreakdownHistory as $breakdown) {
-    if (empty($breakdown['sections']) || !is_array($breakdown['sections'])) {
-        continue;
-    }
-    $familyKey = (string)($breakdown['family_key'] ?? '');
-    if ($familyKey === '') {
-        $familyKey = 'questionnaire-' . (int)($breakdown['questionnaire_id'] ?? 0);
-    }
-    $createdAt = (string)($breakdown['created_at'] ?? '');
-    $createdTime = $createdAt !== '' ? strtotime($createdAt) : false;
-    $submissionLabel = resolve_timeline_label([
-        'period_start' => null,
-        'period_label' => $breakdown['period'] ?? '',
-        'created_at' => $createdAt,
-    ]);
-    if ($submissionLabel === '' && $createdTime) {
-        $submissionLabel = date('Y', $createdTime);
-    }
-    if ($submissionLabel === '') {
-        $submissionLabel = t($t, 'submission', 'Submission');
-    }
-
-    if (!isset($radarCards[$familyKey])) {
-        $radarCards[$familyKey] = [
-            'id' => preg_replace('/[^A-Za-z0-9_-]+/', '-', $familyKey),
-            'title' => (string)($breakdown['title'] ?? ''),
-            'latest_period' => $breakdown['period'] ?? null,
-            'latest_created_at' => $createdAt,
-            'latest_time' => $createdTime ?: 0,
-            'labels' => [],
-            'layers' => [],
-        ];
-    }
-
-    if (($createdTime ?: 0) >= (int)($radarCards[$familyKey]['latest_time'] ?? 0)) {
-        $radarCards[$familyKey]['title'] = (string)($breakdown['title'] ?? $radarCards[$familyKey]['title']);
-        $radarCards[$familyKey]['latest_period'] = $breakdown['period'] ?? null;
-        $radarCards[$familyKey]['latest_created_at'] = $createdAt;
-        $radarCards[$familyKey]['latest_time'] = $createdTime ?: 0;
-        $latestLabels = array_map(static fn($section) => (string)($section['label'] ?? ''), $breakdown['sections']);
-        foreach ($radarCards[$familyKey]['labels'] as $existingLabel) {
-            if ($existingLabel !== '' && !in_array($existingLabel, $latestLabels, true)) {
-                $latestLabels[] = $existingLabel;
-            }
-        }
-        $radarCards[$familyKey]['labels'] = $latestLabels;
-    }
-
-    $scoresByLabel = [];
-    foreach ($breakdown['sections'] as $section) {
-        $label = (string)($section['label'] ?? '');
-        if ($label === '') {
-            continue;
-        }
-        $scoresByLabel[$label] = isset($section['score']) ? (float)$section['score'] : null;
-        if (!in_array($label, $radarCards[$familyKey]['labels'], true)) {
-            $radarCards[$familyKey]['labels'][] = $label;
-        }
-    }
-
-    $radarCards[$familyKey]['layers'][] = [
-        'label' => $submissionLabel,
-        'period' => $breakdown['period'] ?? null,
-        'created_at' => $createdAt,
-        'time' => $createdTime ?: 0,
-        'score' => $breakdown['score'] ?? null,
-        'scores' => $scoresByLabel,
-    ];
-}
-foreach ($radarCards as &$radarCard) {
-    usort($radarCard['layers'], static fn($a, $b) => ((int)($a['time'] ?? 0)) <=> ((int)($b['time'] ?? 0)));
-}
-unset($radarCard);
-$chartDataFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
-if (defined('JSON_THROW_ON_ERROR')) {
-    $chartDataFlags |= JSON_THROW_ON_ERROR;
-}
-
-$timelinePoints = array_values($timelinePoints);
-usort($timelinePoints, static function ($a, $b) {
-    $timeA = isset($a['timestamp_iso']) ? strtotime((string)$a['timestamp_iso']) : false;
-    $timeB = isset($b['timestamp_iso']) ? strtotime((string)$b['timestamp_iso']) : false;
-    if ($timeA && $timeB && $timeA !== $timeB) {
-        return $timeA <=> $timeB;
-    }
-    if ($timeA && !$timeB) {
-        return -1;
-    }
-    if (!$timeA && $timeB) {
-        return 1;
-    }
-    return ((int)($a['order'] ?? 0)) <=> ((int)($b['order'] ?? 0));
-});
-$timelinePoints = array_map(static function ($point) {
-    unset($point['order']);
-    return $point;
-}, $timelinePoints);
 
 $recommendedCourses = [];
 if (!empty($user['work_function'])) {
@@ -388,61 +273,29 @@ $pageHelpKey = 'workspace.my_performance';
         <p class="md-overview-footnote"><?=t($t,'no_submissions_yet','No submissions recorded yet. Complete your first assessment to see insights.')?></p>
       <?php endif; ?>
     </div>
-    <?php if ($draftResponses): ?>
-      <div class="md-alert warning md-draft-alert">
-        <strong><?=t($t,'draft_pending_title','Saved drafts awaiting submission')?>:</strong>
-        <ul class="md-draft-list">
-          <?php foreach ($draftResponses as $draft): ?>
-            <li>
-              <a href="<?=htmlspecialchars(url_for('submit_assessment.php?qid=' . $draft['questionnaire_id'] . '&performance_period_id=' . $draft['performance_period_id']), ENT_QUOTES, 'UTF-8')?>">
-                <?=htmlspecialchars($draft['title'])?> · <?=htmlspecialchars($draft['period_label'])?>
-              </a>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      </div>
-    <?php endif; ?>
   </div>
-  <?php if ($radarCards): ?>
-    <div class="md-card md-elev-2">
-      <h2 class="md-card-title"><?=t($t,'section_breakdown','Section score radar')?></h2>
-      <p><?=t($t,'section_breakdown_hint','Each radar shows the latest section scores, with earlier submissions layered when available to illustrate progress.')?></p>
-      <div class="md-radar-grid">
-        <?php foreach ($radarCards as $radar): ?>
-          <div class="md-radar-card">
-            <h3 class="md-radar-title"><?=htmlspecialchars($radar['title'], ENT_QUOTES, 'UTF-8')?></h3>
-            <p class="md-radar-meta">
-              <?=t($t,'latest_submission','Latest submission:')?>
-              <?=htmlspecialchars((string)($radar['latest_period'] ?? ''), ENT_QUOTES, 'UTF-8')?>
-              <?php if (!empty($radar['latest_created_at'])): ?>
-                · <?=htmlspecialchars((string)$radar['latest_created_at'], ENT_QUOTES, 'UTF-8')?>
-              <?php endif; ?>
-            </p>
-            <div class="md-radar-canvas">
-              <canvas id="radar-chart-<?=htmlspecialchars($radar['id'], ENT_QUOTES, 'UTF-8')?>" role="img" aria-label="<?=htmlspecialchars(sprintf(t($t,'section_score_chart_alt','Section scores for %s'), $radar['title']), ENT_QUOTES, 'UTF-8')?>"></canvas>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  <?php endif; ?>
   <div class="md-card md-elev-2">
-    <h2 class="md-card-title"><?=t($t,'your_trend','Your Score Trend')?></h2>
-  <?php if ($chartLabels): ?>
-      <div class="trend-chart-wrap">
-        <canvas
-          id="performance-timeline-chart"
-          role="img"
-          aria-label="<?=htmlspecialchars(t($t,'performance_timeline_alt','Line chart showing your performance timeline'), ENT_QUOTES, 'UTF-8')?>"
-        ></canvas>
-      </div>
-  <?php else: ?>
-      <p><?=t($t,'no_trend_data','Submit assessments to generate your performance trend.')?></p>
+    <h2 class="md-card-title"><?=t($t,'submitted_assessments','Submitted Assessments')?></h2>
+    <p><?=t($t,'submitted_assessments_hint','Only submitted and approved assessments are included. Scores are shown per questionnaire and are not averaged across different questionnaires.')?></p>
+    <?php if (count($questionnaireOptions) > 1): ?>
+      <form method="get" class="md-inline-form" action="<?=htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8')?>">
+        <label for="questionnaire-family-filter"><?=t($t,'filter_by_questionnaire','Filter by questionnaire')?></label>
+        <select id="questionnaire-family-filter" name="questionnaire_family">
+          <option value=""><?=t($t,'all_questionnaires','All questionnaires')?></option>
+          <?php foreach ($questionnaireOptions as $familyKey => $questionnaireTitle): ?>
+            <option value="<?=htmlspecialchars($familyKey, ENT_QUOTES, 'UTF-8')?>"<?= $selectedQuestionnaireFamily === $familyKey ? ' selected' : '' ?>><?=htmlspecialchars($questionnaireTitle !== '' ? $questionnaireTitle : $familyKey, ENT_QUOTES, 'UTF-8')?></option>
+          <?php endforeach; ?>
+        </select>
+        <button type="submit" class="md-button md-outline"><?=t($t,'apply_filter','Apply filter')?></button>
+      </form>
+    <?php endif; ?>
+    <?php if ($selectedQuestionnaireTitle !== ''): ?>
+      <p class="md-muted"><?=htmlspecialchars(sprintf(t($t,'questionnaire_filter_active','Showing submitted assessments for %s only.'), $selectedQuestionnaireTitle), ENT_QUOTES, 'UTF-8')?></p>
     <?php endif; ?>
     <table class="md-table">
-      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Asessment Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'proficiency_level','Competency level')?></th><th><?=t($t,'status','Status')?></th><th><?=t($t,'actions','Actions')?></th></tr></thead>
+      <thead><tr><th><?=t($t,'date','Date')?></th><th><?=t($t,'questionnaire','Questionnaire')?></th><th><?=t($t,'performance_period','Assessment Period')?></th><th><?=t($t,'score','Score (%)')?></th><th><?=t($t,'proficiency_level','Competency level')?></th><th><?=t($t,'status','Status')?></th></tr></thead>
       <tbody>
-      <?php foreach ($responses as $r): ?>
+      <?php foreach ($displayResponses as $r): ?>
         <?php
           $statusKey = $r['status'] ?? 'submitted';
           $statusLabel = $statusLabels[$statusKey] ?? ucfirst($statusKey);
@@ -454,9 +307,11 @@ $pageHelpKey = 'workspace.my_performance';
           <td><?= is_null($r['score']) ? '-' : (int)$r['score']?></td>
           <td><?=htmlspecialchars($formatCompetencyLevel($r['score'] ?? null), ENT_QUOTES, 'UTF-8')?></td>
           <td><?=htmlspecialchars($statusLabel)?></td>
-          <td><span class="md-muted">—</span></td>
         </tr>
       <?php endforeach; ?>
+      <?php if (!$displayResponses): ?>
+        <tr><td colspan="6"><?=t($t,'no_submissions_yet','No submissions recorded yet. Complete your first assessment to see insights.')?></td></tr>
+      <?php endif; ?>
       </tbody>
     </table>
   </div>
@@ -515,427 +370,5 @@ $pageHelpKey = 'workspace.my_performance';
     <?php endif; ?>
   </div>
 </section>
-<?php $hasChartJs = !empty($chartLabels) || !empty($radarCards); ?>
-<?php if ($hasChartJs): ?>
-<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
-  (function () {
-    const timelineData = <?=json_encode([
-      'labels' => $chartLabels,
-      'scores' => array_map(static fn($score) => $score === null ? null : (float)$score, $chartScores),
-      'points' => $timelinePoints,
-    ], $chartDataFlags)?>;
-    const radarData = <?=json_encode(array_values($radarCards), $chartDataFlags)?>;
-    const rootStyles = getComputedStyle(document.documentElement);
-
-    const cssVar = (name, fallback) => {
-      const value = rootStyles.getPropertyValue(name);
-      if (value && value.trim()) {
-        return value.trim();
-      }
-      if (fallback) {
-        const fallbackValue = rootStyles.getPropertyValue(fallback);
-        if (fallbackValue && fallbackValue.trim()) {
-          return fallbackValue.trim();
-        }
-      }
-      return '';
-    };
-
-    const radarPalette = [
-      { bg: cssVar('--app-primary-soft'), border: cssVar('--app-primary') },
-      { bg: cssVar('--status-warning-soft'), border: cssVar('--status-warning') },
-      { bg: cssVar('--status-success-soft'), border: cssVar('--status-success') },
-      { bg: cssVar('--status-info-soft'), border: cssVar('--status-info', '--app-secondary') }
-    ].filter((entry) => entry.bg && entry.border);
-    if (!radarPalette.length) {
-      radarPalette.push({ bg: cssVar('--app-primary-soft'), border: cssVar('--app-primary') });
-    }
-
-    const heatStops = [
-      { stop: 0, color: [211, 47, 47] },
-      { stop: 0.5, color: [249, 168, 37] },
-      { stop: 1, color: [46, 125, 50] }
-    ];
-
-    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-    const mix = (start, end, ratio) => Math.round(start + (end - start) * ratio);
-
-    const prepareChartLibrary = (chartLib) => {
-      if (!chartLib) {
-        return null;
-      }
-      if (chartLib.register && Array.isArray(chartLib.registerables) && chartLib.registerables.length) {
-        try {
-          chartLib.register(...chartLib.registerables);
-        } catch (err) {
-          // Ignore duplicate registration errors.
-        }
-      }
-      return chartLib;
-    };
-
-    const parseMajorVersion = (chartLib) => {
-      if (!chartLib || !chartLib.version) {
-        return 0;
-      }
-      const parts = String(chartLib.version).split('.');
-      const major = parseInt(parts[0], 10);
-      return Number.isNaN(major) ? 0 : major;
-    };
-
-    function heatColor(score, alpha = 0.85) {
-      if (typeof score !== 'number' || Number.isNaN(score)) {
-        score = 0;
-      }
-      const normalized = clamp(score / 100, 0, 1);
-      let left = heatStops[0];
-      let right = heatStops[heatStops.length - 1];
-      for (let i = 0; i < heatStops.length - 1; i += 1) {
-        const current = heatStops[i];
-        const next = heatStops[i + 1];
-        if (normalized >= current.stop && normalized <= next.stop) {
-          left = current;
-          right = next;
-          break;
-        }
-      }
-      const range = right.stop - left.stop || 1;
-      const ratio = clamp((normalized - left.stop) / range, 0, 1);
-      const r = mix(left.color[0], right.color[0], ratio);
-      const g = mix(left.color[1], right.color[1], ratio);
-      const b = mix(left.color[2], right.color[2], ratio);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
-    function resolveSegmentScore(context, scores) {
-      const forward = scores[context.p1DataIndex];
-      if (typeof forward === 'number') {
-        return forward;
-      }
-      const backward = scores[context.p0DataIndex];
-      if (typeof backward === 'number') {
-        return backward;
-      }
-      return 0;
-    }
-
-    function renderTimeline(chartLib) {
-      const rawPoints = Array.isArray(timelineData.points) ? timelineData.points : [];
-      let chronological = rawPoints.map((point, index) => {
-        const isoCandidate = typeof point.timestamp_iso === 'string' && point.timestamp_iso
-          ? point.timestamp_iso
-          : (typeof point.timestamp === 'string' ? point.timestamp.replace(' ', 'T') : '');
-        const parsedTime = isoCandidate ? Date.parse(isoCandidate) : Number.NaN;
-        const rawScore = point.score;
-        const numericScore = typeof rawScore === 'number'
-          ? rawScore
-          : (typeof rawScore === 'string' ? Number.parseFloat(rawScore) : Number.NaN);
-        return {
-          label: point.label || '',
-          score: Number.isFinite(numericScore) ? numericScore : null,
-          dateValue: Number.isFinite(parsedTime) ? parsedTime : null,
-          period: point.period || '',
-          questionnaire: point.questionnaire || '',
-          timestamp: point.timestamp || '',
-          index,
-        };
-      });
-
-      if (!chronological.length) {
-        const fallbackLabels = Array.isArray(timelineData.labels) ? timelineData.labels : [];
-        const fallbackScores = Array.isArray(timelineData.scores) ? timelineData.scores : [];
-        chronological = fallbackLabels.map((label, index) => {
-          const rawScore = fallbackScores[index];
-          const numericScore = typeof rawScore === 'number'
-            ? rawScore
-            : (typeof rawScore === 'string' ? Number.parseFloat(rawScore) : Number.NaN);
-          return {
-            label: label || '',
-            score: Number.isFinite(numericScore) ? numericScore : null,
-            dateValue: index,
-            period: '',
-            questionnaire: '',
-            timestamp: '',
-            index,
-          };
-        });
-      }
-
-      if (!chronological.length) {
-        return;
-      }
-
-      chronological.sort((a, b) => {
-        if (a.dateValue !== null && b.dateValue !== null && a.dateValue !== b.dateValue) {
-          return a.dateValue - b.dateValue;
-        }
-        if (a.dateValue !== null && b.dateValue === null) {
-          return -1;
-        }
-        if (a.dateValue === null && b.dateValue !== null) {
-          return 1;
-        }
-        return a.index - b.index;
-      });
-
-      const labels = chronological.map((point) => {
-        if (point.label) {
-          return point.label;
-        }
-        if (point.timestamp) {
-          return point.timestamp;
-        }
-        return '';
-      });
-      const scores = chronological.map((point) => point.score);
-
-      if (!labels.length) {
-        return;
-      }
-
-      const canvas = document.getElementById('performance-timeline-chart');
-      if (!canvas) {
-        return;
-      }
-      const context = canvas.getContext('2d');
-      if (!context) {
-        return;
-      }
-
-      const neutralFill = 'rgba(148, 163, 184, 0.25)';
-      const neutralStroke = 'rgba(148, 163, 184, 0.55)';
-      const barBackground = scores.map((score) => (typeof score === 'number' ? heatColor(score, 0.75) : neutralFill));
-      const barBorders = scores.map((score) => (typeof score === 'number' ? heatColor(score, 0.95) : neutralStroke));
-
-      const dataset = {
-        data: scores,
-        backgroundColor: barBackground,
-        borderColor: barBorders,
-        borderWidth: 1.5,
-      };
-
-      const major = parseMajorVersion(chartLib);
-      const isModern = major >= 3;
-      if (isModern) {
-        dataset.borderRadius = 6;
-      }
-
-      const tooltipFormatter = (index, labelText) => {
-        const point = chronological[index] || {};
-        const valueText = typeof point.score === 'number' ? `${point.score.toFixed(1)}%` : '—';
-        const metaParts = [];
-        if (point.period) {
-          metaParts.push(point.period);
-        }
-        if (point.questionnaire) {
-          metaParts.push(point.questionnaire);
-        }
-        const meta = metaParts.length ? ` (${metaParts.join(' · ')})` : '';
-        return `${labelText}: ${valueText}${meta}`;
-      };
-
-      const gridColor = cssVar('--app-border', '--brand-border') || 'rgba(17, 56, 94, 0.08)';
-      const yAxisLabel = <?=json_encode(t($t,'score','Score (%)'), $chartDataFlags)?>;
-      const xAxisLabel = <?=json_encode(t($t,'performance_period','Asessment Period'), $chartDataFlags)?>;
-
-      let chartConfig;
-      if (isModern) {
-        chartConfig = {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [dataset],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'x',
-            interaction: { intersect: false, mode: 'nearest' },
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: (context) => tooltipFormatter(context.dataIndex, context.label || labels[context.dataIndex] || ''),
-                },
-              },
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 100,
-                ticks: {
-                  callback: (value) => `${value}%`,
-                },
-                title: { display: true, text: yAxisLabel },
-                grid: { color: gridColor },
-              },
-              x: {
-                ticks: { maxRotation: 45, minRotation: 0, autoSkip: false },
-                title: { display: true, text: xAxisLabel },
-                grid: { display: false },
-                reverse: false,
-              },
-            },
-          },
-        };
-      } else {
-        chartConfig = {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [dataset],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            legend: { display: false },
-            tooltips: {
-              callbacks: {
-                label: (tooltipItem) => tooltipFormatter(tooltipItem.index, tooltipItem.label || labels[tooltipItem.index] || ''),
-              },
-              mode: 'nearest',
-              intersect: false,
-            },
-            scales: {
-              yAxes: [{
-                ticks: {
-                  beginAtZero: true,
-                  max: 100,
-                  callback: (value) => `${value}%`,
-                },
-                gridLines: { color: gridColor },
-                scaleLabel: { display: true, labelString: yAxisLabel },
-              }],
-              xAxes: [{
-                ticks: { autoSkip: false, maxRotation: 45, minRotation: 0, reverse: false },
-                gridLines: { display: false },
-                scaleLabel: { display: true, labelString: xAxisLabel },
-              }],
-            },
-          },
-        };
-      }
-
-      new chartLib(canvas, chartConfig);
-    }
-
-    function renderRadars(chartLib) {
-      if (!Array.isArray(radarData) || !radarData.length) {
-        return;
-      }
-      const major = parseMajorVersion(chartLib);
-      const isModern = major >= 3;
-
-      radarData.forEach((card) => {
-        const canvas = document.getElementById(`radar-chart-${card.id}`);
-        if (!canvas || !Array.isArray(card.labels) || !card.labels.length || !Array.isArray(card.layers) || !card.layers.length) {
-          return;
-        }
-
-        const labels = card.labels.map((label) => String(label || ''));
-        const chartDatasets = card.layers.map((layer, index) => {
-          const colors = radarPalette[index % radarPalette.length];
-          const scores = layer.scores && typeof layer.scores === 'object' ? layer.scores : {};
-          const values = labels.map((label) => {
-            const raw = scores[label];
-            const parsed = typeof raw === 'number' ? raw : Number.parseFloat(raw);
-            return Number.isFinite(parsed) ? parsed : null;
-          });
-          const isLatest = index === card.layers.length - 1;
-          return {
-            label: layer.label || card.title || '',
-            data: values,
-            fill: true,
-            backgroundColor: colors.bg,
-            borderColor: colors.border,
-            borderWidth: isLatest ? 3 : 1.5,
-            pointBackgroundColor: colors.border,
-            pointBorderColor: cssVar('--app-surface', '--brand-bg'),
-            pointRadius: isLatest ? 4 : 3,
-            pointHoverRadius: 5,
-          };
-        });
-
-        const radarOptions = {
-          responsive: true,
-          maintainAspectRatio: false,
-        };
-
-        if (isModern) {
-          radarOptions.plugins = {
-            legend: { display: chartDatasets.length > 1, position: 'bottom' },
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  const raw = context.parsed && typeof context.parsed.r === 'number' ? context.parsed.r : context.parsed;
-                  const rounded = typeof raw === 'number' ? raw.toFixed(1) : raw;
-                  const datasetLabel = context.dataset && context.dataset.label ? `${context.dataset.label} · ` : '';
-                  return `${datasetLabel}${context.label}: ${rounded}%`;
-                },
-              },
-            },
-          };
-          radarOptions.scales = {
-            r: {
-              suggestedMin: 0,
-              suggestedMax: 100,
-              ticks: {
-                stepSize: 20,
-                showLabelBackdrop: false,
-                callback: (value) => `${value}%`,
-              },
-              grid: { color: 'rgba(32, 115, 191, 0.15)' },
-              angleLines: { color: 'rgba(32, 115, 191, 0.2)' },
-            },
-          };
-        } else {
-          radarOptions.legend = { display: chartDatasets.length > 1, position: 'bottom' };
-          radarOptions.tooltips = {
-            callbacks: {
-              label: (tooltipItem, data) => {
-                const value = typeof tooltipItem.yLabel === 'number' ? tooltipItem.yLabel.toFixed(1) : tooltipItem.yLabel;
-                const label = tooltipItem.label || '';
-                const dataset = data.datasets && data.datasets[tooltipItem.datasetIndex] ? data.datasets[tooltipItem.datasetIndex] : {};
-                const datasetLabel = dataset.label ? `${dataset.label} · ` : '';
-                return `${datasetLabel}${label}: ${value}%`;
-              },
-            },
-          };
-          radarOptions.scale = {
-            ticks: {
-              beginAtZero: true,
-              min: 0,
-              max: 100,
-              stepSize: 20,
-              showLabelBackdrop: false,
-              callback: (value) => `${value}%`,
-            },
-            gridLines: { color: 'rgba(32, 115, 191, 0.15)' },
-            angleLines: { color: 'rgba(32, 115, 191, 0.2)' },
-          };
-        }
-
-        new chartLib(canvas, {
-          type: 'radar',
-          data: {
-            labels,
-            datasets: chartDatasets,
-          },
-          options: radarOptions,
-        });
-      });
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const chartLib = prepareChartLibrary(window.Chart || null);
-      if (!chartLib) {
-        return;
-      }
-      renderTimeline(chartLib);
-      renderRadars(chartLib);
-    });
-  })();
-</script>
-<?php endif; ?>
 <?php include __DIR__.'/templates/footer.php'; ?>
 </body></html>
