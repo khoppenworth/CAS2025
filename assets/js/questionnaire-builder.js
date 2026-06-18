@@ -2621,9 +2621,54 @@ const Builder = (() => {
     }
   }
 
+  function isElementNode(node) {
+    return Boolean(node && typeof node === 'object' && node.nodeType === 1);
+  }
+
   function findMissingContainer(control) {
-    if (!(control instanceof HTMLElement)) return null;
+    if (!isElementNode(control)) return null;
     return control.closest('.qb-field') || control.closest('.qb-option');
+  }
+
+  function revealValidationTarget(control) {
+    if (!isElementNode(control)) return;
+    const sectionNode = control.closest('.qb-section[data-section]');
+    if (sectionNode?.classList?.contains('is-collapsed')) {
+      const sectionId = sectionNode.getAttribute('data-section');
+      const questionnaire = getActiveQuestionnaire();
+      const section = questionnaire?.sections?.find((entry) => entry.clientId === sectionId);
+      if (questionnaire && section) {
+        setSectionCollapsed(questionnaire, section, false);
+      }
+      sectionNode.classList.remove('is-collapsed');
+      sectionNode.querySelector('[data-role="section-collapse-toggle"]')?.setAttribute('aria-expanded', 'true');
+    }
+
+    const itemNode = control.closest('.qb-item[data-item]');
+    if (itemNode?.classList?.contains('is-collapsed')) {
+      const questionnaire = getActiveQuestionnaire();
+      const itemId = itemNode.getAttribute('data-item');
+      const sectionId = itemNode.getAttribute('data-section') || null;
+      const item = questionnaire ? findItem(questionnaire, sectionId, itemId) : null;
+      if (questionnaire && item) {
+        setItemCollapsed(questionnaire, item, false);
+      }
+      itemNode.classList.remove('is-collapsed');
+      const toggle = itemNode.querySelector('[data-role="item-collapse-toggle"]');
+      toggle?.setAttribute('aria-expanded', 'true');
+      toggle?.setAttribute('data-collapsed', '0');
+    }
+  }
+
+  function focusValidationTarget(control) {
+    if (!isElementNode(control)) return;
+    revealValidationTarget(control);
+    if (typeof control.scrollIntoView === 'function') {
+      control.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (typeof control.focus === 'function') {
+      control.focus({ preventScroll: true });
+    }
   }
 
   function updateMissingContainerState(control) {
@@ -2650,10 +2695,7 @@ const Builder = (() => {
       return true;
     }
     const firstMissing = missingControls[0];
-    if (typeof firstMissing.focus === 'function') {
-      firstMissing.focus({ preventScroll: true });
-      firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    focusValidationTarget(firstMissing);
     renderMessage('Please complete all required fields before saving.', 'error');
     return false;
   }
@@ -2699,15 +2741,12 @@ const Builder = (() => {
     const itemRow = Array.from(document.querySelectorAll('[data-item]'))
       .find((row) => row.getAttribute('data-item') === firstInvalid.clientId);
     const field = itemRow ? itemRow.querySelector('[data-role="item-link"]') : null;
-    if (field instanceof HTMLElement) {
+    if (isElementNode(field)) {
       const container = findMissingContainer(field);
       if (container) {
         container.classList.add('qb-field--missing');
       }
-      if (typeof field.focus === 'function') {
-        field.focus({ preventScroll: true });
-        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      focusValidationTarget(field);
     }
     const message = conflictingItems.length > 0
       ? 'Question Codes must remain unique after form key normalization. Avoid codes that only differ by dots, spaces, underscores, or existing legacy punctuation.'
