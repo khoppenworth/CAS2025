@@ -2,6 +2,61 @@
 $fatalError = null;
 $fatalDebugDetails = null;
 
+if (!function_exists('settings_gender_option_labels')) {
+    function settings_gender_option_labels(array $translations = []): array
+    {
+        if (function_exists('gender_option_labels')) {
+            return gender_option_labels($translations);
+        }
+
+        return [
+            'female' => function_exists('t') ? t($translations, 'female', 'Female') : 'Female',
+            'male' => function_exists('t') ? t($translations, 'male', 'Male') : 'Male',
+            'other' => function_exists('t') ? t($translations, 'other', 'Other') : 'Other',
+            'prefer_not_say' => function_exists('t') ? t($translations, 'prefer_not_say', 'Prefer not to say') : 'Prefer not to say',
+        ];
+    }
+}
+
+if (!function_exists('settings_normalize_gender_options')) {
+    function settings_normalize_gender_options($value): array
+    {
+        if (function_exists('normalize_gender_options')) {
+            return normalize_gender_options($value);
+        }
+
+        $allowed = array_keys(settings_gender_option_labels());
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : array_map('trim', explode(',', $value));
+        }
+        if (!is_array($value)) {
+            $value = ['female', 'male', 'prefer_not_say'];
+        }
+
+        $normalized = [];
+        foreach ($value as $option) {
+            $option = trim((string)$option);
+            if (in_array($option, $allowed, true) && !in_array($option, $normalized, true)) {
+                $normalized[] = $option;
+            }
+        }
+
+        return $normalized !== [] ? $normalized : ['female', 'male', 'prefer_not_say'];
+    }
+}
+
+if (!function_exists('settings_encode_gender_options')) {
+    function settings_encode_gender_options(array $options): string
+    {
+        if (function_exists('encode_gender_options')) {
+            return encode_gender_options($options);
+        }
+
+        $json = json_encode(settings_normalize_gender_options($options));
+        return is_string($json) ? $json : '["female","male","prefer_not_say"]';
+    }
+}
 
 if (!function_exists('settings_sanitize_sql')) {
     function settings_sanitize_sql(string $sql): string
@@ -220,8 +275,8 @@ try {
     $errors = [];
     $enabledLocales = site_enabled_locales($cfg);
     $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
-    $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
-    $genderOptionLabels = gender_option_labels($t);
+    $genderOptions = settings_normalize_gender_options($cfg['gender_options'] ?? []);
+    $genderOptionLabels = settings_gender_option_labels($t);
 
     $emailTemplateDefinitions = [];
     foreach (email_template_registry() as $key => $definition) {
@@ -329,7 +384,7 @@ try {
         if (!is_array($genderOptionsInput)) {
             $genderOptionsInput = [];
         }
-        $selectedGenderOptions = normalize_gender_options($genderOptionsInput);
+        $selectedGenderOptions = settings_normalize_gender_options($genderOptionsInput);
 
         $enabledLocalesInput = $_POST['enabled_locales'] ?? [];
         if (!is_array($enabledLocalesInput)) {
@@ -421,7 +476,7 @@ try {
             'ai_require_human_approval' => $ai_require_human_approval,
             'ai_show_generated_badge' => $ai_show_generated_badge,
             'ai_pii_redaction_enabled' => $ai_pii_redaction_enabled,
-            'gender_options' => encode_gender_options($selectedGenderOptions),
+            'gender_options' => settings_encode_gender_options($selectedGenderOptions),
         ];
 
         if ($aiConnectionAction === 'test') {
@@ -542,7 +597,7 @@ try {
                 $cfg = get_site_config($pdo);
                 $enabledLocales = site_enabled_locales($cfg);
                 $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
-                $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
+                $genderOptions = settings_normalize_gender_options($cfg['gender_options'] ?? []);
             }
         }
         if ($errors !== []) {
@@ -574,19 +629,10 @@ try {
         $emailTemplates = function_exists('default_email_templates') ? default_email_templates() : [];
     }
     if (!isset($genderOptions) || !is_array($genderOptions)) {
-        $genderOptions = function_exists('normalize_gender_options')
-            ? normalize_gender_options($cfg['gender_options'] ?? [])
-            : ['female', 'male', 'prefer_not_say'];
+        $genderOptions = settings_normalize_gender_options($cfg['gender_options'] ?? []);
     }
     if (!isset($genderOptionLabels) || !is_array($genderOptionLabels)) {
-        $genderOptionLabels = function_exists('gender_option_labels')
-            ? gender_option_labels($t)
-            : [
-                'female' => 'Female',
-                'male' => 'Male',
-                'other' => 'Other',
-                'prefer_not_say' => 'Prefer not to say',
-            ];
+        $genderOptionLabels = settings_gender_option_labels($t);
     }
 
     $fatalError = (defined('APP_DEBUG') && APP_DEBUG) ? $e->getMessage() : (function_exists('t') ? t($t, 'unexpected_error_notice', 'An unexpected error occurred while loading the settings.') : 'An unexpected error occurred while loading the settings.');

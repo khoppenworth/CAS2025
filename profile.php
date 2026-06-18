@@ -1,5 +1,49 @@
 <?php
 require_once __DIR__ . '/config.php';
+if (!function_exists('profile_gender_option_labels')) {
+    function profile_gender_option_labels(array $translations = []): array
+    {
+        if (function_exists('gender_option_labels')) {
+            return gender_option_labels($translations);
+        }
+
+        return [
+            'female' => function_exists('t') ? t($translations, 'female', 'Female') : 'Female',
+            'male' => function_exists('t') ? t($translations, 'male', 'Male') : 'Male',
+            'other' => function_exists('t') ? t($translations, 'other', 'Other') : 'Other',
+            'prefer_not_say' => function_exists('t') ? t($translations, 'prefer_not_say', 'Prefer not to say') : 'Prefer not to say',
+        ];
+    }
+}
+
+if (!function_exists('profile_normalize_gender_options')) {
+    function profile_normalize_gender_options($value): array
+    {
+        if (function_exists('normalize_gender_options')) {
+            return normalize_gender_options($value);
+        }
+
+        $allowed = array_keys(profile_gender_option_labels());
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : array_map('trim', explode(',', $value));
+        }
+        if (!is_array($value)) {
+            $value = ['female', 'male', 'prefer_not_say'];
+        }
+
+        $normalized = [];
+        foreach ($value as $option) {
+            $option = trim((string)$option);
+            if (in_array($option, $allowed, true) && !in_array($option, $normalized, true)) {
+                $normalized[] = $option;
+            }
+        }
+
+        return $normalized !== [] ? $normalized : ['female', 'male', 'prefer_not_say'];
+    }
+}
+
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/lib/department_teams.php';
 }
@@ -15,8 +59,8 @@ $error = '';
 $workFunctionOptions = work_function_choices($pdo);
 $departmentOptions = department_options($pdo);
 $teamCatalog = department_team_catalog($pdo);
-$genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
-$genderLabels = gender_option_labels($t);
+$genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
+$genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
 $forcePasswordReset = !empty($user['must_reset_password']);

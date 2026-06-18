@@ -1109,6 +1109,8 @@ function ensure_users_schema(PDO $pdo): void
     }
 
     $changes = [
+        'gender' => "ALTER TABLE users ADD COLUMN gender ENUM('female','male','other','prefer_not_say') NULL AFTER email",
+        'date_of_birth' => 'ALTER TABLE users ADD COLUMN date_of_birth DATE NULL AFTER gender',
         'account_status' => "ALTER TABLE users ADD COLUMN account_status ENUM('pending','active','disabled') NOT NULL DEFAULT 'active' AFTER language",
         'must_reset_password' => "ALTER TABLE users ADD COLUMN must_reset_password TINYINT(1) NOT NULL DEFAULT 0 AFTER account_status",
         'next_assessment_date' => 'ALTER TABLE users ADD COLUMN next_assessment_date DATE NULL AFTER account_status',
