@@ -276,6 +276,20 @@ class FakeDocument {
   if (!source.includes("[data-role=\"items\"], [data-role=\"root-items\"]")) {
     throw new Error('expected root-items sortable selector to exist');
   }
+  if (!source.includes('function focusValidationTarget(control)')) {
+    throw new Error('expected validation failures to use a shared focus helper');
+  }
+  if (!source.includes('revealValidationTarget(control)')) {
+    throw new Error('expected validation failures to reveal collapsed targets before focusing');
+  }
+
+  const css = fs.readFileSync('assets/css/questionnaire-builder.css', 'utf8');
+  if (!/\.qb-items\s*\{[\s\S]*?max-height:\s*none;/.test(css)) {
+    throw new Error('expected expanded section item lists to avoid fixed max-height clipping');
+  }
+  if (!/\.qb-item-secondary\s*\{[\s\S]*?max-height:\s*none;/.test(css)) {
+    throw new Error('expected expanded question option panels to avoid fixed max-height clipping');
+  }
 
   console.log('questionnaire_builder.test.js: ok');
 })();

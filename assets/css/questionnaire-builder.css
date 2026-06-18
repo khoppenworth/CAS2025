@@ -1014,10 +1014,18 @@
 
 .qb-items,
 .qb-section-actions {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.qb-items {
+  overflow: visible;
+  max-height: none;
+}
+
+.qb-section-actions {
   overflow: hidden;
   max-height: 1200px;
-  opacity: 1;
-  transition: max-height 0.22s ease, opacity 0.2s ease;
 }
 
 .qb-section.is-collapsed .qb-section-main,
@@ -1246,17 +1254,17 @@
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  overflow: hidden;
-  max-height: 1400px;
+  overflow: visible;
+  max-height: none;
   opacity: 1;
-  transition: max-height 0.22s ease, opacity 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .qb-item-secondary {
-  overflow: hidden;
-  max-height: 1200px;
+  overflow: visible;
+  max-height: none;
   opacity: 1;
-  transition: max-height 0.22s ease, opacity 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .qb-item.is-collapsed .qb-item-main-content,
