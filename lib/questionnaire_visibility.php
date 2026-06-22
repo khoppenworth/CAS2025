@@ -31,8 +31,8 @@ function questionnaire_rows_by_id(array $rows): array
 /**
  * Return the published questionnaires that the supplied user may access.
  *
- * Staff receive department defaults, team defaults, legacy work-function
- * defaults, or direct assignments. Supervisors and admins are intentionally
+ * Staff and admins receive department defaults, team defaults, legacy
+ * work-function defaults, or direct assignments. Supervisors are intentionally
  * limited to direct assignments for submission access. On lookup errors, users
  * never fall back to every published questionnaire; they only receive
  * assignments that can still be proven.
@@ -45,10 +45,11 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
     $departmentAssigned = [];
     $teamAssigned = [];
     $directAssigned = [];
-    $isStaff = (($user['role'] ?? '') === 'staff');
+    $role = (string)($user['role'] ?? '');
+    $usesProfileAssignments = in_array($role, ['staff', 'admin'], true);
     $workRole = user_questionnaire_work_role($pdo, $user);
 
-    if ($isStaff) {
+    if ($usesProfileAssignments) {
         $rawDepartment = trim((string)($user['department'] ?? ''));
         $department = function_exists('resolve_department_slug')
             ? resolve_department_slug($pdo, $rawDepartment)
@@ -146,9 +147,6 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
         error_log('available_questionnaires_for_user direct assignment lookup failed: ' . $e->getMessage());
     }
 
-    if ($isStaff) {
-        $directAssigned = questionnaire_rows_by_id(filter_questionnaires_by_work_role($pdo, $directAssigned, $workRole));
-    }
     $assigned = $departmentAssigned + $teamAssigned + $directAssigned;
 
     return array_values($assigned);
