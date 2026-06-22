@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS site_config (
   color_theme VARCHAR(50) NOT NULL DEFAULT 'light',
   brand_color VARCHAR(7) NULL,
   local_login_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  self_registration_enabled TINYINT(1) NOT NULL DEFAULT 1,
   enabled_locales TEXT NULL,
   upgrade_repo VARCHAR(255) NULL,
   review_enabled TINYINT(1) NOT NULL DEFAULT 1,
@@ -660,6 +661,22 @@ SET @sc_local_login_enabled_sql = IF(
   'DO 1'
 );
 PREPARE stmt FROM @sc_local_login_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_self_registration_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'self_registration_enabled'
+);
+SET @sc_self_registration_enabled_sql = IF(
+  @sc_self_registration_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN self_registration_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER local_login_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_self_registration_enabled_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
@@ -1253,6 +1270,7 @@ INSERT IGNORE INTO site_config (
   color_theme,
   brand_color,
   local_login_enabled,
+  self_registration_enabled,
   smtp_enabled,
   smtp_host,
   smtp_port,
@@ -1316,6 +1334,7 @@ INSERT IGNORE INTO site_config (
   'common',
   'light',
   NULL,
+  1,
   1,
   0,
   NULL,

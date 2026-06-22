@@ -198,6 +198,7 @@ $expectedSchemas = [
         'color_theme' => ['type' => 'varchar', 'null' => 'NO', 'default' => 'light'],
         'brand_color' => ['type' => 'varchar(7)', 'null' => 'YES'],
         'local_login_enabled' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
+        'self_registration_enabled' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '1'],
         'smtp_enabled' => ['type' => 'tinyint', 'null' => 'NO', 'default' => '0'],
         'smtp_host' => ['type' => 'varchar', 'null' => 'YES'],
         'smtp_port' => ['type' => 'int', 'null' => 'YES'],
