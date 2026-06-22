@@ -238,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'submit_final';
     $isDraftSave = ($action === 'save_draft');
     $autoApprove = (!$reviewEnabled) && !$isDraftSave;
-    if (($user['role'] ?? '') !== 'admin' && !in_array($qid, $availableQuestionnaireIds, true)) {
+    if (!in_array($qid, $availableQuestionnaireIds, true)) {
         $err = t($t, 'invalid_questionnaire_selection', 'The selected questionnaire is not available.');
     } elseif (!$periodId) {
         $err = t($t,'select_period','Please select a performance period.');

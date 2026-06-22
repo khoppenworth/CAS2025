@@ -31,34 +31,25 @@ function questionnaire_rows_by_id(array $rows): array
 /**
  * Return the published questionnaires that the supplied user may access.
  *
- * Admins can see every published questionnaire. Staff only receive department
- * defaults, legacy work-function defaults, or direct assignments. Supervisors
- * are intentionally limited to direct assignments unless they are promoted to
- * admin. On lookup errors, non-admin users never fall back to every published
- * questionnaire; they only receive assignments that can still be proven.
+ * Staff and admins receive department defaults, team defaults, legacy
+ * work-function defaults, or direct assignments. Supervisors are intentionally
+ * limited to direct assignments for submission access. On lookup errors, users
+ * never fall back to every published questionnaire; they only receive
+ * assignments that can still be proven.
  *
  * @param array<string,mixed> $user
  * @return list<array<string,mixed>>
  */
 function available_questionnaires_for_user(PDO $pdo, array $user): array
 {
-    if (($user['role'] ?? '') === 'admin') {
-        try {
-            $stmt = $pdo->query("SELECT id, title FROM questionnaire WHERE status='published' ORDER BY title");
-            return $stmt ? array_values($stmt->fetchAll(PDO::FETCH_ASSOC)) : [];
-        } catch (PDOException $e) {
-            error_log('available_questionnaires_for_user admin lookup failed: ' . $e->getMessage());
-            return [];
-        }
-    }
-
     $departmentAssigned = [];
     $teamAssigned = [];
     $directAssigned = [];
-    $isStaff = (($user['role'] ?? '') === 'staff');
+    $role = (string)($user['role'] ?? '');
+    $usesProfileAssignments = in_array($role, ['staff', 'admin'], true);
     $workRole = user_questionnaire_work_role($pdo, $user);
 
-    if ($isStaff) {
+    if ($usesProfileAssignments) {
         $rawDepartment = trim((string)($user['department'] ?? ''));
         $department = function_exists('resolve_department_slug')
             ? resolve_department_slug($pdo, $rawDepartment)
@@ -156,7 +147,6 @@ function available_questionnaires_for_user(PDO $pdo, array $user): array
         error_log('available_questionnaires_for_user direct assignment lookup failed: ' . $e->getMessage());
     }
 
-    $directAssigned = questionnaire_rows_by_id(filter_questionnaires_by_work_role($pdo, $directAssigned, $workRole));
     $assigned = $departmentAssigned + $teamAssigned + $directAssigned;
 
     return array_values($assigned);
