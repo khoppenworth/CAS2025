@@ -22,7 +22,7 @@ $pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES
 $pdo->exec("INSERT INTO users (id, department, cadre) VALUES (10, 'finance', 'Grants'), (11, 'finance', 'Accounting')");
 $pdo->exec("INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES (1, 'finance'), (2, 'hrm'), (4, 'finance')");
 $pdo->exec("INSERT INTO questionnaire_team (questionnaire_id, team_slug) VALUES (5, 'grants')");
-$pdo->exec("INSERT INTO questionnaire_assignment (staff_id, questionnaire_id) VALUES (20, 2)");
+$pdo->exec("INSERT INTO questionnaire_assignment (staff_id, questionnaire_id) VALUES (20, 2), (1, 4), (1, 2), (1, 3)");
 $pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (4, 'director')");
 
 $financeStaff = [
@@ -66,8 +66,15 @@ if ($directIds !== [2]) {
 
 $admin = ['id' => 1, 'role' => 'admin'];
 $adminIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $admin));
-if ($adminIds !== [4, 5, 1, 2]) {
-    fwrite(STDERR, 'Admins should see all published questionnaires ordered by title. Got: ' . json_encode($adminIds) . PHP_EOL);
+if ($adminIds !== [4, 2]) {
+    fwrite(STDERR, 'Admins should only see directly assigned published questionnaires ordered by title. Got: ' . json_encode($adminIds) . PHP_EOL);
+    exit(1);
+}
+
+$unassignedAdmin = ['id' => 2, 'role' => 'admin'];
+$unassignedAdminIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $unassignedAdmin));
+if ($unassignedAdminIds !== []) {
+    fwrite(STDERR, 'Admins without direct assignments should not see questionnaires. Got: ' . json_encode($unassignedAdminIds) . PHP_EOL);
     exit(1);
 }
 
