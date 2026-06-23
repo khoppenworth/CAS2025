@@ -460,7 +460,20 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-defaults-meta { color: #6b7280; font-size: .86rem; font-weight: 500; }
   .md-work-function-row { margin-bottom: .6rem; }
   .md-compact-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: flex-end; }
-  .md-compact-actions .md-field { margin: 0; flex: 1 1 220px; }
+  .md-compact-actions .md-field { margin: 0; flex: 1 1 220px; min-width: 0; }
+  .md-compact-actions .md-field span,
+  .md-compact-actions .md-field input,
+  .md-compact-actions .md-field select,
+  .md-assignment-options span,
+  .md-table td,
+  .md-table th {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .md-table {
+    table-layout: fixed;
+    width: 100%;
+  }
   .md-work-function-row .md-button, .md-compact-actions .md-button { padding: .38rem .68rem; min-height: 32px; line-height: 1.1; font-size: .88rem; white-space: nowrap; align-self: flex-end; }
   .md-assignment-picker details { border: 1px dashed rgba(0,0,0,.14); border-radius: 8px; margin-bottom: .55rem; }
   .md-assignment-picker summary { padding: .5rem .7rem; cursor: pointer; font-weight: 600; }
@@ -478,7 +491,14 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-list-head { background: #f8fafc; border-bottom: 1px solid rgba(0,0,0,.08); font-size: .81rem; text-transform: uppercase; color: #6b7280; letter-spacing: .03em; font-weight: 700; }
   .md-list-row { border-bottom: 1px solid rgba(0,0,0,.08); font-size: .93rem; }
   .md-list-row:last-child { border-bottom: 0; }
-  .md-list-col code { font-size: .85rem; }
+  .md-list-col,
+  .md-list-col code,
+  .md-list-head > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .md-list-col code { font-size: .85rem; white-space: normal; }
   .md-list-department { grid-template-columns: minmax(150px,1.2fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
   .md-list-team { grid-template-columns: minmax(140px,1fr) minmax(140px,1fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
   .md-list-role { grid-template-columns: minmax(150px,1.2fr) minmax(120px,.9fr) minmax(90px,.6fr) minmax(150px,1fr); }
@@ -498,6 +518,8 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
   .md-saving-indicator { display: none; margin-left: .45rem; font-size: .78rem; color: #6b7280; }
   .md-list-row.is-saving .md-saving-indicator { display: inline-block; }
   .md-list-row.is-saving { opacity: .72; }
+  .md-form-saving { display: none; flex: 0 1 auto; align-self: center; color: #6b7280; font-size: .86rem; overflow-wrap: anywhere; }
+  form.is-saving .md-form-saving { display: inline-block; }
   @media (max-width: 900px) {
     .md-list-head { display: none; }
     .md-list-row { grid-template-columns: 1fr !important; gap: .35rem; }
@@ -854,6 +876,9 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     var postForms = document.querySelectorAll('form[method="post"]');
     postForms.forEach(function (form) {
       form.addEventListener('submit', function () {
+        if (form.classList.contains('is-saving')) {
+          return;
+        }
         var input = form.querySelector('input[name="current_tab"]');
         if (!input) {
           input = document.createElement('input');
@@ -862,6 +887,19 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
           form.appendChild(input);
         }
         input.value = activePaneId || 'departments';
+        form.classList.add('is-saving');
+        var savingMessage = form.querySelector('.md-form-saving');
+        if (!savingMessage) {
+          savingMessage = document.createElement('span');
+          savingMessage.className = 'md-form-saving';
+          savingMessage.setAttribute('aria-live', 'polite');
+          savingMessage.textContent = 'Saving…';
+          form.appendChild(savingMessage);
+        }
+        var submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        submitButtons.forEach(function (button) {
+          button.disabled = true;
+        });
       });
     });
     var assignmentTables = document.querySelectorAll('.md-assignment-picker table');
