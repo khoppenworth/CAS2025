@@ -53,6 +53,12 @@ if (!function_exists('ensure_questionnaire_department_schema')) {
     {
     }
 }
+
+if (!function_exists('ensure_questionnaire_team_schema')) {
+    function ensure_questionnaire_team_schema(PDO $pdo): void
+    {
+    }
+}
 if (!function_exists('department_catalog')) {
     function department_catalog(PDO $pdo): array
     {
@@ -628,6 +634,7 @@ function initialize_database_schema(PDO $pdo): void
     ensure_work_function_catalog($pdo);
     ensure_department_team_catalog($pdo);
     ensure_questionnaire_department_schema($pdo);
+    ensure_questionnaire_team_schema($pdo);
     ensure_questionnaire_assignment_schema($pdo);
     ensure_annual_performance_periods($pdo);
     ensure_analytics_report_schedule_schema($pdo);
