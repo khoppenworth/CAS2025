@@ -871,5 +871,17 @@
   "enable_scheduled_assessments_tile": "የታቀዱ ግምገማዎችን ካርድ አሳይ",
   "scheduled_assessments_disabled": "የታቀዱ ግምገማዎች በአሁኑ ጊዜ ተዘግተዋል።",
   "scheduled_assessments_tile_hint": "ይህን ካርድ በማንቃት ሱፐርቫይዘሮችና አስተዳዳሪዎች ለንቁ ሰራተኞች ቀጣይ የግምገማ ቀኖችን እንዲያቅዱ ይፍቀዱ።",
-  "invalid_experience_band_order": "ጠቅላላ የስራ ልምድ ከEPSS ልምድ ጋር እኩል ወይም በላይ መሆን አለበት።"
+  "invalid_experience_band_order": "ጠቅላላ የስራ ልምድ ከEPSS ልምድ ጋር እኩል ወይም በላይ መሆን አለበት።",
+  "assessment_timer_settings": "የግምገማ ሰዓት ቆጣሪ",
+  "assessment_timer_settings_hint": "በግምገማ ማስገባት ጊዜ የሚታይ ቆጠራን እንደ አማራጭ ያሳያል። የመጀመሪያው ሁነታ የጊዜ ማብቂያ መልእክት ብቻ ያሳያል፤ መጠይቁን አይቆልፍም፣ አያስቀምጥም፣ አያስገባም፣ ነጥብ አይሰጥም ወይም ያልተጠናቀቁ መጠይቆችን በሪፖርት አያካትትም።",
+  "assessment_timer_enable": "የግምገማ ሰዓት ቆጣሪን አንቃ",
+  "assessment_timer_minutes": "የሰዓት ቆጣሪ ቆይታ (ደቂቃ)",
+  "assessment_timer_warning_minutes": "የማስጠንቀቂያ ገደብ (ደቂቃ)",
+  "assessment_timer_expiry_behavior": "ሰዓት ቆጣሪው ወደ ዜሮ ሲደርስ",
+  "assessment_timer_expiry_message_only": "የማብቂያ መልእክት ብቻ አሳይ",
+  "assessment_timer_message_only_hint": "ይህ የመጀመሪያ ልቀት መረጃ ለማሳየት ብቻ ነው፤ መስኮችን አይቆልፍም፣ በራስ-ሰር አያስቀምጥም፣ በራስ-ሰር አያስገባም፣ አስፈላጊ ጥያቄዎችን አያልፍም፣ ነጥብና ሪፖርቶችን አይቀይርም።",
+  "assessment_timer_time_remaining": "የቀረው ጊዜ",
+  "assessment_timer_expired": "ጊዜው አልቋል",
+  "assessment_timer_expired_message_only_notice": "ሰዓት ቆጣሪው አልቋል። አሁንም መመርመር፣ እንደ ረቂቅ ማስቀመጥ ወይም ሲዘጋጁ ማስገባት ይችላሉ።",
+  "assessment_timer_visual_only_badge": "የሚታይ ቆጣሪ ብቻ"
 }

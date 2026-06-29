@@ -16,6 +16,13 @@ $err = '';
 $flashNotice = '';
 $cfg = get_site_config($pdo);
 $reviewEnabled = (int)($cfg['review_enabled'] ?? 1) === 1;
+$assessmentTimerEnabled = (int)($cfg['assessment_timer_enabled'] ?? 0) === 1;
+$assessmentTimerMinutes = max(1, min(480, (int)($cfg['assessment_timer_minutes'] ?? 60)));
+$assessmentTimerWarningMinutes = max(1, min($assessmentTimerMinutes, (int)($cfg['assessment_timer_warning_minutes'] ?? 5)));
+$assessmentTimerExpiryBehavior = (string)($cfg['assessment_timer_expiry_behavior'] ?? 'message_only');
+if ($assessmentTimerExpiryBehavior !== 'message_only') {
+    $assessmentTimerExpiryBehavior = 'message_only';
+}
 $userManualUrl = 'https://github.com/khoppenworth/CAS2025/blob/main/docs/Competency%20Assessment%20System%20End-User%20Manual.pdf';
 
 $supportsItemConditions = false;
@@ -911,6 +918,28 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
   </div>
   <?php if ($flashNotice): ?><div class="md-alert success"><?=htmlspecialchars($flashNotice, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
   <?php if (!empty($err)): ?><div class="md-alert error"><?=htmlspecialchars($err, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if ($assessmentTimerEnabled && $qid && !empty($availablePeriods)): ?>
+    <div
+      class="md-assessment-timer"
+      data-assessment-timer
+      data-duration-minutes="<?=htmlspecialchars((string)$assessmentTimerMinutes, ENT_QUOTES, 'UTF-8')?>"
+      data-warning-minutes="<?=htmlspecialchars((string)$assessmentTimerWarningMinutes, ENT_QUOTES, 'UTF-8')?>"
+      data-expiry-behavior="<?=htmlspecialchars($assessmentTimerExpiryBehavior, ENT_QUOTES, 'UTF-8')?>"
+      data-storage-key="<?=htmlspecialchars('assessment_timer_deadline:' . (int)($user['id'] ?? 0) . ':' . (int)$qid . ':' . (int)$periodId, ENT_QUOTES, 'UTF-8')?>"
+      data-time-remaining-label="<?=htmlspecialchars(t($t, 'assessment_timer_time_remaining', 'Time remaining'), ENT_QUOTES, 'UTF-8')?>"
+      data-expired-label="<?=htmlspecialchars(t($t, 'assessment_timer_expired', 'Time expired'), ENT_QUOTES, 'UTF-8')?>"
+      data-expired-message="<?=htmlspecialchars(t($t, 'assessment_timer_expired_message_only_notice', 'The timer has ended. You can still review, save a draft, or submit when ready.'), ENT_QUOTES, 'UTF-8')?>"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="md-assessment-timer__content">
+        <span class="md-assessment-timer__label" data-timer-label><?=htmlspecialchars(t($t, 'assessment_timer_time_remaining', 'Time remaining'), ENT_QUOTES, 'UTF-8')?></span>
+        <strong class="md-assessment-timer__value" data-timer-value>--:--</strong>
+        <span class="md-assessment-timer__mode"><?=htmlspecialchars(t($t, 'assessment_timer_visual_only_badge', 'Visual timer only'), ENT_QUOTES, 'UTF-8')?></span>
+      </div>
+      <p class="md-assessment-timer__message" data-timer-message hidden></p>
+    </div>
+  <?php endif; ?>
   <form method="get" class="md-inline-form" action="<?=htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8')?>" data-questionnaire-form>
     <label class="md-field">
       <span><?=t($t,'select_questionnaire','Select questionnaire')?></span>
@@ -1094,6 +1123,65 @@ $renderQuestionField = static function (array $it, array $t, array $answers) use
       return;
     }
     const form = selectorForm || assessmentForm;
+
+    const assessmentTimer = document.querySelector('[data-assessment-timer]');
+    if (assessmentTimer) {
+      const timerValue = assessmentTimer.querySelector('[data-timer-value]');
+      const timerLabel = assessmentTimer.querySelector('[data-timer-label]');
+      const timerMessage = assessmentTimer.querySelector('[data-timer-message]');
+      const durationMinutes = Math.max(1, Number.parseInt(assessmentTimer.dataset.durationMinutes || '60', 10) || 60);
+      const warningMinutes = Math.max(1, Number.parseInt(assessmentTimer.dataset.warningMinutes || '5', 10) || 5);
+      const storageKey = assessmentTimer.dataset.storageKey || '';
+      const durationMs = durationMinutes * 60 * 1000;
+      const warningMs = Math.min(durationMs, warningMinutes * 60 * 1000);
+      const now = Date.now();
+      let deadline = now + durationMs;
+      try {
+        const storedDeadline = storageKey ? Number.parseInt(window.localStorage.getItem(storageKey) || '', 10) : NaN;
+        if (Number.isFinite(storedDeadline) && storedDeadline > now) {
+          deadline = storedDeadline;
+        } else if (storageKey) {
+          window.localStorage.setItem(storageKey, String(deadline));
+        }
+      } catch (err) {
+        // Continue with an in-memory timer if browser storage is unavailable.
+      }
+
+      const formatRemaining = (milliseconds) => {
+        const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const pad = (value) => String(value).padStart(2, '0');
+        if (hours > 0) {
+          return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+        }
+        return `${pad(minutes)}:${pad(seconds)}`;
+      };
+
+      const renderTimer = () => {
+        const remaining = deadline - Date.now();
+        if (timerValue) {
+          timerValue.textContent = formatRemaining(remaining);
+        }
+        assessmentTimer.classList.toggle('is-warning', remaining > 0 && remaining <= warningMs);
+        const expired = remaining <= 0;
+        assessmentTimer.classList.toggle('is-expired', expired);
+        if (expired) {
+          if (timerLabel) {
+            timerLabel.textContent = assessmentTimer.dataset.expiredLabel || 'Time expired';
+          }
+          if (timerMessage) {
+            timerMessage.textContent = assessmentTimer.dataset.expiredMessage || '';
+            timerMessage.hidden = false;
+          }
+          return;
+        }
+        window.setTimeout(renderTimer, remaining > 60000 ? 10000 : 1000);
+      };
+
+      renderTimer();
+    }
     const questionnaireSelect = selectorForm ? selectorForm.querySelector('[data-questionnaire-select]') : null;
     const periodSelect = selectorForm ? selectorForm.querySelector('[data-performance-period-select]') : null;
     const responseForm = assessmentForm;

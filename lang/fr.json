@@ -867,5 +867,17 @@
   "enable_scheduled_assessments_tile": "Afficher la tuile Évaluations planifiées",
   "scheduled_assessments_disabled": "Les évaluations planifiées sont actuellement désactivées.",
   "scheduled_assessments_tile_hint": "Activez cette tuile pour permettre aux superviseurs et administrateurs de planifier les prochaines dates d’évaluation du personnel actif.",
-  "invalid_experience_band_order": "L'expérience totale doit être égale ou supérieure à l'expérience EPSS."
+  "invalid_experience_band_order": "L'expérience totale doit être égale ou supérieure à l'expérience EPSS.",
+  "assessment_timer_settings": "Minuteur d’évaluation",
+  "assessment_timer_settings_hint": "Affiche éventuellement un compte à rebours visuel pendant l’envoi de l’évaluation. Le mode initial affiche seulement un message d’expiration et ne verrouille pas, n’enregistre pas, ne soumet pas, ne note pas et n’inclut pas les questionnaires incomplets dans les rapports.",
+  "assessment_timer_enable": "Activer le minuteur d’évaluation",
+  "assessment_timer_minutes": "Durée du minuteur (minutes)",
+  "assessment_timer_warning_minutes": "Seuil d’alerte (minutes)",
+  "assessment_timer_expiry_behavior": "Lorsque le minuteur atteint zéro",
+  "assessment_timer_expiry_message_only": "Afficher seulement un message d’expiration",
+  "assessment_timer_message_only_hint": "Cette première version est uniquement informative : elle ne verrouille pas les champs, n’enregistre pas automatiquement, ne soumet pas automatiquement, ne contourne pas les questions obligatoires et ne modifie pas les notes ni les rapports.",
+  "assessment_timer_time_remaining": "Temps restant",
+  "assessment_timer_expired": "Temps écoulé",
+  "assessment_timer_expired_message_only_notice": "Le minuteur est terminé. Vous pouvez encore vérifier, enregistrer un brouillon ou soumettre lorsque vous êtes prêt.",
+  "assessment_timer_visual_only_badge": "Minuteur visuel seulement"
 }

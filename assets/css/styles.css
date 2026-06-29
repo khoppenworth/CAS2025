@@ -4627,3 +4627,68 @@ body.theme-dark.md-bg:not(.landing-body) {
   color: var(--app-text-secondary, var(--md-muted));
   font-weight: 600;
 }
+
+.md-assessment-timer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(32, 115, 191, 0.24);
+  border-radius: 16px;
+  background: rgba(32, 115, 191, 0.08);
+  color: var(--app-text-primary, #12324f);
+}
+
+.md-assessment-timer__content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.85rem;
+}
+
+.md-assessment-timer__label {
+  font-weight: 700;
+}
+
+.md-assessment-timer__value {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  letter-spacing: 0.04em;
+  color: var(--app-primary, #2073bf);
+}
+
+.md-assessment-timer__mode {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  background: rgba(32, 115, 191, 0.12);
+  color: var(--app-primary, #2073bf);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.md-assessment-timer__message {
+  margin: 0;
+  color: var(--app-text-secondary, #4b6078);
+  font-weight: 600;
+}
+
+.md-assessment-timer.is-warning {
+  border-color: rgba(217, 119, 6, 0.4);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.md-assessment-timer.is-warning .md-assessment-timer__value {
+  color: #b45309;
+}
+
+.md-assessment-timer.is-expired {
+  border-color: rgba(185, 28, 28, 0.36);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.md-assessment-timer.is-expired .md-assessment-timer__value,
+.md-assessment-timer.is-expired .md-assessment-timer__label {
+  color: #b91c1c;
+}
