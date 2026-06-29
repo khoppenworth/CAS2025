@@ -53,12 +53,48 @@ if ($teamDepartment !== 'finance') {
     exit(1);
 }
 
+
+$labelOnly = validate_department_catalog_import_payload([
+    'departments' => [
+        ['label' => 'Operations & Planning'],
+    ],
+    'teams' => [
+        ['label' => 'Rapid Response Team', 'department' => 'Operations & Planning'],
+    ],
+]);
+if (!$labelOnly['valid'] || !isset($labelOnly['departments']['operations_planning'], $labelOnly['teams']['rapid_response_team'])) {
+    fwrite(STDERR, 'Expected label-only mixed-case imports to normalize into slugs.' . PHP_EOL);
+    exit(1);
+}
+if (($labelOnly['teams']['rapid_response_team']['department_slug'] ?? '') !== 'operations_planning') {
+    fwrite(STDERR, 'Expected team department labels to resolve against imported department labels.' . PHP_EOL);
+    exit(1);
+}
+
 $invalid = validate_department_catalog_import_payload([
     'departments' => [['slug' => 'finance', 'label' => 'Finance'], ['slug' => 'finance', 'label' => 'Duplicate']],
     'teams' => [['slug' => 'orphan_team', 'department_slug' => 'missing', 'label' => 'Orphan']],
 ]);
 if ($invalid['valid'] || count($invalid['errors']) < 2) {
     fwrite(STDERR, 'Expected duplicate departments and missing team department to be rejected.' . PHP_EOL);
+    exit(1);
+}
+
+
+$invalidMetadata = validate_department_catalog_import_payload([
+    'departments' => [
+        ['slug' => 'bad_metadata', 'label' => 'Bad Metadata', 'sort_order' => -1, 'archived_at' => 'not-a-date'],
+    ],
+    'teams' => [],
+]);
+if ($invalidMetadata['valid'] || count($invalidMetadata['errors']) < 2) {
+    fwrite(STDERR, 'Expected invalid date and negative sort order to be rejected.' . PHP_EOL);
+    exit(1);
+}
+
+$emptyImport = validate_department_catalog_import_payload(['departments' => [], 'teams' => []]);
+if ($emptyImport['valid']) {
+    fwrite(STDERR, 'Expected empty imports to be rejected.' . PHP_EOL);
     exit(1);
 }
 

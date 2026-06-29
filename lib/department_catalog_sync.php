@@ -5,6 +5,9 @@ if (defined('APP_DEPARTMENT_CATALOG_SYNC_LOADED')) {
     return;
 }
 define('APP_DEPARTMENT_CATALOG_SYNC_LOADED', true);
+const DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH = 255;
+const DEPARTMENT_CATALOG_SYNC_MAX_SLUG_LENGTH = 120;
+const DEPARTMENT_CATALOG_SYNC_MAX_UPLOAD_BYTES = 2097152;
 
 /** @return array{version:int,exported_at:string,departments:array<int,array<string,mixed>>,teams:array<int,array<string,mixed>>} */
 function department_catalog_export_payload(PDO $pdo): array
@@ -40,15 +43,23 @@ function department_catalog_export_payload(PDO $pdo): array
 
 function department_catalog_export_json(PDO $pdo): string
 {
-    return (string)json_encode(department_catalog_export_payload($pdo), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    try {
+        return json_encode(department_catalog_export_payload($pdo), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        throw new RuntimeException('Unable to encode department/team catalog export JSON.', 0, $e);
+    }
 }
 
 /** @return array<string,mixed> */
 function parse_department_catalog_import_json(string $json): array
 {
-    $data = json_decode($json, true);
+    try {
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        throw new InvalidArgumentException('The import file must be valid JSON: ' . $e->getMessage(), 0, $e);
+    }
     if (!is_array($data)) {
-        throw new InvalidArgumentException('The import file must be valid JSON.');
+        throw new InvalidArgumentException('The import file must be a JSON object.');
     }
     return $data;
 }
@@ -67,35 +78,46 @@ function validate_department_catalog_import_payload(array $payload): array
         $errors[] = 'The import file must include a teams array.';
         $teamsRaw = [];
     }
+    if ($departmentsRaw === [] && $teamsRaw === []) {
+        $errors[] = 'The import file does not contain any departments or teams.';
+    }
 
     $departments = [];
+    $departmentLabels = [];
     foreach ($departmentsRaw as $index => $row) {
         if (!is_array($row)) {
             $errors[] = 'Department row ' . ((int)$index + 1) . ' must be an object.';
             continue;
         }
-        $slug = trim((string)($row['slug'] ?? ''));
-        $label = trim((string)($row['label'] ?? ''));
+        $label = trim((string)($row['label'] ?? $row['name'] ?? $row['department'] ?? ''));
+        $slugSource = trim((string)($row['slug'] ?? ''));
+        $slug = normalize_catalog_sync_slug($slugSource, $label);
         if ($slug === '') {
-            $errors[] = 'Department row ' . ((int)$index + 1) . ' has an empty slug.';
+            $errors[] = 'Department row ' . ((int)$index + 1) . ' needs either a slug or a label/name that can be converted to a slug.';
             continue;
-        }
-        if (!preg_match('/^[a-z0-9_]{1,120}$/', $slug)) {
-            $errors[] = "Department slug {$slug} must use lowercase letters, numbers, and underscores only.";
         }
         if ($label === '') {
             $errors[] = "Department {$slug} has an empty label.";
         }
+        if (strlen($label) > DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH) {
+            $errors[] = "Department {$slug} label is longer than " . DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH . ' characters.';
+        }
         if (isset($departments[$slug])) {
-            $errors[] = "Department slug {$slug} appears more than once.";
+            $errors[] = "Department slug {$slug} appears more than once after normalization.";
             continue;
         }
         $departments[$slug] = [
             'slug' => $slug,
             'label' => $label,
-            'sort_order' => (int)($row['sort_order'] ?? 0),
-            'archived_at' => normalize_catalog_sync_archived_at($row['archived_at'] ?? null),
+            'sort_order' => normalize_catalog_sync_sort_order($row['sort_order'] ?? 0, $errors, "Department {$slug}"),
+            'archived_at' => validate_catalog_sync_archived_at($row['archived_at'] ?? null, $errors, "Department {$slug}"),
         ];
+        if ($label !== '') {
+            $departmentLabels[strtolower($label)] = $slug;
+        }
+        if ($slugSource !== '') {
+            $departmentLabels[strtolower($slugSource)] = $slug;
+        }
     }
 
     $teams = [];
@@ -104,32 +126,43 @@ function validate_department_catalog_import_payload(array $payload): array
             $errors[] = 'Team row ' . ((int)$index + 1) . ' must be an object.';
             continue;
         }
-        $slug = trim((string)($row['slug'] ?? ''));
-        $departmentSlug = trim((string)($row['department_slug'] ?? ''));
-        $label = trim((string)($row['label'] ?? ''));
+        $label = trim((string)($row['label'] ?? $row['name'] ?? $row['team'] ?? ''));
+        $slugSource = trim((string)($row['slug'] ?? ''));
+        $slug = normalize_catalog_sync_slug($slugSource, $label);
         if ($slug === '') {
-            $errors[] = 'Team row ' . ((int)$index + 1) . ' has an empty slug.';
+            $errors[] = 'Team row ' . ((int)$index + 1) . ' needs either a slug or a label/name that can be converted to a slug.';
             continue;
         }
-        if (!preg_match('/^[a-z0-9_]{1,120}$/', $slug)) {
-            $errors[] = "Team slug {$slug} must use lowercase letters, numbers, and underscores only.";
-        }
+
+        $departmentSlugSource = trim((string)($row['department_slug'] ?? ''));
+        $departmentSlug = normalize_catalog_sync_slug($departmentSlugSource, '');
         if ($departmentSlug === '' || !isset($departments[$departmentSlug])) {
-            $errors[] = "Team {$slug} references a missing department_slug.";
+            $departmentName = trim((string)($row['department_label'] ?? $row['department'] ?? $row['directorate'] ?? ''));
+            $departmentKey = strtolower($departmentName);
+            if ($departmentKey !== '' && isset($departmentLabels[$departmentKey])) {
+                $departmentSlug = $departmentLabels[$departmentKey];
+            }
+        }
+
+        if ($departmentSlug === '' || !isset($departments[$departmentSlug])) {
+            $errors[] = "Team {$slug} references a missing department. Provide department_slug or a matching department label from this same import file.";
         }
         if ($label === '') {
             $errors[] = "Team {$slug} has an empty label.";
         }
+        if (strlen($label) > DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH) {
+            $errors[] = "Team {$slug} label is longer than " . DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH . ' characters.';
+        }
         if (isset($teams[$slug])) {
-            $errors[] = "Team slug {$slug} appears more than once.";
+            $errors[] = "Team slug {$slug} appears more than once after normalization.";
             continue;
         }
         $teams[$slug] = [
             'slug' => $slug,
             'department_slug' => $departmentSlug,
             'label' => $label,
-            'sort_order' => (int)($row['sort_order'] ?? 0),
-            'archived_at' => normalize_catalog_sync_archived_at($row['archived_at'] ?? null),
+            'sort_order' => normalize_catalog_sync_sort_order($row['sort_order'] ?? 0, $errors, "Team {$slug}"),
+            'archived_at' => validate_catalog_sync_archived_at($row['archived_at'] ?? null, $errors, "Team {$slug}"),
         ];
     }
 
@@ -212,24 +245,36 @@ function apply_department_catalog_import(PDO $pdo, array $departments, array $te
     $departmentUpsert = $pdo->prepare($departmentSql);
     $teamUpsert = $pdo->prepare($teamSql);
 
-    $pdo->beginTransaction();
-    foreach ($departments as $row) {
-        $departmentUpsert->execute([$row['slug'], $row['label'], (int)$row['sort_order'], $row['archived_at']]);
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
     }
-    foreach ($teams as $row) {
-        $teamUpsert->execute([$row['slug'], $row['department_slug'], $row['label'], (int)$row['sort_order'], $row['archived_at']]);
-    }
-    if ($archiveMissing) {
-        $archiveDepartment = $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
-        foreach ($preview['departments']['archive_missing'] as $row) {
-            $archiveDepartment->execute([$row['slug']]);
+    try {
+        foreach ($departments as $row) {
+            $departmentUpsert->execute([$row['slug'], $row['label'], (int)$row['sort_order'], $row['archived_at']]);
         }
-        $archiveTeam = $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
-        foreach ($preview['teams']['archive_missing'] as $row) {
-            $archiveTeam->execute([$row['slug']]);
+        foreach ($teams as $row) {
+            $teamUpsert->execute([$row['slug'], $row['department_slug'], $row['label'], (int)$row['sort_order'], $row['archived_at']]);
         }
+        if ($archiveMissing) {
+            $archiveDepartment = $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
+            foreach ($preview['departments']['archive_missing'] as $row) {
+                $archiveDepartment->execute([$row['slug']]);
+            }
+            $archiveTeam = $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
+            foreach ($preview['teams']['archive_missing'] as $row) {
+                $archiveTeam->execute([$row['slug']]);
+            }
+        }
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
-    $pdo->commit();
 
     return [
         'departments' => [
@@ -243,6 +288,57 @@ function apply_department_catalog_import(PDO $pdo, array $departments, array $te
             'archived' => count($preview['teams']['archive_missing']),
         ],
     ];
+}
+
+function normalize_catalog_sync_slug(string $source, string $fallback): string
+{
+    $candidate = trim($source);
+    if ($candidate !== '' && preg_match('/^[a-z0-9_]+$/', $candidate) && strlen($candidate) <= DEPARTMENT_CATALOG_SYNC_MAX_SLUG_LENGTH) {
+        return $candidate;
+    }
+
+    return canonical_department_slug($candidate !== '' ? $candidate : $fallback);
+}
+
+function normalize_catalog_sync_sort_order($value, array &$errors, string $context): int
+{
+    if ($value === null || $value === '') {
+        return 0;
+    }
+    if (!is_numeric($value)) {
+        $errors[] = $context . ' sort_order must be numeric.';
+        return 0;
+    }
+    $sortOrder = (int)$value;
+    if ($sortOrder < 0) {
+        $errors[] = $context . ' sort_order cannot be negative.';
+        return 0;
+    }
+
+    return min($sortOrder, 2147483647);
+}
+
+function validate_catalog_sync_archived_at($value, array &$errors, string $context): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_scalar($value)) {
+        $errors[] = $context . ' archived_at must be a date/time string or null.';
+        return null;
+    }
+    $value = trim((string)$value);
+    if ($value === '') {
+        return null;
+    }
+    try {
+        $date = new DateTimeImmutable($value);
+    } catch (Throwable $e) {
+        $errors[] = $context . ' archived_at must be a valid date/time.';
+        return null;
+    }
+
+    return $date->format('Y-m-d H:i:s');
 }
 
 function normalize_catalog_sync_archived_at($value): ?string

@@ -192,10 +192,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'catalog_import_preview') {
+            $initialPane = 'catalog-sync';
             $archiveMissing = isset($_POST['archive_missing']);
             $upload = $_FILES['catalog_file'] ?? null;
             if (!is_array($upload) || (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 throw new InvalidArgumentException(t($t, 'catalog_sync_file_required', 'Upload a department/team catalog JSON file.'));
+            }
+            $size = (int)($upload['size'] ?? 0);
+            if ($size <= 0 || $size > DEPARTMENT_CATALOG_SYNC_MAX_UPLOAD_BYTES) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_size', 'Upload a non-empty catalog JSON file no larger than 2 MB.'));
             }
             $tmpName = (string)($upload['tmp_name'] ?? '');
             $json = $tmpName !== '' ? file_get_contents($tmpName) : false;
@@ -767,7 +772,8 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         <span class="md-defaults-meta"><?=count($departments)?> directorates · <?=count($teams)?> teams</span>
       </div>
       <div class="md-defaults-group-body">
-        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts.'), ENT_QUOTES, 'UTF-8')?></p>
+        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts. The Apply import button appears only after a valid preview.'), ENT_QUOTES, 'UTF-8')?></p>
+        <div class="md-alert info"><p><?=htmlspecialchars(t($t, 'catalog_sync_format_help', 'Use the exported JSON when possible. Imports also normalize mixed-case names and labels into safe slugs, but every team must include a department_slug or department label that matches a department in the same file.'), ENT_QUOTES, 'UTF-8')?></p></div>
         <div class="md-compact-actions" style="margin-bottom:.8rem;">
           <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?action=export_department_catalog', ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'catalog_sync_export', 'Export catalog JSON'), ENT_QUOTES, 'UTF-8')?></a>
         </div>
@@ -778,6 +784,9 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
           <label style="display:inline-flex; gap:.35rem; align-items:center; margin-bottom:.5rem;"><input type="checkbox" name="archive_missing" value="1"> <span><?=htmlspecialchars(t($t, 'catalog_sync_archive_missing', 'Archive live rows missing from the import'), ENT_QUOTES, 'UTF-8')?></span></label>
           <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_preview', 'Preview import'), ENT_QUOTES, 'UTF-8')?></button>
         </form>
+        <?php if (!is_array($catalogSyncPreview)): ?>
+          <p><em><?=htmlspecialchars(t($t, 'catalog_sync_apply_waiting', 'No import is ready to apply yet. Upload a file and run Preview import first.'), ENT_QUOTES, 'UTF-8')?></em></p>
+        <?php endif; ?>
         <?php if (is_array($catalogSyncPreview)): $changes = $catalogSyncPreview['changes']; ?>
           <div class="md-alert success"><p><?=htmlspecialchars(t($t, 'catalog_sync_preview_ready', 'Preview ready. Review the changes below before applying.'), ENT_QUOTES, 'UTF-8')?></p></div>
           <div class="md-table-wrap">
