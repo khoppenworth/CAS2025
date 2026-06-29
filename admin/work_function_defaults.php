@@ -10,6 +10,7 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$showDangerZone = (int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1;
 
 $flashKey = 'department_defaults_flash';
 $metadataFlashKey = 'metadata_catalog_flash';
@@ -139,6 +140,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION[$metadataFlashKey] = t($t,'department_updated','Directorate updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
+        if ($mode === 'department_delete') {
+            if (!$showDangerZone) {
+                throw new InvalidArgumentException(t($t, 'danger_zone_disabled', 'Danger zone actions are disabled.'));
+            }
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '' || !isset($departments[$slug])) throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
+            $depLabel = (string)($departments[$slug]['label'] ?? '');
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
+            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug IN (SELECT slug FROM department_team_catalog WHERE department_slug = ?)')->execute([$slug]);
+            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
+            $pdo->prepare('DELETE FROM department_team_catalog WHERE department_slug = ?')->execute([$slug]);
+            $pdo->prepare('DELETE FROM department_catalog WHERE slug = ?')->execute([$slug]);
+            $pdo->commit();
+            $_SESSION[$metadataFlashKey] = t($t,'department_deleted','Directorate deleted.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
         if ($mode === 'team_add') {
             $label = trim((string)($_POST['label'] ?? ''));
             $departmentSlug = trim((string)($_POST['department_slug'] ?? ''));
@@ -177,6 +195,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '') throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'team_delete') {
+            if (!$showDangerZone) {
+                throw new InvalidArgumentException(t($t, 'danger_zone_disabled', 'Danger zone actions are disabled.'));
+            }
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '' || !isset($teams[$slug])) throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
+            $teamLabel = (string)($teams[$slug]['label'] ?? '');
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug = ?')->execute([$slug]);
+            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
+            $pdo->prepare('DELETE FROM department_team_catalog WHERE slug = ?')->execute([$slug]);
+            $pdo->commit();
+            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_deleted','Team deleted.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'role_update') {
@@ -585,6 +618,14 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                         <label class="md-field"><span><?=t($t,'department','Directorate')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
                         <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                       </form>
+                      <?php if ($showDangerZone): ?>
+                        <form method="post" class="md-compact-actions" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'department_delete_confirm', 'Delete this directorate and its teams permanently? This cannot be undone.'), ENT_QUOTES, 'UTF-8')?>');">
+                          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                          <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                          <input type="hidden" name="mode" value="department_delete">
+                          <button type="submit" class="md-button md-danger"><?=t($t,'delete','Delete')?></button>
+                        </form>
+                      <?php endif; ?>
                     </div>
                   </details>
                 </div>
@@ -632,6 +673,14 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
                     <label class="md-field"><span><?=t($t,'department','Directorate')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
                     <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                   </form>
+                  <?php if ($showDangerZone): ?>
+                    <form method="post" class="md-compact-actions" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'team_delete_confirm', 'Delete this team permanently? This cannot be undone.'), ENT_QUOTES, 'UTF-8')?>');">
+                      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                      <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                      <input type="hidden" name="mode" value="team_delete">
+                      <button type="submit" class="md-button md-danger"><?=t($t,'delete','Delete')?></button>
+                    </form>
+                  <?php endif; ?>
                 </div>
               </details>
             </div>
