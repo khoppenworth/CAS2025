@@ -371,9 +371,6 @@ function user_profile_is_complete(array $user): bool
         }
     }
 
-    if ((string)($user['profile_role'] ?? '') === 'other' && trim((string)($user['profile_role_other'] ?? '')) === '') {
-        return false;
-    }
 
     return true;
 }

@@ -117,15 +117,6 @@ foreach ($phoneCountries as $country) {
 }
 $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
 
-$profileRoleOptions = [
-    'director_branch_manager' => 'Director / Branch Manager',
-    'team_leader_coordinator' => 'Team Leader / Coordinator',
-    'officer_level_4' => 'Officer Level 4',
-    'officer_level_3' => 'Officer Level 3',
-    'officer_level_2' => 'Officer Level 2',
-    'officer_level_1' => 'Officer Level 1',
-    'other' => 'Other',
-];
 $jobGradeOptions = [
     'grade_17' => 'Grade 17',
     'grade_16' => 'Grade 16',
@@ -583,9 +574,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 document.addEventListener('DOMContentLoaded', () => {
   const departmentSelect = document.querySelector('[data-department-select]');
   const teamSelect = document.querySelector('[data-team-select]');
-  const roleSelect = document.querySelector('[data-profile-role-select]');
-  const roleOtherWrapper = document.querySelector('[data-profile-role-other-wrapper]');
-  const roleOtherInput = document.querySelector('[data-profile-role-other-input]');
   if (!departmentSelect || !teamSelect) return;
   const syncTeams = () => {
     const dep = departmentSelect.value;
@@ -606,20 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
   departmentSelect.addEventListener('change', syncTeams);
   syncTeams();
 
-  const syncRoleOtherField = () => {
-    if (!roleSelect || !roleOtherWrapper || !roleOtherInput) return;
-    const needsOther = roleSelect.value === 'other';
-    roleOtherWrapper.hidden = !needsOther;
-    roleOtherInput.required = needsOther;
-    roleOtherWrapper.classList.toggle('md-field--required', needsOther);
-    if (!needsOther) {
-      roleOtherInput.value = '';
-    }
-  };
-  if (roleSelect && roleOtherWrapper && roleOtherInput) {
-    roleSelect.addEventListener('change', syncRoleOtherField);
-    syncRoleOtherField();
-  }
 });
 </script>
 
