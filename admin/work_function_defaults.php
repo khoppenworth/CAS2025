@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE department_slug=?')->execute([$slug]);
             $depLabel = (string)($departments[$slug]['label'] ?? '');
-            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
+            $pdo->prepare('UPDATE users SET department = NULL, directorate = NULL, cadre = NULL WHERE department = ? OR department = ? OR directorate = ? OR directorate = ?')->execute([$slug, $depLabel, $slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
             $_SESSION[$metadataFlashKey] = t($t,'department_archived','Directorate archived.');
@@ -150,7 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug IN (SELECT slug FROM department_team_catalog WHERE department_slug = ?)')->execute([$slug]);
-            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
+            $pdo->prepare('UPDATE users SET department = NULL, directorate = NULL, cadre = NULL WHERE department = ? OR department = ? OR directorate = ? OR directorate = ?')->execute([$slug, $depLabel, $slug, $depLabel]);
+            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre IN (SELECT slug FROM department_team_catalog WHERE department_slug = ? UNION SELECT label FROM department_team_catalog WHERE department_slug = ?)')->execute([$slug, $slug]);
             $pdo->prepare('DELETE FROM department_team_catalog WHERE department_slug = ?')->execute([$slug]);
             $pdo->prepare('DELETE FROM department_catalog WHERE slug = ?')->execute([$slug]);
             $pdo->commit();
