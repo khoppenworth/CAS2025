@@ -191,7 +191,7 @@ function preview_department_catalog_import(PDO $pdo, array $departments, array $
             continue;
         }
         if (catalog_sync_department_differs($currentDepartments[$slug], $incoming)) {
-            $changes['departments']['update'][] = ['slug' => $slug, 'from' => $currentDepartments[$slug], 'to' => $incoming];
+            $changes['departments']['update'][] = ['slug' => $slug, 'from' => array_merge(['slug' => $slug], $currentDepartments[$slug]), 'to' => $incoming];
         } else {
             $changes['departments']['unchanged'][] = $incoming;
         }
@@ -199,7 +199,7 @@ function preview_department_catalog_import(PDO $pdo, array $departments, array $
     if ($archiveMissing) {
         foreach ($currentDepartments as $slug => $record) {
             if (!isset($departments[$slug]) && normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null) {
-                $changes['departments']['archive_missing'][] = ['slug' => $slug, 'label' => (string)($record['label'] ?? '')];
+                $changes['departments']['archive_missing'][] = ['slug' => $slug, 'from' => array_merge(['slug' => $slug], $record)];
             }
         }
     }
@@ -210,7 +210,7 @@ function preview_department_catalog_import(PDO $pdo, array $departments, array $
             continue;
         }
         if (catalog_sync_team_differs($currentTeams[$slug], $incoming)) {
-            $changes['teams']['update'][] = ['slug' => $slug, 'from' => $currentTeams[$slug], 'to' => $incoming];
+            $changes['teams']['update'][] = ['slug' => $slug, 'from' => array_merge(['slug' => $slug], $currentTeams[$slug]), 'to' => $incoming];
         } else {
             $changes['teams']['unchanged'][] = $incoming;
         }
@@ -218,7 +218,7 @@ function preview_department_catalog_import(PDO $pdo, array $departments, array $
     if ($archiveMissing) {
         foreach ($currentTeams as $slug => $record) {
             if (!isset($teams[$slug]) && normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null) {
-                $changes['teams']['archive_missing'][] = ['slug' => $slug, 'label' => (string)($record['label'] ?? ''), 'department_slug' => (string)($record['department_slug'] ?? '')];
+                $changes['teams']['archive_missing'][] = ['slug' => $slug, 'from' => array_merge(['slug' => $slug], $record)];
             }
         }
     }
@@ -229,7 +229,113 @@ function preview_department_catalog_import(PDO $pdo, array $departments, array $
 /** @return array{departments:array<string,int>,teams:array<string,int>} */
 function apply_department_catalog_import(PDO $pdo, array $departments, array $teams, bool $archiveMissing): array
 {
+    $result = apply_department_catalog_import_decisions($pdo, $departments, $teams, $archiveMissing, []);
+
+    return [
+        'departments' => [
+            'created' => $result['departments']['created'],
+            'updated' => $result['departments']['updated'],
+            'archived' => $result['departments']['archived'],
+        ],
+        'teams' => [
+            'created' => $result['teams']['created'],
+            'updated' => $result['teams']['updated'],
+            'archived' => $result['teams']['archived'],
+        ],
+    ];
+}
+
+/** @return array{departments:array<string,int>,teams:array<string,int>} */
+function apply_department_catalog_import_decisions(PDO $pdo, array $departments, array $teams, bool $archiveMissing, array $decisions): array
+{
     $preview = preview_department_catalog_import($pdo, $departments, $teams, $archiveMissing);
+    $selectedDepartments = [];
+    $selectedTeams = [];
+    $departmentArchiveSlugs = [];
+    $teamArchiveSlugs = [];
+    $result = [
+        'departments' => ['created' => 0, 'updated' => 0, 'archived' => 0, 'kept' => 0],
+        'teams' => ['created' => 0, 'updated' => 0, 'archived' => 0, 'kept' => 0],
+    ];
+
+    foreach ($preview['departments']['create'] as $row) {
+        $slug = (string)($row['slug'] ?? '');
+        if (catalog_sync_decision($decisions, 'departments', 'create', $slug, 'create') === 'create') {
+            $selectedDepartments[$slug] = $row;
+            $result['departments']['created']++;
+        } else {
+            $result['departments']['kept']++;
+        }
+    }
+    foreach ($preview['departments']['update'] as $change) {
+        $slug = (string)($change['slug'] ?? '');
+        if (catalog_sync_decision($decisions, 'departments', 'update', $slug, 'overwrite') === 'overwrite') {
+            $selectedDepartments[$slug] = $change['to'];
+            $result['departments']['updated']++;
+        } else {
+            $result['departments']['kept']++;
+        }
+    }
+    if ($archiveMissing) {
+        foreach ($preview['departments']['archive_missing'] as $row) {
+            $slug = (string)($row['slug'] ?? '');
+            if (catalog_sync_decision($decisions, 'departments', 'archive_missing', $slug, 'archive') === 'archive') {
+                $departmentArchiveSlugs[] = $slug;
+                $result['departments']['archived']++;
+            } else {
+                $result['departments']['kept']++;
+            }
+        }
+    }
+
+    foreach ($preview['teams']['create'] as $row) {
+        $slug = (string)($row['slug'] ?? '');
+        if (catalog_sync_decision($decisions, 'teams', 'create', $slug, 'create') === 'create') {
+            $selectedTeams[$slug] = $row;
+            $result['teams']['created']++;
+        } else {
+            $result['teams']['kept']++;
+        }
+    }
+    foreach ($preview['teams']['update'] as $change) {
+        $slug = (string)($change['slug'] ?? '');
+        if (catalog_sync_decision($decisions, 'teams', 'update', $slug, 'overwrite') === 'overwrite') {
+            $selectedTeams[$slug] = $change['to'];
+            $result['teams']['updated']++;
+        } else {
+            $result['teams']['kept']++;
+        }
+    }
+    if ($archiveMissing) {
+        foreach ($preview['teams']['archive_missing'] as $row) {
+            $slug = (string)($row['slug'] ?? '');
+            if (catalog_sync_decision($decisions, 'teams', 'archive_missing', $slug, 'archive') === 'archive') {
+                $teamArchiveSlugs[] = $slug;
+                $result['teams']['archived']++;
+            } else {
+                $result['teams']['kept']++;
+            }
+        }
+    }
+
+    catalog_sync_execute_changes($pdo, $selectedDepartments, $selectedTeams, $departmentArchiveSlugs, $teamArchiveSlugs);
+
+    return $result;
+}
+
+function catalog_sync_decision(array $decisions, string $group, string $action, string $slug, string $default): string
+{
+    $value = (string)($decisions[$group][$action][$slug] ?? $default);
+    $allowed = [
+        'create' => ['create', 'ignore'],
+        'update' => ['overwrite', 'keep'],
+        'archive_missing' => ['archive', 'keep'],
+    ];
+    return in_array($value, $allowed[$action] ?? [], true) ? $value : $default;
+}
+
+function catalog_sync_execute_changes(PDO $pdo, array $departments, array $teams, array $departmentArchiveSlugs, array $teamArchiveSlugs): void
+{
     $driver = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
     if ($driver === 'sqlite') {
         $departmentSql = 'INSERT INTO department_catalog (slug, label, sort_order, archived_at) VALUES (?, ?, ?, ?) '
@@ -244,7 +350,6 @@ function apply_department_catalog_import(PDO $pdo, array $departments, array $te
     }
     $departmentUpsert = $pdo->prepare($departmentSql);
     $teamUpsert = $pdo->prepare($teamSql);
-
     $startedTransaction = !$pdo->inTransaction();
     if ($startedTransaction) {
         $pdo->beginTransaction();
@@ -256,14 +361,16 @@ function apply_department_catalog_import(PDO $pdo, array $departments, array $te
         foreach ($teams as $row) {
             $teamUpsert->execute([$row['slug'], $row['department_slug'], $row['label'], (int)$row['sort_order'], $row['archived_at']]);
         }
-        if ($archiveMissing) {
+        if ($departmentArchiveSlugs !== []) {
             $archiveDepartment = $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
-            foreach ($preview['departments']['archive_missing'] as $row) {
-                $archiveDepartment->execute([$row['slug']]);
+            foreach ($departmentArchiveSlugs as $slug) {
+                $archiveDepartment->execute([$slug]);
             }
+        }
+        if ($teamArchiveSlugs !== []) {
             $archiveTeam = $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug = ? AND archived_at IS NULL');
-            foreach ($preview['teams']['archive_missing'] as $row) {
-                $archiveTeam->execute([$row['slug']]);
+            foreach ($teamArchiveSlugs as $slug) {
+                $archiveTeam->execute([$slug]);
             }
         }
         if ($startedTransaction) {
@@ -275,19 +382,6 @@ function apply_department_catalog_import(PDO $pdo, array $departments, array $te
         }
         throw $e;
     }
-
-    return [
-        'departments' => [
-            'created' => count($preview['departments']['create']),
-            'updated' => count($preview['departments']['update']),
-            'archived' => count($preview['departments']['archive_missing']),
-        ],
-        'teams' => [
-            'created' => count($preview['teams']['create']),
-            'updated' => count($preview['teams']['update']),
-            'archived' => count($preview['teams']['archive_missing']),
-        ],
-    ];
 }
 
 function normalize_catalog_sync_slug(string $source, string $fallback): string

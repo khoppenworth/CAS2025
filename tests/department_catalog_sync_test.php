@@ -104,4 +104,55 @@ if (!isset($export['departments'], $export['teams'])) {
     exit(1);
 }
 
+$decisionPdo = new PDO('sqlite::memory:');
+$decisionPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$decisionPdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, department TEXT, cadre TEXT)');
+department_catalog($decisionPdo);
+$decisionPdo->exec("INSERT INTO department_catalog (slug, label, sort_order, archived_at) VALUES ('custom_keep', 'Custom Keep', 50, NULL)");
+$decisionPayload = [
+    'departments' => [
+        ['slug' => 'finance', 'label' => 'Finance Overwrite', 'sort_order' => 20, 'archived_at' => null],
+        ['slug' => 'new_department', 'label' => 'New Department', 'sort_order' => 30, 'archived_at' => null],
+    ],
+    'teams' => [
+        ['slug' => 'finance__new_team', 'department_slug' => 'finance', 'label' => 'New Team', 'sort_order' => 5, 'archived_at' => null],
+    ],
+];
+$decisionValidation = validate_department_catalog_import_payload($decisionPayload);
+if (!$decisionValidation['valid']) {
+    fwrite(STDERR, 'Expected decision payload to validate.' . PHP_EOL);
+    exit(1);
+}
+$decisionResult = apply_department_catalog_import_decisions(
+    $decisionPdo,
+    $decisionValidation['departments'],
+    $decisionValidation['teams'],
+    true,
+    [
+        'departments' => [
+            'update' => ['finance' => 'keep'],
+            'create' => ['new_department' => 'ignore'],
+            'archive_missing' => ['custom_keep' => 'keep'],
+        ],
+        'teams' => [
+            'create' => ['finance__new_team' => 'ignore'],
+        ],
+    ]
+);
+if ($decisionResult['departments']['kept'] < 2 || $decisionResult['teams']['kept'] < 1) {
+    fwrite(STDERR, 'Expected selected keep/ignore decisions to be counted.' . PHP_EOL);
+    exit(1);
+}
+$keptFinanceLabel = $decisionPdo->query("SELECT label FROM department_catalog WHERE slug = 'finance'")->fetchColumn();
+if ($keptFinanceLabel === 'Finance Overwrite') {
+    fwrite(STDERR, 'Expected keep decision to preserve existing finance department.' . PHP_EOL);
+    exit(1);
+}
+$newDepartmentExists = $decisionPdo->query("SELECT COUNT(1) FROM department_catalog WHERE slug = 'new_department'")->fetchColumn();
+if ((int)$newDepartmentExists !== 0) {
+    fwrite(STDERR, 'Expected ignore decision to skip new department creation.' . PHP_EOL);
+    exit(1);
+}
+
+
 echo "Department catalog sync tests passed.\n";
