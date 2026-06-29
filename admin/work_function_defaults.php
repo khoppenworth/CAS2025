@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config.php';
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/../lib/department_teams.php';
 }
+require_once __DIR__ . '/../lib/department_catalog_sync.php';
 
 auth_required(['admin']);
 refresh_current_user($pdo);
@@ -19,6 +20,9 @@ $metadataMsg = $_SESSION[$metadataFlashKey] ?? '';
 unset($_SESSION[$metadataFlashKey]);
 $errors = [];
 $metadataErrors = [];
+$catalogSyncPreview = null;
+$catalogSyncPreviewToken = '';
+$initialPane = 'departments';
 
 $questionnaires = [];
 $questionnaireIds = [];
@@ -45,6 +49,14 @@ foreach ($departments as $depSlug => $depRecord) {
 ensure_questionnaire_team_schema($pdo);
 $teams = department_team_catalog($pdo);
 $workRoles = work_function_catalog($pdo);
+
+if (($_GET['action'] ?? '') === 'export_department_catalog') {
+    $filename = 'department-team-catalog-' . gmdate('Ymd-His') . '.json';
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo department_catalog_export_json($pdo);
+    exit;
+}
 
 $statusFilter = strtolower(trim((string)($_GET['status'] ?? 'active')));
 if (!in_array($statusFilter, ['active', 'inactive', 'all'], true)) {
@@ -92,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode = (string)($_POST['mode'] ?? '');
     $currentTab = trim((string)($_POST['current_tab'] ?? ''));
-    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'defaults', 'team-defaults'], true)) {
+    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'catalog-sync', 'defaults', 'team-defaults'], true)) {
         $currentTab = '';
     }
     try {
@@ -178,6 +190,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'catalog_import_preview') {
+            $archiveMissing = isset($_POST['archive_missing']);
+            $upload = $_FILES['catalog_file'] ?? null;
+            if (!is_array($upload) || (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_required', 'Upload a department/team catalog JSON file.'));
+            }
+            $tmpName = (string)($upload['tmp_name'] ?? '');
+            $json = $tmpName !== '' ? file_get_contents($tmpName) : false;
+            if ($json === false || trim($json) === '') {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_empty', 'The uploaded catalog file is empty.'));
+            }
+            $payload = parse_department_catalog_import_json($json);
+            $validation = validate_department_catalog_import_payload($payload);
+            if (!$validation['valid']) {
+                foreach ($validation['errors'] as $validationError) {
+                    $metadataErrors[] = $validationError;
+                }
+            } else {
+                $catalogSyncPreview = [
+                    'archive_missing' => $archiveMissing,
+                    'departments' => $validation['departments'],
+                    'teams' => $validation['teams'],
+                    'changes' => preview_department_catalog_import($pdo, $validation['departments'], $validation['teams'], $archiveMissing),
+                ];
+                $catalogSyncPreviewToken = bin2hex(random_bytes(16));
+                $initialPane = 'catalog-sync';
+                $_SESSION['department_catalog_sync_preview'] = $catalogSyncPreview;
+                $_SESSION['department_catalog_sync_preview_token'] = $catalogSyncPreviewToken;
+            }
+        }
+        if ($mode === 'catalog_import_apply') {
+            $token = trim((string)($_POST['preview_token'] ?? ''));
+            $storedToken = (string)($_SESSION['department_catalog_sync_preview_token'] ?? '');
+            $storedPreview = $_SESSION['department_catalog_sync_preview'] ?? null;
+            if ($token === '' || $storedToken === '' || !hash_equals($storedToken, $token) || !is_array($storedPreview)) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_preview_expired', 'Preview the catalog import again before applying it.'));
+            }
+            $result = apply_department_catalog_import(
+                $pdo,
+                is_array($storedPreview['departments'] ?? null) ? $storedPreview['departments'] : [],
+                is_array($storedPreview['teams'] ?? null) ? $storedPreview['teams'] : [],
+                !empty($storedPreview['archive_missing'])
+            );
+            unset($_SESSION['department_catalog_sync_preview'], $_SESSION['department_catalog_sync_preview_token']);
+            $_SESSION[$metadataFlashKey] = sprintf(
+                'Catalog import applied. Departments: %d created, %d updated, %d archived. Teams: %d created, %d updated, %d archived.',
+                $result['departments']['created'],
+                $result['departments']['updated'],
+                $result['departments']['archived'],
+                $result['teams']['created'],
+                $result['teams']['updated'],
+                $result['teams']['archived']
+            );
+            header('Location: ' . $buildRedirect('catalog-sync')); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -335,12 +402,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (InvalidArgumentException $e) {
         $metadataErrors[] = $e->getMessage();
+        if (in_array((string)($_POST['mode'] ?? ''), ['catalog_import_preview', 'catalog_import_apply'], true)) {
+            $initialPane = 'catalog-sync';
+        }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
         error_log('work_function_defaults fatal error: ' . $e->getMessage());
         $metadataErrors[] = t($t, 'work_function_defaults_save_failed', 'Unable to save work function defaults. Please try again.');
+        if (in_array((string)($_POST['mode'] ?? ''), ['catalog_import_preview', 'catalog_import_apply'], true)) {
+            $initialPane = 'catalog-sync';
+        }
     }
 }
 
@@ -539,6 +612,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <a class="md-tab-chip is-active" id="tab-departments" data-tab-target="departments" href="#departments" role="tab" aria-controls="departments" aria-selected="true">Directorates</a>
       <a class="md-tab-chip" id="tab-teams" data-tab-target="teams" href="#teams" role="tab" aria-controls="teams" aria-selected="false">Teams</a>
       <a class="md-tab-chip" id="tab-roles" data-tab-target="roles" href="#roles" role="tab" aria-controls="roles" aria-selected="false">Work Roles</a>
+      <a class="md-tab-chip" id="tab-catalog-sync" data-tab-target="catalog-sync" href="#catalog-sync" role="tab" aria-controls="catalog-sync" aria-selected="false">Catalog Sync</a>
       <a class="md-tab-chip" id="tab-defaults" data-tab-target="defaults" href="#defaults" role="tab" aria-controls="defaults" aria-selected="false">Directorate Defaults</a>
       <a class="md-tab-chip" id="tab-team-defaults" data-tab-target="team-defaults" href="#team-defaults" role="tab" aria-controls="team-defaults" aria-selected="false">Team Defaults</a>
     </div>
@@ -686,6 +760,45 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </section>
 
+
+    <section class="md-defaults-group md-pane" id="catalog-sync" data-pane role="tabpanel" aria-labelledby="tab-catalog-sync">
+      <div class="md-defaults-header">
+        <span><?=htmlspecialchars(t($t,'catalog_sync_title','Department/team catalog sync'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($departments)?> directorates · <?=count($teams)?> teams</span>
+      </div>
+      <div class="md-defaults-group-body">
+        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts.'), ENT_QUOTES, 'UTF-8')?></p>
+        <div class="md-compact-actions" style="margin-bottom:.8rem;">
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?action=export_department_catalog', ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'catalog_sync_export', 'Export catalog JSON'), ENT_QUOTES, 'UTF-8')?></a>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="md-compact-actions" style="align-items:flex-end; margin-bottom:1rem; padding:.8rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <input type="hidden" name="mode" value="catalog_import_preview">
+          <label class="md-field"><span><?=htmlspecialchars(t($t, 'catalog_sync_file', 'Catalog JSON file'), ENT_QUOTES, 'UTF-8')?></span><input type="file" name="catalog_file" accept="application/json,.json" required></label>
+          <label style="display:inline-flex; gap:.35rem; align-items:center; margin-bottom:.5rem;"><input type="checkbox" name="archive_missing" value="1"> <span><?=htmlspecialchars(t($t, 'catalog_sync_archive_missing', 'Archive live rows missing from the import'), ENT_QUOTES, 'UTF-8')?></span></label>
+          <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_preview', 'Preview import'), ENT_QUOTES, 'UTF-8')?></button>
+        </form>
+        <?php if (is_array($catalogSyncPreview)): $changes = $catalogSyncPreview['changes']; ?>
+          <div class="md-alert success"><p><?=htmlspecialchars(t($t, 'catalog_sync_preview_ready', 'Preview ready. Review the changes below before applying.'), ENT_QUOTES, 'UTF-8')?></p></div>
+          <div class="md-table-wrap">
+            <table class="md-table">
+              <thead><tr><th>Catalog</th><th>Create</th><th>Update</th><th>Archive missing</th><th>Unchanged</th></tr></thead>
+              <tbody>
+                <tr><td>Directorates</td><td><?=count($changes['departments']['create'])?></td><td><?=count($changes['departments']['update'])?></td><td><?=count($changes['departments']['archive_missing'])?></td><td><?=count($changes['departments']['unchanged'])?></td></tr>
+                <tr><td>Teams</td><td><?=count($changes['teams']['create'])?></td><td><?=count($changes['teams']['update'])?></td><td><?=count($changes['teams']['archive_missing'])?></td><td><?=count($changes['teams']['unchanged'])?></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form method="post" class="md-compact-actions" style="margin-top:1rem;">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="mode" value="catalog_import_apply">
+            <input type="hidden" name="preview_token" value="<?=htmlspecialchars($catalogSyncPreviewToken, ENT_QUOTES, 'UTF-8')?>">
+            <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_apply', 'Apply import'), ENT_QUOTES, 'UTF-8')?></button>
+          </form>
+        <?php endif; ?>
+      </div>
+    </section>
+
     <section class="md-defaults-group md-pane" id="defaults" data-pane role="tabpanel" aria-labelledby="tab-defaults">
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'assignment_overview','Directorate questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
@@ -804,7 +917,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   document.addEventListener('DOMContentLoaded', function () {
-    var activePaneId = 'departments';
+    var activePaneId = <?=json_encode($initialPane)?>;
     var tabLinks = document.querySelectorAll('.md-tab-chip');
     var panes = document.querySelectorAll('[data-pane]');
     function showPaneById(paneId) {
@@ -833,7 +946,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     });
     var paneFromHash = window.location.hash ? window.location.hash.replace('#', '') : '';
     if (!paneFromHash || !showPaneById(paneFromHash)) {
-      showPaneById('departments');
+      showPaneById(activePaneId || 'departments');
     }
     var searchInputs = document.querySelectorAll('.js-catalog-search');
     searchInputs.forEach(function (input) {
