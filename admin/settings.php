@@ -750,8 +750,15 @@ $pageHelpKey = 'admin.settings';
       <div class="md-control">
         <label>
           <input type="checkbox" name="qb_danger_zone_enabled" value="1" <?=((int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1) ? 'checked' : ''?>>
-          <span><?=t($t,'qb_show_danger_zone','Show Danger Zone tile in Questionnaire Builder')?></span>
+          <span><?=t($t,'qb_show_danger_zone','Show Danger Zone controls for Questionnaire Builder, Directorates, and Teams')?></span>
         </label>
+        <p class="md-help-note" style="margin: 6px 0 0;">
+          <?=t($t,'danger_zone_catalog_delete_hint','When enabled, delete buttons appear in the Directorate and Team management panels. Deletions are permanent; use archive/activate when you only need to hide an item.')?>
+        </p>
+        <div class="md-compact-actions" style="margin-top: 10px;">
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '#departments', ENT_QUOTES, 'UTF-8')?>"><?=t($t,'manage_directorate_deletions','Manage directorate deletions')?></a>
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '#teams', ENT_QUOTES, 'UTF-8')?>"><?=t($t,'manage_team_deletions','Manage team deletions')?></a>
+        </div>
       </div>
       <h3 class="md-subhead"><?=t($t,'sso_settings','Single Sign-On (SSO)')?></h3>
       <div class="md-control">

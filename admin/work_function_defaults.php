@@ -11,6 +11,7 @@ require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
+$showDangerZone = (int)($cfg['qb_danger_zone_enabled'] ?? 1) === 1;
 
 $flashKey = 'department_defaults_flash';
 $metadataFlashKey = 'metadata_catalog_flash';
@@ -138,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_catalog SET archived_at = CURRENT_TIMESTAMP WHERE slug=?')->execute([$slug]);
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = CURRENT_TIMESTAMP WHERE department_slug=?')->execute([$slug]);
             $depLabel = (string)($departments[$slug]['label'] ?? '');
-            $pdo->prepare('UPDATE users SET department = NULL, cadre = NULL WHERE department = ? OR department = ?')->execute([$slug, $depLabel]);
+            $pdo->prepare('UPDATE users SET department = NULL, directorate = NULL, cadre = NULL WHERE department = ? OR department = ? OR directorate = ? OR directorate = ?')->execute([$slug, $depLabel, $slug, $depLabel]);
             $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
             $pdo->commit();
             $_SESSION[$metadataFlashKey] = t($t,'department_archived','Directorate archived.');
@@ -149,6 +150,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($slug === '') throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
             $pdo->prepare('UPDATE department_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'department_updated','Directorate updated.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'department_delete') {
+            if (!$showDangerZone) {
+                throw new InvalidArgumentException(t($t, 'danger_zone_disabled', 'Danger zone actions are disabled.'));
+            }
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '' || !isset($departments[$slug])) throw new InvalidArgumentException(t($t,'invalid_department','Select a valid department.'));
+            $depLabel = (string)($departments[$slug]['label'] ?? '');
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM questionnaire_department WHERE department_slug = ?')->execute([$slug]);
+            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug IN (SELECT slug FROM department_team_catalog WHERE department_slug = ?)')->execute([$slug]);
+            $pdo->prepare('UPDATE users SET department = NULL, directorate = NULL, cadre = NULL WHERE department = ? OR department = ? OR directorate = ? OR directorate = ?')->execute([$slug, $depLabel, $slug, $depLabel]);
+            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre IN (SELECT slug FROM department_team_catalog WHERE department_slug = ? UNION SELECT label FROM department_team_catalog WHERE department_slug = ?)')->execute([$slug, $slug]);
+            $pdo->prepare('DELETE FROM department_team_catalog WHERE department_slug = ?')->execute([$slug]);
+            $pdo->prepare('DELETE FROM department_catalog WHERE slug = ?')->execute([$slug]);
+            $pdo->commit();
+            $_SESSION[$metadataFlashKey] = t($t,'department_deleted','Directorate deleted.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'team_add') {
@@ -191,72 +210,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
-        if ($mode === 'catalog_import_preview') {
-            $initialPane = 'catalog-sync';
-            $archiveMissing = isset($_POST['archive_missing']);
-            $upload = $_FILES['catalog_file'] ?? null;
-            if (!is_array($upload) || (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                throw new InvalidArgumentException(t($t, 'catalog_sync_file_required', 'Upload a department/team catalog JSON file.'));
+        if ($mode === 'team_delete') {
+            if (!$showDangerZone) {
+                throw new InvalidArgumentException(t($t, 'danger_zone_disabled', 'Danger zone actions are disabled.'));
             }
-            $size = (int)($upload['size'] ?? 0);
-            if ($size <= 0 || $size > DEPARTMENT_CATALOG_SYNC_MAX_UPLOAD_BYTES) {
-                throw new InvalidArgumentException(t($t, 'catalog_sync_file_size', 'Upload a non-empty catalog JSON file no larger than 2 MB.'));
-            }
-            $tmpName = (string)($upload['tmp_name'] ?? '');
-            $json = $tmpName !== '' ? file_get_contents($tmpName) : false;
-            if ($json === false || trim($json) === '') {
-                throw new InvalidArgumentException(t($t, 'catalog_sync_file_empty', 'The uploaded catalog file is empty.'));
-            }
-            $payload = parse_department_catalog_import_json($json);
-            $validation = validate_department_catalog_import_payload($payload);
-            if (!$validation['valid']) {
-                foreach ($validation['errors'] as $validationError) {
-                    $metadataErrors[] = $validationError;
-                }
-            } else {
-                $catalogSyncPreview = [
-                    'archive_missing' => $archiveMissing,
-                    'departments' => $validation['departments'],
-                    'teams' => $validation['teams'],
-                    'changes' => preview_department_catalog_import($pdo, $validation['departments'], $validation['teams'], $archiveMissing),
-                ];
-                $catalogSyncPreviewToken = bin2hex(random_bytes(16));
-                $initialPane = 'catalog-sync';
-                $_SESSION['department_catalog_sync_preview'] = $catalogSyncPreview;
-                $_SESSION['department_catalog_sync_preview_token'] = $catalogSyncPreviewToken;
-            }
-        }
-        if ($mode === 'catalog_import_apply') {
-            $token = trim((string)($_POST['preview_token'] ?? ''));
-            $storedToken = (string)($_SESSION['department_catalog_sync_preview_token'] ?? '');
-            $storedPreview = $_SESSION['department_catalog_sync_preview'] ?? null;
-            if ($token === '' || $storedToken === '' || !hash_equals($storedToken, $token) || !is_array($storedPreview)) {
-                throw new InvalidArgumentException(t($t, 'catalog_sync_preview_expired', 'Preview the catalog import again before applying it.'));
-            }
-            $decisions = $_POST['catalog_decisions'] ?? [];
-            if (!is_array($decisions)) {
-                $decisions = [];
-            }
-            $result = apply_department_catalog_import_decisions(
-                $pdo,
-                is_array($storedPreview['departments'] ?? null) ? $storedPreview['departments'] : [],
-                is_array($storedPreview['teams'] ?? null) ? $storedPreview['teams'] : [],
-                !empty($storedPreview['archive_missing']),
-                $decisions
-            );
-            unset($_SESSION['department_catalog_sync_preview'], $_SESSION['department_catalog_sync_preview_token']);
-            $_SESSION[$metadataFlashKey] = sprintf(
-                'Catalog import applied. Departments: %d created, %d updated, %d archived, %d kept. Teams: %d created, %d updated, %d archived, %d kept.',
-                $result['departments']['created'],
-                $result['departments']['updated'],
-                $result['departments']['archived'],
-                $result['departments']['kept'],
-                $result['teams']['created'],
-                $result['teams']['updated'],
-                $result['teams']['archived'],
-                $result['teams']['kept']
-            );
-            header('Location: ' . $buildRedirect('catalog-sync')); exit;
+            $slug = trim((string)($_POST['slug'] ?? ''));
+            if ($slug === '' || !isset($teams[$slug])) throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
+            $teamLabel = (string)($teams[$slug]['label'] ?? '');
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug = ?')->execute([$slug]);
+            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
+            $pdo->prepare('DELETE FROM department_team_catalog WHERE slug = ?')->execute([$slug]);
+            $pdo->commit();
+            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_deleted','Team deleted.');
+            header('Location: ' . $buildRedirect($currentTab)); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -686,6 +653,14 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
                         <label class="md-field"><span><?=t($t,'department','Directorate')?></span><input name="label" value="<?=htmlspecialchars((string)($record['label'] ?? ''), ENT_QUOTES, 'UTF-8')?>"></label>
                         <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                       </form>
+                      <?php if ($showDangerZone): ?>
+                        <form method="post" class="md-compact-actions" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'department_delete_confirm', 'Delete this directorate and its teams permanently? This cannot be undone.'), ENT_QUOTES, 'UTF-8')?>');">
+                          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                          <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                          <input type="hidden" name="mode" value="department_delete">
+                          <button type="submit" class="md-button md-danger"><?=t($t,'delete','Delete')?></button>
+                        </form>
+                      <?php endif; ?>
                     </div>
                   </details>
                 </div>
@@ -733,6 +708,14 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
                     <label class="md-field"><span><?=t($t,'department','Directorate')?></span><select name="department_slug" required><?php foreach ($allDepartmentOptions as $depSlug => $depLabel): ?><option value="<?=htmlspecialchars($depSlug, ENT_QUOTES, 'UTF-8')?>" <?=$depSlug===($record['department_slug'] ?? '')?'selected':''?>><?=htmlspecialchars($depLabel, ENT_QUOTES, 'UTF-8')?></option><?php endforeach; ?></select></label>
                     <button type="submit" class="md-button md-primary"><?=t($t,'save','Save Changes')?></button>
                   </form>
+                  <?php if ($showDangerZone): ?>
+                    <form method="post" class="md-compact-actions" onsubmit="return confirm('<?=htmlspecialchars(t($t, 'team_delete_confirm', 'Delete this team permanently? This cannot be undone.'), ENT_QUOTES, 'UTF-8')?>');">
+                      <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+                      <input type="hidden" name="slug" value="<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>">
+                      <input type="hidden" name="mode" value="team_delete">
+                      <button type="submit" class="md-button md-danger"><?=t($t,'delete','Delete')?></button>
+                    </form>
+                  <?php endif; ?>
                 </div>
               </details>
             </div>
