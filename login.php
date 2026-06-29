@@ -187,9 +187,22 @@ render_login:
                 <span><?= t($t, 'username', 'Username') ?></span>
                 <input name="username" autocomplete="username" required>
               </label>
-              <label class="md-field">
+              <label class="md-field md-password-field">
                 <span><?= t($t, 'password', 'Password') ?></span>
-                <input type="password" name="password" autocomplete="current-password" required>
+                <div class="md-password-field__control">
+                  <input type="password" id="login-password" name="password" autocomplete="current-password" required data-password-reveal-input>
+                  <button
+                    type="button"
+                    class="md-password-reveal"
+                    aria-label="<?= htmlspecialchars(t($t, 'show_password_while_pressed', 'Show password while pressed'), ENT_QUOTES, 'UTF-8') ?>"
+                    aria-controls="login-password"
+                    data-password-reveal
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path d="M12 5c-5.1 0-8.6 4.1-10 7 1.4 2.9 4.9 7 10 7s8.6-4.1 10-7c-1.4-2.9-4.9-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.8a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"/>
+                    </svg>
+                  </button>
+                </div>
               </label>
               <div class="md-form-actions md-form-actions--center md-login-actions">
                 <button class="md-button md-elev-1 md-sso-btn google" type="submit">
