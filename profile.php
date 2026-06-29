@@ -141,6 +141,16 @@ $experienceBandOptions = [
 ];
 $experienceBandRanks = array_flip(array_keys($experienceBandOptions));
 
+$profileRoleOptions = [
+    'manager' => t($t, 'profile_role_manager', 'Manager'),
+    'team_leader_coordinator' => t($t, 'profile_role_team_leader_coordinator', 'Team Leader / Coordinator'),
+    'officer_level_4' => t($t, 'profile_role_officer_level_4', 'Officer Level 4'),
+    'officer_level_3' => t($t, 'profile_role_officer_level_3', 'Officer Level 3'),
+    'officer_level_2' => t($t, 'profile_role_officer_level_2', 'Officer Level 2'),
+    'officer_level_1' => t($t, 'profile_role_officer_level_1', 'Officer Level 1'),
+    'director_branch_manager' => t($t, 'profile_role_director_branch_manager', 'Director / Branch Manager'),
+    'other' => t($t, 'other', 'Other'),
+];
 $currentDepartmentSlug = resolve_department_slug($pdo, (string)($user['department'] ?? ''));
 $currentTeamSlug = resolve_team_slug($pdo, (string)($user['cadre'] ?? ''), $currentDepartmentSlug);
 if ($currentDepartmentSlug === '' && $currentTeamSlug !== '' && isset($teamCatalog[$currentTeamSlug])) {
@@ -245,7 +255,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'phone_local' => $phoneLocalDigits,
         'department' => $department,
         'cadre' => $cadre,
-        'profile_role' => $profileRole,
         'job_grade' => $jobGrade,
         'education_level' => $educationLevel,
         'highest_degree_subject' => $highestDegreeSubject,
@@ -265,7 +274,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phoneLocalDigits === '' ||
         $department === '' ||
         $cadre === '' ||
-        $profileRole === '' ||
         $jobGrade === '' ||
         $educationLevel === '' ||
         $highestDegreeSubject === '' ||
@@ -285,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($cadre === '') {
         $markFieldError($fieldErrors, 'cadre');
         $error = t($t,'invalid_team_department','Select a valid team in the directorate.');
-    } elseif (!isset($profileRoleOptions[$profileRole])) {
+    } elseif ($profileRole !== '' && !isset($profileRoleOptions[$profileRole])) {
         $markFieldError($fieldErrors, 'profile_role');
         $error = t($t,'invalid_profile_role','Select a valid role option.');
     } elseif ($profileRole === 'other' && $profileRoleOther === '') {
@@ -481,19 +489,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('profile_role', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('profile_role'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'profile_role_label','Select your role')?></span>
         <?php $profileRoleValue = $formValues['profile_role']; ?>
-        <select name="profile_role" required data-profile-role-select>
-          <option value="" disabled <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
+        <select name="profile_role" data-profile-role-select>
+          <option value="" <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($profileRoleOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$profileRoleValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('profile_role_other'), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-wrapper hidden>
+      <label class="<?=htmlspecialchars($fieldClass('profile_role_other'), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-wrapper <?= $profileRoleValue === 'other' ? '' : 'hidden' ?>>
         <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
-        <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input>
+        <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input <?= $profileRoleValue === 'other' ? 'required' : '' ?>>
       </label>
       <label class="<?=htmlspecialchars($fieldClass('job_grade', true), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'job_grade_label','Please select your Job Grade in the chosen directorate')?></span>
@@ -605,6 +613,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const popup = document.querySelector('[data-required-popup]');
     const passwordPopup = document.querySelector('[data-password-popup]');
     const passwordField = form ? form.querySelector('[data-password-field]') : null;
+    const profileRoleSelect = form ? form.querySelector('[data-profile-role-select]') : null;
+    const profileRoleOtherWrapper = form ? form.querySelector('[data-profile-role-other-wrapper]') : null;
+    const profileRoleOtherInput = form ? form.querySelector('[data-profile-role-other-input]') : null;
     const totalExperienceSelect = form ? form.querySelector('[data-total-experience-select]') : null;
     const epssExperienceSelect = form ? form.querySelector('[data-epss-experience-select]') : null;
     const passwordPolicyRegex = /^(?=.{8,}$)(?=.*[\d\W_]).+$/;
@@ -685,6 +696,22 @@ document.addEventListener('DOMContentLoaded', () => {
         validateField(field);
       });
     });
+
+    const syncProfileRoleOther = () => {
+      if (!profileRoleSelect || !profileRoleOtherWrapper || !profileRoleOtherInput) return;
+      const isOther = profileRoleSelect.value === 'other';
+      profileRoleOtherWrapper.hidden = !isOther;
+      profileRoleOtherInput.required = isOther;
+      if (!isOther) {
+        profileRoleOtherInput.value = '';
+        markField(profileRoleOtherInput, false);
+      }
+    };
+
+    if (profileRoleSelect) {
+      profileRoleSelect.addEventListener('change', syncProfileRoleOther);
+      syncProfileRoleOther();
+    }
 
     if (totalExperienceSelect && epssExperienceSelect) {
       totalExperienceSelect.addEventListener('change', validateExperienceOrder);
