@@ -56,7 +56,6 @@ $cfg = get_site_config($pdo);
 $user = current_user();
 $message = '';
 $error = '';
-$workFunctionOptions = work_function_choices($pdo);
 $departmentOptions = department_options($pdo);
 $teamCatalog = department_team_catalog($pdo);
 $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
@@ -156,7 +155,8 @@ $formValues = [
     'phone_local' => $phoneLocalValue,
     'department' => $currentDepartmentSlug,
     'cadre' => $currentTeamSlug,
-    'work_function' => (string)($user['work_function'] ?? ''),
+    'profile_role' => (string)($user['profile_role'] ?? ''),
+    'profile_role_other' => (string)($user['profile_role_other'] ?? ''),
     'job_grade' => (string)($user['job_grade'] ?? ''),
     'education_level' => (string)($user['education_level'] ?? ''),
     'highest_degree_subject' => (string)($user['highest_degree_subject'] ?? ''),
@@ -191,7 +191,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $department = resolve_department_slug($pdo, $departmentInput);
     $teamInput = trim((string)($_POST['cadre'] ?? ''));
     $cadre = resolve_team_slug($pdo, $teamInput, $department);
-    $workFunction = $_POST['work_function'] ?? '';
+    $profileRole = trim((string)($_POST['profile_role'] ?? ''));
+    $profileRoleOther = trim((string)($_POST['profile_role_other'] ?? ''));
     $jobGrade = trim((string)($_POST['job_grade'] ?? ''));
     $educationLevel = trim((string)($_POST['education_level'] ?? ''));
     $highestDegreeSubject = trim((string)($_POST['highest_degree_subject'] ?? ''));
@@ -204,7 +205,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formValues['full_name'] = $fullName;
     $formValues['email'] = $email;
     $formValues['gender'] = $gender;
-    $formValues['work_function'] = (string)$workFunction;
+    $formValues['profile_role'] = $profileRole;
+    $formValues['profile_role_other'] = $profileRoleOther;
     $formValues['job_grade'] = $jobGrade;
     $formValues['education_level'] = $educationLevel;
     $formValues['highest_degree_subject'] = $highestDegreeSubject;
@@ -243,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'phone_local' => $phoneLocalDigits,
         'department' => $department,
         'cadre' => $cadre,
-        'work_function' => $workFunction,
+        'profile_role' => $profileRole,
         'job_grade' => $jobGrade,
         'education_level' => $educationLevel,
         'highest_degree_subject' => $highestDegreeSubject,
@@ -263,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phoneLocalDigits === '' ||
         $department === '' ||
         $cadre === '' ||
-        $workFunction === '' ||
+        $profileRole === '' ||
         $jobGrade === '' ||
         $educationLevel === '' ||
         $highestDegreeSubject === '' ||
@@ -283,9 +285,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($cadre === '') {
         $markFieldError($fieldErrors, 'cadre');
         $error = t($t,'invalid_team_department','Select a valid team in the directorate.');
-    } elseif (!isset($workFunctionOptions[$workFunction])) {
-        $markFieldError($fieldErrors, 'work_function');
-        $error = t($t,'invalid_work_function','Select a valid work function.');
+    } elseif (!isset($profileRoleOptions[$profileRole])) {
+        $markFieldError($fieldErrors, 'profile_role');
+        $error = t($t,'invalid_profile_role','Select a valid role option.');
+    } elseif ($profileRole === 'other' && $profileRoleOther === '') {
+        $markFieldError($fieldErrors, 'profile_role_other');
+        $error = t($t,'invalid_profile_role_other','Please specify your role when selecting Other.');
     } elseif (!isset($jobGradeOptions[$jobGrade])) {
         $markFieldError($fieldErrors, 'job_grade');
         $error = t($t,'invalid_job_grade','Select a valid job grade.');
@@ -322,7 +327,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'phone' => $fullPhone,
             'department' => $department,
             'cadre' => $cadre,
-            'work_function' => $workFunction,
+            'profile_role' => $profileRole,
+            'profile_role_other' => ($profileRole === 'other' ? $profileRoleOther : null),
             'job_grade' => $jobGrade,
             'education_level' => $educationLevel,
             'highest_degree_subject' => $highestDegreeSubject,
@@ -475,15 +481,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('work_function', true), ENT_QUOTES, 'UTF-8')?>">
-        <span><?=t($t,'work_function','Work Role')?></span>
-        <select name="work_function" required>
-          <?php $wval = $formValues['work_function']; ?>
-          <option value="" disabled <?= $wval ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
-          <?php foreach ($workFunctionOptions as $function => $label): ?>
-            <option value="<?=$function?>" <?=$wval===$function?'selected':''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
+      <label class="<?=htmlspecialchars($fieldClass('profile_role', true), ENT_QUOTES, 'UTF-8')?>">
+        <span><?=t($t,'profile_role_label','Select your role')?></span>
+        <?php $profileRoleValue = $formValues['profile_role']; ?>
+        <select name="profile_role" required data-profile-role-select>
+          <option value="" disabled <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
+          <?php foreach ($profileRoleOptions as $optionValue => $optionLabel): ?>
+            <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$profileRoleValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
+      </label>
+      <label class="<?=htmlspecialchars($fieldClass('profile_role_other'), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-wrapper hidden>
+        <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
+        <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input>
       </label>
       <label class="<?=htmlspecialchars($fieldClass('job_grade', true), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'job_grade_label','Please select your Job Grade in the chosen directorate')?></span>

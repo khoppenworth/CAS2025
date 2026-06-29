@@ -356,7 +356,7 @@ function user_profile_is_complete(array $user): bool
         'phone',
         'department',
         'cadre',
-        'work_function',
+        'profile_role',
         'job_grade',
         'education_level',
         'highest_degree_subject',
