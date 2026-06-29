@@ -321,6 +321,13 @@ try {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
         $scheduled_assessments_enabled = isset($_POST['scheduled_assessments_enabled']) ? 1 : 0;
         $qb_danger_zone_enabled = isset($_POST['qb_danger_zone_enabled']) ? 1 : 0;
+        $assessment_timer_enabled = isset($_POST['assessment_timer_enabled']) ? 1 : 0;
+        $assessment_timer_minutes = max(1, min(480, (int)($_POST['assessment_timer_minutes'] ?? 60)));
+        $assessment_timer_warning_minutes = max(1, min($assessment_timer_minutes, (int)($_POST['assessment_timer_warning_minutes'] ?? 5)));
+        $assessment_timer_expiry_behavior = strtolower(trim((string)($_POST['assessment_timer_expiry_behavior'] ?? 'message_only')));
+        if (!in_array($assessment_timer_expiry_behavior, ['message_only'], true)) {
+            $assessment_timer_expiry_behavior = 'message_only';
+        }
         $local_login_enabled = isset($_POST['local_login_enabled']) ? 1 : 0;
         $self_registration_enabled = isset($_POST['self_registration_enabled']) ? 1 : 0;
         $google_oauth_enabled = isset($_POST['google_oauth_enabled']) ? 1 : 0;
@@ -458,6 +465,10 @@ try {
             'review_enabled' => $review_enabled,
             'scheduled_assessments_enabled' => $scheduled_assessments_enabled,
             'qb_danger_zone_enabled' => $qb_danger_zone_enabled,
+            'assessment_timer_enabled' => $assessment_timer_enabled,
+            'assessment_timer_minutes' => $assessment_timer_minutes,
+            'assessment_timer_warning_minutes' => $assessment_timer_warning_minutes,
+            'assessment_timer_expiry_behavior' => $assessment_timer_expiry_behavior,
             'email_templates' => encode_email_templates($emailTemplates),
             'ai_enabled' => $ai_enabled,
             'ai_provider' => $ai_provider,
@@ -521,6 +532,10 @@ try {
                 'review_enabled' => t($t, 'enable_review_feature', 'Enable supervisor review workflow'),
                 'scheduled_assessments_enabled' => t($t, 'enable_scheduled_assessments_tile', 'Show Scheduled Assessments tile'),
                 'qb_danger_zone_enabled' => t($t, 'qb_show_danger_zone', 'Show Danger Zone tile in Questionnaire Builder'),
+                'assessment_timer_enabled' => t($t, 'assessment_timer_enable', 'Enable assessment timer'),
+                'assessment_timer_minutes' => t($t, 'assessment_timer_minutes', 'Timer duration (minutes)'),
+                'assessment_timer_warning_minutes' => t($t, 'assessment_timer_warning_minutes', 'Warning threshold (minutes)'),
+                'assessment_timer_expiry_behavior' => t($t, 'assessment_timer_expiry_behavior', 'When timer reaches zero'),
                 'email_templates' => t($t, 'email_template_settings', 'Email Templates'),
                 'ai_enabled' => t($t, 'ai_enable_master', 'Enable AI features'),
                 'ai_provider' => t($t, 'ai_provider', 'AI Provider'),
@@ -743,6 +758,28 @@ $pageHelpKey = 'admin.settings';
           <?=t($t,'scheduled_assessments_tile_hint','Enable this tile for supervisors and administrators to schedule next assessment dates for active staff.')?>
         </p>
       </div>
+      <h3 class="md-subhead">
+        <?=t($t,'assessment_timer_settings','Assessment Timer')?>
+        <?=render_help_icon(t($t,'assessment_timer_settings_hint','Optionally show a visual countdown during assessment submission. The initial mode only displays an expired message and does not lock, save, submit, score, or report incomplete questionnaires.'))?>
+      </h3>
+      <div class="md-control">
+        <label>
+          <input type="checkbox" name="assessment_timer_enabled" value="1" <?=((int)($cfg['assessment_timer_enabled'] ?? 0) === 1) ? 'checked' : ''?>>
+          <span><?=t($t,'assessment_timer_enable','Enable assessment timer')?></span>
+        </label>
+      </div>
+      <div class="md-grid two">
+        <label class="md-field"><span><?=t($t,'assessment_timer_minutes','Timer duration (minutes)')?></span><input type="number" name="assessment_timer_minutes" min="1" max="480" value="<?=htmlspecialchars((string)($cfg['assessment_timer_minutes'] ?? 60), ENT_QUOTES, 'UTF-8')?>"></label>
+        <label class="md-field"><span><?=t($t,'assessment_timer_warning_minutes','Warning threshold (minutes)')?></span><input type="number" name="assessment_timer_warning_minutes" min="1" max="480" value="<?=htmlspecialchars((string)($cfg['assessment_timer_warning_minutes'] ?? 5), ENT_QUOTES, 'UTF-8')?>"></label>
+      </div>
+      <label class="md-field"><span><?=t($t,'assessment_timer_expiry_behavior','When timer reaches zero')?></span>
+        <select name="assessment_timer_expiry_behavior">
+          <option value="message_only" <?=((string)($cfg['assessment_timer_expiry_behavior'] ?? 'message_only') === 'message_only') ? 'selected' : ''?>><?=t($t,'assessment_timer_expiry_message_only','Show expired message only')?></option>
+        </select>
+      </label>
+      <p class="md-help-note">
+        <?=t($t,'assessment_timer_message_only_hint','This first release is informational only: it does not lock fields, auto-save, auto-submit, bypass required questions, or change scoring and reports.')?>
+      </p>
       <h3 class="md-subhead">
         <?=t($t,'questionnaire_builder_settings','Questionnaire Builder')?>
         <?=render_help_icon(t($t,'questionnaire_builder_settings_hint','Show or hide advanced questionnaire builder controls used during setup.'))?>

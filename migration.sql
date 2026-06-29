@@ -904,6 +904,71 @@ PREPARE stmt FROM @sc_qb_danger_zone_enabled_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+
+SET @sc_assessment_timer_enabled_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'assessment_timer_enabled'
+);
+SET @sc_assessment_timer_enabled_sql = IF(
+  @sc_assessment_timer_enabled_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN assessment_timer_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER qb_danger_zone_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_assessment_timer_enabled_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_assessment_timer_minutes_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'assessment_timer_minutes'
+);
+SET @sc_assessment_timer_minutes_sql = IF(
+  @sc_assessment_timer_minutes_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN assessment_timer_minutes INT NOT NULL DEFAULT 60 AFTER assessment_timer_enabled',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_assessment_timer_minutes_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_assessment_timer_warning_minutes_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'assessment_timer_warning_minutes'
+);
+SET @sc_assessment_timer_warning_minutes_sql = IF(
+  @sc_assessment_timer_warning_minutes_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN assessment_timer_warning_minutes INT NOT NULL DEFAULT 5 AFTER assessment_timer_minutes',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_assessment_timer_warning_minutes_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sc_assessment_timer_expiry_behavior_exists = (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'site_config'
+    AND COLUMN_NAME = 'assessment_timer_expiry_behavior'
+);
+SET @sc_assessment_timer_expiry_behavior_sql = IF(
+  @sc_assessment_timer_expiry_behavior_exists = 0,
+  'ALTER TABLE site_config ADD COLUMN assessment_timer_expiry_behavior VARCHAR(40) NOT NULL DEFAULT ''message_only'' AFTER assessment_timer_warning_minutes',
+  'DO 1'
+);
+PREPARE stmt FROM @sc_assessment_timer_expiry_behavior_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @sc_email_templates_exists = (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -913,7 +978,7 @@ SET @sc_email_templates_exists = (
 );
 SET @sc_email_templates_sql = IF(
   @sc_email_templates_exists = 0,
-  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER qb_danger_zone_enabled',
+  'ALTER TABLE site_config ADD COLUMN email_templates LONGTEXT NULL AFTER assessment_timer_expiry_behavior',
   'DO 1'
 );
 PREPARE stmt FROM @sc_email_templates_sql;
@@ -1285,6 +1350,10 @@ INSERT IGNORE INTO site_config (
   review_enabled,
   scheduled_assessments_enabled,
   qb_danger_zone_enabled,
+  assessment_timer_enabled,
+  assessment_timer_minutes,
+  assessment_timer_warning_minutes,
+  assessment_timer_expiry_behavior,
   email_templates,
   ai_enabled,
   ai_provider,
@@ -1350,6 +1419,10 @@ INSERT IGNORE INTO site_config (
   1,
   1,
   1,
+  0,
+  60,
+  5,
+  'message_only',
   '{}',
   0,
   'ollama',

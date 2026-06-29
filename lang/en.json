@@ -890,5 +890,17 @@
   "submitted_assessments_hint": "Only submitted and approved assessments are included. Scores are shown per questionnaire and are not averaged across different questionnaires.",
   "filter_by_questionnaire": "Filter by questionnaire",
   "apply_filter": "Apply filter",
-  "questionnaire_filter_active": "Showing submitted assessments for %s only."
+  "questionnaire_filter_active": "Showing submitted assessments for %s only.",
+  "assessment_timer_settings": "Assessment Timer",
+  "assessment_timer_settings_hint": "Optionally show a visual countdown during assessment submission. The initial mode only displays an expired message and does not lock, save, submit, score, or report incomplete questionnaires.",
+  "assessment_timer_enable": "Enable assessment timer",
+  "assessment_timer_minutes": "Timer duration (minutes)",
+  "assessment_timer_warning_minutes": "Warning threshold (minutes)",
+  "assessment_timer_expiry_behavior": "When timer reaches zero",
+  "assessment_timer_expiry_message_only": "Show expired message only",
+  "assessment_timer_message_only_hint": "This first release is informational only: it does not lock fields, auto-save, auto-submit, bypass required questions, or change scoring and reports.",
+  "assessment_timer_time_remaining": "Time remaining",
+  "assessment_timer_expired": "Time expired",
+  "assessment_timer_expired_message_only_notice": "The timer has ended. You can still review, save a draft, or submit when ready.",
+  "assessment_timer_visual_only_badge": "Visual timer only"
 }
