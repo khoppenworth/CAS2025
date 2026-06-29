@@ -105,4 +105,10 @@ if ($closedIds !== []) {
     exit(1);
 }
 
+$schemaRows = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('questionnaire_department', 'questionnaire_team') ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+if ($schemaRows !== ['questionnaire_department', 'questionnaire_team']) {
+    fwrite(STDERR, 'Visibility lookup should bootstrap missing department/team assignment tables. Got: ' . json_encode($schemaRows) . PHP_EOL);
+    exit(1);
+}
+
 echo "Questionnaire visibility tests passed.\n";

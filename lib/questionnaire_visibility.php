@@ -42,6 +42,13 @@ function questionnaire_rows_by_id(array $rows): array
  */
 function available_questionnaires_for_user(PDO $pdo, array $user): array
 {
+    if (function_exists('ensure_questionnaire_department_schema')) {
+        ensure_questionnaire_department_schema($pdo);
+    }
+    if (function_exists('ensure_questionnaire_team_schema')) {
+        ensure_questionnaire_team_schema($pdo);
+    }
+
     $departmentAssigned = [];
     $teamAssigned = [];
     $directAssigned = [];
