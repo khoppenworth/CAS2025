@@ -21,6 +21,12 @@ assert_contains_ui($page, 'form.classList.add(\'is-saving\');', 'Team forms shou
 assert_contains_ui($page, 'savingMessage.textContent = \'Saving…\';', 'Team forms should show a saving message while submitting.');
 assert_contains_ui($page, 'button.disabled = true;', 'Team save buttons should be disabled after submit to prevent duplicate saves.');
 assert_contains_ui($page, 'input.value = activePaneId || \'departments\';', 'Saving should preserve the active Teams tab after redirects.');
+assert_contains_ui($page, 'data-catalog-import-form', 'Catalog import form should be identifiable for client-side validation.');
+assert_contains_ui($page, 'event.defaultPrevented', 'Generic saving handler should not disable controls after catalog import validation prevents submission.');
+assert_contains_ui($page, 'Import selected changes', 'Catalog sync apply button should use clear import wording after preview.');
+if (str_contains($page, "?>\n\n$" . "catalogSyncRecordSummary")) {
+    throw new RuntimeException('Catalog sync helper should remain inside PHP and must not render above the UI.');
+}
 
 $teamDefaultsPosition = strpos($page, 'id="team-defaults"');
 $teamSaveModePosition = strpos($page, 'name="mode" value="team_assignments_save"');

@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config.php';
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/../lib/department_teams.php';
 }
+require_once __DIR__ . '/../lib/department_catalog_sync.php';
 
 auth_required(['admin']);
 refresh_current_user($pdo);
@@ -19,6 +20,9 @@ $metadataMsg = $_SESSION[$metadataFlashKey] ?? '';
 unset($_SESSION[$metadataFlashKey]);
 $errors = [];
 $metadataErrors = [];
+$catalogSyncPreview = null;
+$catalogSyncPreviewToken = '';
+$initialPane = 'departments';
 
 $questionnaires = [];
 $questionnaireIds = [];
@@ -45,6 +49,14 @@ foreach ($departments as $depSlug => $depRecord) {
 ensure_questionnaire_team_schema($pdo);
 $teams = department_team_catalog($pdo);
 $workRoles = work_function_catalog($pdo);
+
+if (($_GET['action'] ?? '') === 'export_department_catalog') {
+    $filename = 'department-team-catalog-' . gmdate('Ymd-His') . '.json';
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo department_catalog_export_json($pdo);
+    exit;
+}
 
 $statusFilter = strtolower(trim((string)($_GET['status'] ?? 'active')));
 if (!in_array($statusFilter, ['active', 'inactive', 'all'], true)) {
@@ -92,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode = (string)($_POST['mode'] ?? '');
     $currentTab = trim((string)($_POST['current_tab'] ?? ''));
-    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'defaults', 'team-defaults'], true)) {
+    if (!in_array($currentTab, ['departments', 'teams', 'roles', 'catalog-sync', 'defaults', 'team-defaults'], true)) {
         $currentTab = '';
     }
     try {
@@ -178,6 +190,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE department_team_catalog SET archived_at = NULL WHERE slug=?')->execute([$slug]);
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
+        }
+        if ($mode === 'catalog_import_preview') {
+            $initialPane = 'catalog-sync';
+            $archiveMissing = isset($_POST['archive_missing']);
+            $upload = $_FILES['catalog_file'] ?? null;
+            if (!is_array($upload) || (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_required', 'Upload a department/team catalog JSON file.'));
+            }
+            $size = (int)($upload['size'] ?? 0);
+            if ($size <= 0 || $size > DEPARTMENT_CATALOG_SYNC_MAX_UPLOAD_BYTES) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_size', 'Upload a non-empty catalog JSON file no larger than 2 MB.'));
+            }
+            $tmpName = (string)($upload['tmp_name'] ?? '');
+            $json = $tmpName !== '' ? file_get_contents($tmpName) : false;
+            if ($json === false || trim($json) === '') {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_empty', 'The uploaded catalog file is empty.'));
+            }
+            $payload = parse_department_catalog_import_json($json);
+            $validation = validate_department_catalog_import_payload($payload);
+            if (!$validation['valid']) {
+                foreach ($validation['errors'] as $validationError) {
+                    $metadataErrors[] = $validationError;
+                }
+            } else {
+                $catalogSyncPreview = [
+                    'archive_missing' => $archiveMissing,
+                    'departments' => $validation['departments'],
+                    'teams' => $validation['teams'],
+                    'changes' => preview_department_catalog_import($pdo, $validation['departments'], $validation['teams'], $archiveMissing),
+                ];
+                $catalogSyncPreviewToken = bin2hex(random_bytes(16));
+                $initialPane = 'catalog-sync';
+                $_SESSION['department_catalog_sync_preview'] = $catalogSyncPreview;
+                $_SESSION['department_catalog_sync_preview_token'] = $catalogSyncPreviewToken;
+            }
+        }
+        if ($mode === 'catalog_import_apply') {
+            $token = trim((string)($_POST['preview_token'] ?? ''));
+            $storedToken = (string)($_SESSION['department_catalog_sync_preview_token'] ?? '');
+            $storedPreview = $_SESSION['department_catalog_sync_preview'] ?? null;
+            if ($token === '' || $storedToken === '' || !hash_equals($storedToken, $token) || !is_array($storedPreview)) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_preview_expired', 'Preview the catalog import again before applying it.'));
+            }
+            $decisions = $_POST['catalog_decisions'] ?? [];
+            if (!is_array($decisions)) {
+                $decisions = [];
+            }
+            $result = apply_department_catalog_import_decisions(
+                $pdo,
+                is_array($storedPreview['departments'] ?? null) ? $storedPreview['departments'] : [],
+                is_array($storedPreview['teams'] ?? null) ? $storedPreview['teams'] : [],
+                !empty($storedPreview['archive_missing']),
+                $decisions
+            );
+            unset($_SESSION['department_catalog_sync_preview'], $_SESSION['department_catalog_sync_preview_token']);
+            $_SESSION[$metadataFlashKey] = sprintf(
+                'Catalog import applied. Departments: %d created, %d updated, %d archived, %d kept. Teams: %d created, %d updated, %d archived, %d kept.',
+                $result['departments']['created'],
+                $result['departments']['updated'],
+                $result['departments']['archived'],
+                $result['departments']['kept'],
+                $result['teams']['created'],
+                $result['teams']['updated'],
+                $result['teams']['archived'],
+                $result['teams']['kept']
+            );
+            header('Location: ' . $buildRedirect('catalog-sync')); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -335,12 +414,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (InvalidArgumentException $e) {
         $metadataErrors[] = $e->getMessage();
+        if (in_array((string)($_POST['mode'] ?? ''), ['catalog_import_preview', 'catalog_import_apply'], true)) {
+            $initialPane = 'catalog-sync';
+        }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
         error_log('work_function_defaults fatal error: ' . $e->getMessage());
         $metadataErrors[] = t($t, 'work_function_defaults_save_failed', 'Unable to save work function defaults. Please try again.');
+        if (in_array((string)($_POST['mode'] ?? ''), ['catalog_import_preview', 'catalog_import_apply'], true)) {
+            $initialPane = 'catalog-sync';
+        }
     }
 }
 
@@ -446,7 +531,22 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         $assignmentCounts[$depSlug] = 0;
     }
 }
+
+$catalogSyncRecordSummary = static function (array $record, string $type) use ($allDepartmentOptions): string {
+    $status = normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null ? 'Active' : 'Archived';
+    $parts = [];
+    $parts[] = 'Label: ' . (string)($record['label'] ?? '');
+    if ($type === 'team') {
+        $departmentSlug = (string)($record['department_slug'] ?? '');
+        $parts[] = 'Directorate: ' . (string)($allDepartmentOptions[$departmentSlug] ?? $departmentSlug);
+    }
+    $parts[] = 'Slug: ' . (string)($record['slug'] ?? '');
+    $parts[] = 'Sort: ' . (string)((int)($record['sort_order'] ?? 0));
+    $parts[] = 'Status: ' . $status;
+    return implode(' · ', $parts);
+};
 ?>
+
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
 <meta charset="utf-8"><title><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -539,6 +639,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       <a class="md-tab-chip is-active" id="tab-departments" data-tab-target="departments" href="#departments" role="tab" aria-controls="departments" aria-selected="true">Directorates</a>
       <a class="md-tab-chip" id="tab-teams" data-tab-target="teams" href="#teams" role="tab" aria-controls="teams" aria-selected="false">Teams</a>
       <a class="md-tab-chip" id="tab-roles" data-tab-target="roles" href="#roles" role="tab" aria-controls="roles" aria-selected="false">Work Roles</a>
+      <a class="md-tab-chip" id="tab-catalog-sync" data-tab-target="catalog-sync" href="#catalog-sync" role="tab" aria-controls="catalog-sync" aria-selected="false">Catalog Sync</a>
       <a class="md-tab-chip" id="tab-defaults" data-tab-target="defaults" href="#defaults" role="tab" aria-controls="defaults" aria-selected="false">Directorate Defaults</a>
       <a class="md-tab-chip" id="tab-team-defaults" data-tab-target="team-defaults" href="#team-defaults" role="tab" aria-controls="team-defaults" aria-selected="false">Team Defaults</a>
     </div>
@@ -686,6 +787,87 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
       </div>
     </section>
 
+
+    <section class="md-defaults-group md-pane" id="catalog-sync" data-pane role="tabpanel" aria-labelledby="tab-catalog-sync">
+      <div class="md-defaults-header">
+        <span><?=htmlspecialchars(t($t,'catalog_sync_title','Department/team catalog sync'), ENT_QUOTES, 'UTF-8')?></span>
+        <span class="md-defaults-meta"><?=count($departments)?> directorates · <?=count($teams)?> teams</span>
+      </div>
+      <div class="md-defaults-group-body">
+        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts. The Import selected changes button appears only after a valid preview.'), ENT_QUOTES, 'UTF-8')?></p>
+        <div class="md-alert info"><p><?=htmlspecialchars(t($t, 'catalog_sync_format_help', 'Use the exported JSON when possible. Imports also normalize mixed-case names and labels into safe slugs, but every team must include a department_slug or department label that matches a department in the same file.'), ENT_QUOTES, 'UTF-8')?></p></div>
+        <div class="md-compact-actions" style="margin-bottom:.8rem;">
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?action=export_department_catalog', ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'catalog_sync_export', 'Export catalog JSON'), ENT_QUOTES, 'UTF-8')?></a>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="md-compact-actions" data-catalog-import-form style="align-items:flex-end; margin-bottom:1rem; padding:.8rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
+          <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+          <input type="hidden" name="mode" value="catalog_import_preview">
+          <label class="md-field"><span><?=htmlspecialchars(t($t, 'catalog_sync_file', 'Catalog JSON file'), ENT_QUOTES, 'UTF-8')?></span><input type="file" name="catalog_file" accept="application/json,.json" required></label>
+          <span class="md-alert error" data-catalog-import-error style="display:none; flex-basis:100%; margin:0;"></span>
+          <label style="display:inline-flex; gap:.35rem; align-items:center; margin-bottom:.5rem;"><input type="checkbox" name="archive_missing" value="1"> <span><?=htmlspecialchars(t($t, 'catalog_sync_archive_missing', 'Archive live rows missing from the import'), ENT_QUOTES, 'UTF-8')?></span></label>
+          <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_preview', 'Preview import'), ENT_QUOTES, 'UTF-8')?></button>
+        </form>
+        <?php if (!is_array($catalogSyncPreview)): ?>
+          <p><em><?=htmlspecialchars(t($t, 'catalog_sync_apply_waiting', 'No import is ready to apply yet. Upload a file and run Preview import first.'), ENT_QUOTES, 'UTF-8')?></em></p>
+        <?php endif; ?>
+        <?php if (is_array($catalogSyncPreview)): $changes = $catalogSyncPreview['changes']; ?>
+          <div class="md-alert success"><p><?=htmlspecialchars(t($t, 'catalog_sync_preview_ready', 'Preview ready. Review the changes below before applying.'), ENT_QUOTES, 'UTF-8')?></p></div>
+          <div class="md-table-wrap">
+            <table class="md-table">
+              <thead><tr><th>Catalog</th><th>Create</th><th>Update</th><th>Archive missing</th><th>Unchanged</th></tr></thead>
+              <tbody>
+                <tr><td>Directorates</td><td><?=count($changes['departments']['create'])?></td><td><?=count($changes['departments']['update'])?></td><td><?=count($changes['departments']['archive_missing'])?></td><td><?=count($changes['departments']['unchanged'])?></td></tr>
+                <tr><td>Teams</td><td><?=count($changes['teams']['create'])?></td><td><?=count($changes['teams']['update'])?></td><td><?=count($changes['teams']['archive_missing'])?></td><td><?=count($changes['teams']['unchanged'])?></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form method="post" style="margin-top:1rem;">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="mode" value="catalog_import_apply">
+            <input type="hidden" name="preview_token" value="<?=htmlspecialchars($catalogSyncPreviewToken, ENT_QUOTES, 'UTF-8')?>">
+            <p><?=htmlspecialchars(t($t, 'catalog_sync_decision_help', 'Review each mapped row. Existing/live values are on the left, incoming/imported values are on the right, and the Decision column controls what will be applied.'), ENT_QUOTES, 'UTF-8')?></p>
+            <?php $decisionSections = [
+              ['title' => 'Directorate updates', 'group' => 'departments', 'type' => 'department', 'action' => 'update', 'rows' => $changes['departments']['update'], 'default' => 'overwrite', 'options' => ['overwrite' => 'Overwrite with incoming', 'keep' => 'Keep existing']],
+              ['title' => 'New directorates', 'group' => 'departments', 'type' => 'department', 'action' => 'create', 'rows' => $changes['departments']['create'], 'default' => 'create', 'options' => ['create' => 'Create', 'ignore' => 'Ignore']],
+              ['title' => 'Missing directorates', 'group' => 'departments', 'type' => 'department', 'action' => 'archive_missing', 'rows' => $changes['departments']['archive_missing'], 'default' => 'archive', 'options' => ['archive' => 'Archive', 'keep' => 'Keep existing']],
+              ['title' => 'Team updates', 'group' => 'teams', 'type' => 'team', 'action' => 'update', 'rows' => $changes['teams']['update'], 'default' => 'overwrite', 'options' => ['overwrite' => 'Overwrite with incoming', 'keep' => 'Keep existing']],
+              ['title' => 'New teams', 'group' => 'teams', 'type' => 'team', 'action' => 'create', 'rows' => $changes['teams']['create'], 'default' => 'create', 'options' => ['create' => 'Create', 'ignore' => 'Ignore']],
+              ['title' => 'Missing teams', 'group' => 'teams', 'type' => 'team', 'action' => 'archive_missing', 'rows' => $changes['teams']['archive_missing'], 'default' => 'archive', 'options' => ['archive' => 'Archive', 'keep' => 'Keep existing']],
+            ]; ?>
+            <?php foreach ($decisionSections as $section): if (count($section['rows']) === 0) continue; ?>
+              <h4><?=htmlspecialchars((string)$section['title'], ENT_QUOTES, 'UTF-8')?></h4>
+              <div class="md-table-wrap" style="margin-bottom:1rem;">
+                <table class="md-table">
+                  <thead><tr><th>Existing/live</th><th>Incoming/imported</th><th>Decision</th></tr></thead>
+                  <tbody>
+                  <?php foreach ($section['rows'] as $row):
+                    $slug = (string)($row['slug'] ?? '');
+                    $existing = $section['action'] === 'update' ? ($row['from'] ?? []) : ($row['from'] ?? []);
+                    $incoming = $section['action'] === 'update' ? ($row['to'] ?? []) : ($section['action'] === 'create' ? $row : []);
+                    if ($slug === '' && isset($incoming['slug'])) $slug = (string)$incoming['slug'];
+                  ?>
+                    <tr>
+                      <td><?=htmlspecialchars($existing ? $catalogSyncRecordSummary($existing, (string)$section['type']) : '—', ENT_QUOTES, 'UTF-8')?></td>
+                      <td><?=htmlspecialchars($incoming ? $catalogSyncRecordSummary($incoming, (string)$section['type']) : '—', ENT_QUOTES, 'UTF-8')?></td>
+                      <td>
+                        <select name="catalog_decisions[<?=htmlspecialchars((string)$section['group'], ENT_QUOTES, 'UTF-8')?>][<?=htmlspecialchars((string)$section['action'], ENT_QUOTES, 'UTF-8')?>][<?=htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>]">
+                          <?php foreach ($section['options'] as $value => $label): ?>
+                            <option value="<?=htmlspecialchars($value, ENT_QUOTES, 'UTF-8')?>" <?=$value===$section['default']?'selected':''?>><?=htmlspecialchars($label, ENT_QUOTES, 'UTF-8')?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            <?php endforeach; ?>
+            <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_apply', 'Import selected changes'), ENT_QUOTES, 'UTF-8')?></button>
+          </form>
+        <?php endif; ?>
+      </div>
+    </section>
+
     <section class="md-defaults-group md-pane" id="defaults" data-pane role="tabpanel" aria-labelledby="tab-defaults">
       <div class="md-defaults-header">
         <span><?=htmlspecialchars(t($t,'assignment_overview','Directorate questionnaire defaults'), ENT_QUOTES, 'UTF-8')?></span>
@@ -804,7 +986,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
 <?php include __DIR__ . '/../templates/footer.php'; ?>
 <script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
   document.addEventListener('DOMContentLoaded', function () {
-    var activePaneId = 'departments';
+    var activePaneId = <?=json_encode($initialPane)?>;
     var tabLinks = document.querySelectorAll('.md-tab-chip');
     var panes = document.querySelectorAll('[data-pane]');
     function showPaneById(paneId) {
@@ -833,7 +1015,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     });
     var paneFromHash = window.location.hash ? window.location.hash.replace('#', '') : '';
     if (!paneFromHash || !showPaneById(paneFromHash)) {
-      showPaneById('departments');
+      showPaneById(activePaneId || 'departments');
     }
     var searchInputs = document.querySelectorAll('.js-catalog-search');
     searchInputs.forEach(function (input) {
@@ -873,9 +1055,32 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         checkbox.form.submit();
       });
     });
+    var catalogImportForm = document.querySelector('[data-catalog-import-form]');
+    if (catalogImportForm) {
+      catalogImportForm.addEventListener('submit', function (event) {
+        var fileInput = catalogImportForm.querySelector('input[type="file"][name="catalog_file"]');
+        var errorBox = catalogImportForm.querySelector('[data-catalog-import-error]');
+        if (fileInput && (!fileInput.files || fileInput.files.length === 0)) {
+          event.preventDefault();
+          if (errorBox) {
+            errorBox.textContent = 'Choose a catalog JSON file before previewing the import.';
+            errorBox.style.display = 'block';
+          }
+          fileInput.focus();
+          return;
+        }
+        if (errorBox) {
+          errorBox.style.display = 'none';
+          errorBox.textContent = '';
+        }
+      });
+    }
     var postForms = document.querySelectorAll('form[method="post"]');
     postForms.forEach(function (form) {
-      form.addEventListener('submit', function () {
+      form.addEventListener('submit', function (event) {
+        if (event.defaultPrevented) {
+          return;
+        }
         if (form.classList.contains('is-saving')) {
           return;
         }
