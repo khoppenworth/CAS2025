@@ -317,6 +317,7 @@ try {
             $cfg = get_site_config($pdo);
             $enabledLocales = site_enabled_locales($cfg);
             $emailTemplates = normalize_email_templates($cfg['email_templates'] ?? []);
+            $genderOptions = normalize_gender_options($cfg['gender_options'] ?? []);
         } else {
         $review_enabled = isset($_POST['review_enabled']) ? 1 : 0;
         $scheduled_assessments_enabled = isset($_POST['scheduled_assessments_enabled']) ? 1 : 0;
