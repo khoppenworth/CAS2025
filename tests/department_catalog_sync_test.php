@@ -71,6 +71,32 @@ if (($labelOnly['teams']['rapid_response_team']['department_slug'] ?? '') !== 'o
     exit(1);
 }
 
+
+$duplicateTeams = validate_department_catalog_import_payload([
+    'departments' => [
+        ['slug' => 'finance', 'label' => 'Finance'],
+        ['slug' => 'ict', 'label' => 'ICT'],
+    ],
+    'teams' => [
+        ['label' => 'Digital Health Systems Analyst', 'department_slug' => 'finance'],
+        ['label' => 'Digital Health Systems Analyst', 'department_slug' => 'ict'],
+        ['label' => 'N/A', 'department_slug' => 'missing'],
+        ['slug' => 'none__none', 'label' => 'None / None', 'department_slug' => 'missing'],
+    ],
+]);
+if (!$duplicateTeams['valid']) {
+    fwrite(STDERR, 'Expected duplicate team labels across departments and placeholder teams to import without hard errors: ' . json_encode($duplicateTeams['errors']) . PHP_EOL);
+    exit(1);
+}
+if (!isset($duplicateTeams['teams']['digital_health_systems_analyst'], $duplicateTeams['teams']['ict__digital_health_systems_analyst'])) {
+    fwrite(STDERR, 'Expected duplicate team slugs across departments to receive a department-prefixed slug.' . PHP_EOL);
+    exit(1);
+}
+if (count($duplicateTeams['teams']) !== 2) {
+    fwrite(STDERR, 'Expected placeholder N/A/none teams to be skipped.' . PHP_EOL);
+    exit(1);
+}
+
 $invalid = validate_department_catalog_import_payload([
     'departments' => [['slug' => 'finance', 'label' => 'Finance'], ['slug' => 'finance', 'label' => 'Duplicate']],
     'teams' => [['slug' => 'orphan_team', 'department_slug' => 'missing', 'label' => 'Orphan']],

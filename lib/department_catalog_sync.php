@@ -121,6 +121,7 @@ function validate_department_catalog_import_payload(array $payload): array
     }
 
     $teams = [];
+    $seenTeamLabelsByDepartment = [];
     foreach ($teamsRaw as $index => $row) {
         if (!is_array($row)) {
             $errors[] = 'Team row ' . ((int)$index + 1) . ' must be an object.';
@@ -128,6 +129,10 @@ function validate_department_catalog_import_payload(array $payload): array
         }
         $label = trim((string)($row['label'] ?? $row['name'] ?? $row['team'] ?? ''));
         $slugSource = trim((string)($row['slug'] ?? ''));
+        if (($label !== '' && catalog_sync_is_placeholder_import_team($label)) || ($slugSource !== '' && catalog_sync_is_placeholder_import_team($slugSource))) {
+            continue;
+        }
+
         $slug = normalize_catalog_sync_slug($slugSource, $label);
         if ($slug === '') {
             $errors[] = 'Team row ' . ((int)$index + 1) . ' needs either a slug or a label/name that can be converted to a slug.';
@@ -146,6 +151,7 @@ function validate_department_catalog_import_payload(array $payload): array
 
         if ($departmentSlug === '' || !isset($departments[$departmentSlug])) {
             $errors[] = "Team {$slug} references a missing department. Provide department_slug or a matching department label from this same import file.";
+            continue;
         }
         if ($label === '') {
             $errors[] = "Team {$slug} has an empty label.";
@@ -153,10 +159,26 @@ function validate_department_catalog_import_payload(array $payload): array
         if (strlen($label) > DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH) {
             $errors[] = "Team {$slug} label is longer than " . DEPARTMENT_CATALOG_SYNC_MAX_LABEL_LENGTH . ' characters.';
         }
-        if (isset($teams[$slug])) {
-            $errors[] = "Team slug {$slug} appears more than once after normalization.";
+
+        $labelKey = $departmentSlug . '|' . strtolower($label);
+        if ($label !== '' && isset($seenTeamLabelsByDepartment[$labelKey])) {
             continue;
         }
+
+        if (isset($teams[$slug])) {
+            $existing = $teams[$slug];
+            $existingDepartment = (string)($existing['department_slug'] ?? '');
+            $existingLabel = strtolower((string)($existing['label'] ?? ''));
+            if ($existingDepartment === $departmentSlug && $existingLabel === strtolower($label)) {
+                continue;
+            }
+            $candidate = $departmentSlug . '__' . $slug;
+            if (isset($teams[$candidate])) {
+                $candidate = unique_slug($candidate, array_fill_keys(array_keys($teams), true), DEPARTMENT_CATALOG_SYNC_MAX_SLUG_LENGTH);
+            }
+            $slug = $candidate;
+        }
+
         $teams[$slug] = [
             'slug' => $slug,
             'department_slug' => $departmentSlug,
@@ -164,6 +186,9 @@ function validate_department_catalog_import_payload(array $payload): array
             'sort_order' => normalize_catalog_sync_sort_order($row['sort_order'] ?? 0, $errors, "Team {$slug}"),
             'archived_at' => validate_catalog_sync_archived_at($row['archived_at'] ?? null, $errors, "Team {$slug}"),
         ];
+        if ($label !== '') {
+            $seenTeamLabelsByDepartment[$labelKey] = true;
+        }
     }
 
     return [
@@ -382,6 +407,19 @@ function catalog_sync_execute_changes(PDO $pdo, array $departments, array $teams
         }
         throw $e;
     }
+}
+
+function catalog_sync_is_placeholder_import_team(string $value): bool
+{
+    if (is_placeholder_team_value($value)) {
+        return true;
+    }
+    $canonical = canonical_department_team_slug($value);
+    if ($canonical === '') {
+        return false;
+    }
+
+    return (bool)preg_match('/^(none|na|n_a|null|unknown|not_applicable)(_|$)/', $canonical);
 }
 
 function normalize_catalog_sync_slug(string $source, string $fallback): string

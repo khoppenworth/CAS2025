@@ -829,7 +829,7 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
         <span class="md-defaults-meta"><?=count($departments)?> directorates · <?=count($teams)?> teams</span>
       </div>
       <div class="md-defaults-group-body">
-        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts. The Apply import button appears only after a valid preview.'), ENT_QUOTES, 'UTF-8')?></p>
+        <p><?=htmlspecialchars(t($t, 'catalog_sync_help', 'Export department and team catalog data from one instance, preview it on another instance, then apply it as non-destructive upserts. The Import selected changes button appears only after a valid preview.'), ENT_QUOTES, 'UTF-8')?></p>
         <div class="md-alert info"><p><?=htmlspecialchars(t($t, 'catalog_sync_format_help', 'Use the exported JSON when possible. Imports also normalize mixed-case names and labels into safe slugs, but every team must include a department_slug or department label that matches a department in the same file.'), ENT_QUOTES, 'UTF-8')?></p></div>
         <div class="md-compact-actions" style="margin-bottom:.8rem;">
           <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?action=export_department_catalog', ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'catalog_sync_export', 'Export catalog JSON'), ENT_QUOTES, 'UTF-8')?></a>
@@ -897,7 +897,7 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
                 </table>
               </div>
             <?php endforeach; ?>
-            <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_apply', 'Apply selected changes'), ENT_QUOTES, 'UTF-8')?></button>
+            <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_apply', 'Import selected changes'), ENT_QUOTES, 'UTF-8')?></button>
           </form>
         <?php endif; ?>
       </div>
