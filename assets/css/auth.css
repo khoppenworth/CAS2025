@@ -209,3 +209,49 @@
     padding: 32px 24px;
   }
 }
+
+.md-login-page .md-password-field__control {
+  position: relative;
+  display: block;
+}
+
+.md-login-page .md-password-field__control input {
+  padding-right: 3rem;
+}
+
+.md-login-page .md-password-reveal {
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  transform: translateY(-50%);
+  width: 2.1rem;
+  height: 2.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-muted, #5f6b7a);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.md-login-page .md-password-reveal:hover,
+.md-login-page .md-password-reveal:focus-visible,
+.md-login-page .md-password-reveal[aria-pressed="true"] {
+  background: var(--app-primary-soft, rgba(13, 99, 217, 0.12));
+  color: var(--app-primary, #0d63d9);
+}
+
+.md-login-page .md-password-reveal:focus-visible {
+  outline: 2px solid var(--app-primary, #0d63d9);
+  outline-offset: 2px;
+}
+
+.md-login-page .md-password-reveal svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: currentColor;
+  pointer-events: none;
+}
