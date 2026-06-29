@@ -7,6 +7,7 @@ $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);
 $scheduledAssessmentsEnabled = (int)($cfg['scheduled_assessments_enabled'] ?? 1) === 1;
+$workFunctionOptions = work_function_choices($pdo);
 
 $message = '';
 $error = '';
@@ -16,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $userId = (int)($_POST['id'] ?? 0);
     $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
+    $workFunction = trim((string)($_POST['work_function'] ?? ''));
     $approvedUser = null;
 
     if ($userId <= 0) {
@@ -36,6 +38,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 $nextAssessment = null;
+            }
+
+            $isPendingAccountAction = in_array($action, ['approve', 'set-date'], true) && (($target['account_status'] ?? '') === 'pending');
+            if (!$error && $isPendingAccountAction) {
+                if ($workFunction === '' || !isset($workFunctionOptions[$workFunction])) {
+                    $error = t($t, 'invalid_work_function', 'Select a valid work function.');
+                }
+            }
+
+            if (!$error && $isPendingAccountAction) {
+                $pdo->prepare('UPDATE users SET work_function = ? WHERE id = ?')->execute([$workFunction, $userId]);
+                $target['work_function'] = $workFunction;
             }
 
             if (!$error && $action === 'approve') {
@@ -144,6 +158,16 @@ foreach ($activeStaff as $staffRow) {
                 <form method="post" class="md-inline-form pending-account-decision-form" action="<?=htmlspecialchars(url_for('admin/pending_accounts.php'), ENT_QUOTES, 'UTF-8')?>">
                   <input type="hidden" name="csrf" value="<?=csrf_token()?>">
                   <input type="hidden" name="id" value="<?=$pending['id']?>">
+                  <label class="pending-account-work-role-field">
+                    <span><?=t($t,'work_function','Work Role')?></span>
+                    <?php $pendingWorkFunction = (string)($pending['work_function'] ?? ''); ?>
+                    <select name="work_function" required>
+                      <option value="" disabled <?=$pendingWorkFunction !== '' ? '' : 'selected'?>><?=t($t,'select_option','Select')?></option>
+                      <?php foreach ($workFunctionOptions as $function => $label): ?>
+                        <option value="<?=htmlspecialchars($function, ENT_QUOTES, 'UTF-8')?>" <?=$pendingWorkFunction === $function ? 'selected' : ''?>><?=htmlspecialchars($label ?? $function, ENT_QUOTES, 'UTF-8')?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
                   <label class="pending-account-date-field">
                     <span><?=t($t,'next_assessment','Next Assessment')?></span>
                     <input type="date" name="next_assessment_date" value="<?=htmlspecialchars($pending['next_assessment_date'] ?? '')?>" placeholder="YYYY-MM-DD">
