@@ -6,6 +6,48 @@
     return;
   }
 
+  const passwordRevealButton = form.querySelector('[data-password-reveal]');
+  const passwordRevealInput = form.querySelector('[data-password-reveal-input]');
+
+  if (passwordRevealButton && passwordRevealInput) {
+    const hidePassword = () => {
+      passwordRevealInput.type = 'password';
+      passwordRevealButton.setAttribute('aria-pressed', 'false');
+    };
+
+    const showPassword = () => {
+      passwordRevealInput.type = 'text';
+      passwordRevealButton.setAttribute('aria-pressed', 'true');
+    };
+
+    passwordRevealButton.setAttribute('aria-pressed', 'false');
+    passwordRevealButton.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      showPassword();
+    });
+    passwordRevealButton.addEventListener('mouseup', hidePassword);
+    passwordRevealButton.addEventListener('mouseleave', hidePassword);
+    passwordRevealButton.addEventListener('blur', hidePassword);
+    passwordRevealButton.addEventListener('touchstart', (event) => {
+      event.preventDefault();
+      showPassword();
+    }, { passive: false });
+    passwordRevealButton.addEventListener('touchend', hidePassword);
+    passwordRevealButton.addEventListener('touchcancel', hidePassword);
+    passwordRevealButton.addEventListener('keydown', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        showPassword();
+      }
+    });
+    passwordRevealButton.addEventListener('keyup', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        hidePassword();
+      }
+    });
+  }
+
   const storageKeys = {
     credentials: 'hrassess:offlineCredentials',
     pending: 'hrassess:offlineCredentials:pending',
