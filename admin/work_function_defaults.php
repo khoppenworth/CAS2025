@@ -210,20 +210,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION[$metadataFlashKey] = t($t,'team_catalog_updated','Team updated.');
             header('Location: ' . $buildRedirect($currentTab)); exit;
         }
-        if ($mode === 'team_delete') {
-            if (!$showDangerZone) {
-                throw new InvalidArgumentException(t($t, 'danger_zone_disabled', 'Danger zone actions are disabled.'));
+        if ($mode === 'catalog_import_preview') {
+            $initialPane = 'catalog-sync';
+            $archiveMissing = isset($_POST['archive_missing']);
+            $upload = $_FILES['catalog_file'] ?? null;
+            if (!is_array($upload) || (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_required', 'Upload a department/team catalog JSON file.'));
             }
-            $slug = trim((string)($_POST['slug'] ?? ''));
-            if ($slug === '' || !isset($teams[$slug])) throw new InvalidArgumentException(t($t,'team_catalog_missing','Team does not exist.'));
-            $teamLabel = (string)($teams[$slug]['label'] ?? '');
-            $pdo->beginTransaction();
-            $pdo->prepare('DELETE FROM questionnaire_team WHERE team_slug = ?')->execute([$slug]);
-            $pdo->prepare('UPDATE users SET cadre = NULL WHERE cadre = ? OR cadre = ?')->execute([$slug, $teamLabel]);
-            $pdo->prepare('DELETE FROM department_team_catalog WHERE slug = ?')->execute([$slug]);
-            $pdo->commit();
-            $_SESSION[$metadataFlashKey] = t($t,'team_catalog_deleted','Team deleted.');
-            header('Location: ' . $buildRedirect($currentTab)); exit;
+            $size = (int)($upload['size'] ?? 0);
+            if ($size <= 0 || $size > DEPARTMENT_CATALOG_SYNC_MAX_UPLOAD_BYTES) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_size', 'Upload a non-empty catalog JSON file no larger than 2 MB.'));
+            }
+            $tmpName = (string)($upload['tmp_name'] ?? '');
+            $json = $tmpName !== '' ? file_get_contents($tmpName) : false;
+            if ($json === false || trim($json) === '') {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_file_empty', 'The uploaded catalog file is empty.'));
+            }
+            $payload = parse_department_catalog_import_json($json);
+            $validation = validate_department_catalog_import_payload($payload);
+            if (!$validation['valid']) {
+                foreach ($validation['errors'] as $validationError) {
+                    $metadataErrors[] = $validationError;
+                }
+            } else {
+                $catalogSyncPreview = [
+                    'archive_missing' => $archiveMissing,
+                    'departments' => $validation['departments'],
+                    'teams' => $validation['teams'],
+                    'changes' => preview_department_catalog_import($pdo, $validation['departments'], $validation['teams'], $archiveMissing),
+                ];
+                $catalogSyncPreviewToken = bin2hex(random_bytes(16));
+                $initialPane = 'catalog-sync';
+                $_SESSION['department_catalog_sync_preview'] = $catalogSyncPreview;
+                $_SESSION['department_catalog_sync_preview_token'] = $catalogSyncPreviewToken;
+            }
+        }
+        if ($mode === 'catalog_import_apply') {
+            $token = trim((string)($_POST['preview_token'] ?? ''));
+            $storedToken = (string)($_SESSION['department_catalog_sync_preview_token'] ?? '');
+            $storedPreview = $_SESSION['department_catalog_sync_preview'] ?? null;
+            if ($token === '' || $storedToken === '' || !hash_equals($storedToken, $token) || !is_array($storedPreview)) {
+                throw new InvalidArgumentException(t($t, 'catalog_sync_preview_expired', 'Preview the catalog import again before applying it.'));
+            }
+            $decisions = $_POST['catalog_decisions'] ?? [];
+            if (!is_array($decisions)) {
+                $decisions = [];
+            }
+            $result = apply_department_catalog_import_decisions(
+                $pdo,
+                is_array($storedPreview['departments'] ?? null) ? $storedPreview['departments'] : [],
+                is_array($storedPreview['teams'] ?? null) ? $storedPreview['teams'] : [],
+                !empty($storedPreview['archive_missing']),
+                $decisions
+            );
+            unset($_SESSION['department_catalog_sync_preview'], $_SESSION['department_catalog_sync_preview_token']);
+            $_SESSION[$metadataFlashKey] = sprintf(
+                'Catalog import applied. Departments: %d created, %d updated, %d archived, %d kept. Teams: %d created, %d updated, %d archived, %d kept.',
+                $result['departments']['created'],
+                $result['departments']['updated'],
+                $result['departments']['archived'],
+                $result['departments']['kept'],
+                $result['teams']['created'],
+                $result['teams']['updated'],
+                $result['teams']['archived'],
+                $result['teams']['kept']
+            );
+            header('Location: ' . $buildRedirect('catalog-sync')); exit;
         }
         if ($mode === 'role_update') {
             $slug = trim((string)($_POST['slug'] ?? ''));
@@ -498,7 +550,6 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         $assignmentCounts[$depSlug] = 0;
     }
 }
-?>
 
 $catalogSyncRecordSummary = static function (array $record, string $type) use ($allDepartmentOptions): string {
     $status = normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null ? 'Active' : 'Archived';
@@ -513,6 +564,7 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
     $parts[] = 'Status: ' . $status;
     return implode(' · ', $parts);
 };
+?>
 
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
 <meta charset="utf-8"><title><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></title>
@@ -782,10 +834,11 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
         <div class="md-compact-actions" style="margin-bottom:.8rem;">
           <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('admin/work_function_defaults.php') . '?action=export_department_catalog', ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'catalog_sync_export', 'Export catalog JSON'), ENT_QUOTES, 'UTF-8')?></a>
         </div>
-        <form method="post" enctype="multipart/form-data" class="md-compact-actions" style="align-items:flex-end; margin-bottom:1rem; padding:.8rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
+        <form method="post" enctype="multipart/form-data" class="md-compact-actions" data-catalog-import-form style="align-items:flex-end; margin-bottom:1rem; padding:.8rem; border:1px solid rgba(0,0,0,.08); border-radius:8px;">
           <input type="hidden" name="csrf" value="<?=csrf_token()?>">
           <input type="hidden" name="mode" value="catalog_import_preview">
           <label class="md-field"><span><?=htmlspecialchars(t($t, 'catalog_sync_file', 'Catalog JSON file'), ENT_QUOTES, 'UTF-8')?></span><input type="file" name="catalog_file" accept="application/json,.json" required></label>
+          <span class="md-alert error" data-catalog-import-error style="display:none; flex-basis:100%; margin:0;"></span>
           <label style="display:inline-flex; gap:.35rem; align-items:center; margin-bottom:.5rem;"><input type="checkbox" name="archive_missing" value="1"> <span><?=htmlspecialchars(t($t, 'catalog_sync_archive_missing', 'Archive live rows missing from the import'), ENT_QUOTES, 'UTF-8')?></span></label>
           <button type="submit" class="md-button md-primary"><?=htmlspecialchars(t($t, 'catalog_sync_preview', 'Preview import'), ENT_QUOTES, 'UTF-8')?></button>
         </form>
@@ -1037,9 +1090,32 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
         checkbox.form.submit();
       });
     });
+    var catalogImportForm = document.querySelector('[data-catalog-import-form]');
+    if (catalogImportForm) {
+      catalogImportForm.addEventListener('submit', function (event) {
+        var fileInput = catalogImportForm.querySelector('input[type="file"][name="catalog_file"]');
+        var errorBox = catalogImportForm.querySelector('[data-catalog-import-error]');
+        if (fileInput && (!fileInput.files || fileInput.files.length === 0)) {
+          event.preventDefault();
+          if (errorBox) {
+            errorBox.textContent = 'Choose a catalog JSON file before previewing the import.';
+            errorBox.style.display = 'block';
+          }
+          fileInput.focus();
+          return;
+        }
+        if (errorBox) {
+          errorBox.style.display = 'none';
+          errorBox.textContent = '';
+        }
+      });
+    }
     var postForms = document.querySelectorAll('form[method="post"]');
     postForms.forEach(function (form) {
-      form.addEventListener('submit', function () {
+      form.addEventListener('submit', function (event) {
+        if (event.defaultPrevented) {
+          return;
+        }
         if (form.classList.contains('is-saving')) {
           return;
         }
