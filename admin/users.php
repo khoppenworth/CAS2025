@@ -61,6 +61,59 @@ if ($defaultAssignmentsByWorkFunction === []) {
     }
 }
 
+
+$publishedQuestionnaires = [];
+try {
+    $questionnaireStmt = $pdo->query("SELECT id, title, description FROM questionnaire WHERE status='published' ORDER BY title ASC");
+    if ($questionnaireStmt) {
+        foreach ($questionnaireStmt->fetchAll(PDO::FETCH_ASSOC) as $questionnaireRow) {
+            $qid = (int)($questionnaireRow['id'] ?? 0);
+            if ($qid <= 0) {
+                continue;
+            }
+            $publishedQuestionnaires[$qid] = [
+                'id' => $qid,
+                'title' => trim((string)($questionnaireRow['title'] ?? '')),
+                'description' => trim((string)($questionnaireRow['description'] ?? '')),
+            ];
+        }
+    }
+} catch (PDOException $e) {
+    error_log('Admin user questionnaire list failed: ' . $e->getMessage());
+    $publishedQuestionnaires = [];
+}
+
+function selected_questionnaire_ids_from_post(array $source, array $publishedQuestionnaires): array
+{
+    $selected = [];
+    foreach (($source['questionnaire_ids'] ?? []) as $rawId) {
+        $qid = (int)$rawId;
+        if ($qid > 0 && isset($publishedQuestionnaires[$qid])) {
+            $selected[$qid] = $qid;
+        }
+    }
+    return array_values($selected);
+}
+
+function sync_user_questionnaire_assignments(PDO $pdo, int $userId, array $questionnaireIds, ?int $assignedBy): void
+{
+    if ($userId <= 0) {
+        return;
+    }
+    $deleteStmt = $pdo->prepare('DELETE FROM questionnaire_assignment WHERE staff_id = ?');
+    $deleteStmt->execute([$userId]);
+    if ($questionnaireIds === []) {
+        return;
+    }
+    $insertStmt = $pdo->prepare('INSERT INTO questionnaire_assignment (staff_id, questionnaire_id, assigned_by, assigned_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)');
+    foreach ($questionnaireIds as $questionnaireId) {
+        $qid = (int)$questionnaireId;
+        if ($qid > 0) {
+            $insertStmt->execute([$userId, $qid, $assignedBy]);
+        }
+    }
+}
+
 $msg = $_SESSION['admin_users_flash'] ?? '';
 $msgVariant = $msg !== '' ? 'success' : '';
 if ($msg !== '') {
@@ -107,6 +160,8 @@ $departmentOptions = department_options($pdo);
 $departmentCatalog = department_catalog($pdo);
 $teamCatalog = department_team_catalog($pdo);
 $workFunctionDefinitions = work_function_definitions($pdo);
+$actingUser = current_user();
+$actingUserId = is_array($actingUser) ? (int)($actingUser['id'] ?? 0) : 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -121,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
         $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
+        $selectedQuestionnaireIds = selected_questionnaire_ids_from_post($_POST, $publishedQuestionnaires);
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
         }
@@ -175,8 +231,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         1,
                         $nextAssessment
                     ]);
+                    $newUserId = (int)$pdo->lastInsertId();
+                    sync_user_questionnaire_assignments($pdo, $newUserId, $selectedQuestionnaireIds, $actingUserId > 0 ? $actingUserId : null);
                     if ($accountStatus === 'active' && $nextAssessment) {
-                        $newUserId = (int)$pdo->lastInsertId();
                         if ($newUserId > 0) {
                             try {
                                 $createdStmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');
@@ -215,6 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $department = resolve_department_slug($pdo, trim((string)($_POST['department'] ?? '')));
         $cadre = resolve_team_slug($pdo, trim((string)($_POST['cadre'] ?? '')), $department);
         $nextAssessment = trim($_POST['next_assessment_date'] ?? '');
+        $selectedQuestionnaireIds = selected_questionnaire_ids_from_post($_POST, $publishedQuestionnaires);
         if (!in_array($accountStatus, ['active','pending','disabled'], true)) {
             $accountStatus = 'active';
         }
@@ -275,6 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->beginTransaction();
                     $stm = $pdo->prepare($sql);
                     $stm->execute($params);
+                    sync_user_questionnaire_assignments($pdo, $id, $selectedQuestionnaireIds, $actingUserId > 0 ? $actingUserId : null);
                     $pdo->commit();
                     if ($accountStatus === 'active' && $nextAssessment) {
                         try {
@@ -371,6 +430,24 @@ $statusLabels = [
     'pending' => t($t,'status_pending','Pending approval'),
     'disabled' => t($t,'status_disabled','Disabled'),
 ];
+
+$directAssignmentsByUser = [];
+try {
+    $directStmt = $pdo->query('SELECT staff_id, questionnaire_id FROM questionnaire_assignment');
+    if ($directStmt) {
+        foreach ($directStmt->fetchAll(PDO::FETCH_ASSOC) as $assignmentRow) {
+            $staffId = (int)($assignmentRow['staff_id'] ?? 0);
+            $qid = (int)($assignmentRow['questionnaire_id'] ?? 0);
+            if ($staffId > 0 && $qid > 0) {
+                $directAssignmentsByUser[$staffId][$qid] = true;
+            }
+        }
+    }
+} catch (PDOException $e) {
+    error_log('Admin user direct assignments failed: ' . $e->getMessage());
+    $directAssignmentsByUser = [];
+}
+
 $userRecords = [];
 foreach ($rows as $r) {
     $statusKey = $r['account_status'] ?? 'active';
@@ -504,6 +581,7 @@ foreach ($rows as $r) {
         'team_key' => $teamKey,
         'work_function_key' => $workFunctionKey,
         'default_titles' => $defaultTitles,
+        'direct_assignment_ids' => array_keys($directAssignmentsByUser[$userId] ?? []),
         'search_last' => $searchLast,
         'search_full' => $searchFull,
         'search_username' => $searchUser,
@@ -626,6 +704,19 @@ foreach ($rows as $r) {
   </select>
 </label>
 <label class="md-field"><span><?=t($t,'next_assessment','Next Assessment Date')?></span><input type="date" name="next_assessment_date"></label>
+<div class="md-user-assignment-defaults">
+  <strong><?=t($t,'direct_questionnaire_assignments','Direct questionnaire assignments')?></strong>
+  <p class="md-user-assignment-empty"><?=t($t,'direct_questionnaire_assignments_hint','Select the published questionnaires this user can open and submit directly. Required for admins and supervisors.')?></p>
+  <?php if ($publishedQuestionnaires): ?>
+    <ul>
+      <?php foreach ($publishedQuestionnaires as $questionnaire): ?>
+        <li><label><input type="checkbox" name="questionnaire_ids[]" value="<?=$questionnaire['id']?>"> <?=htmlspecialchars($questionnaire['title'] !== '' ? $questionnaire['title'] : t($t,'questionnaire','Questionnaire'), ENT_QUOTES, 'UTF-8')?></label></li>
+      <?php endforeach; ?>
+    </ul>
+  <?php else: ?>
+    <p class="md-user-assignment-empty"><?=t($t,'no_published_questionnaires','No published questionnaires are available.')?></p>
+  <?php endif; ?>
+</div>
 <button name="create" class="md-button md-primary md-elev-2 md-user-action-button"><?=t($t,'create','Create')?></button>
 </form></div>
 
@@ -760,8 +851,20 @@ foreach ($rows as $r) {
                     <?php endif; ?>
                     <p class="md-user-assignment-empty"><?=t($t,'assignment_manage_from_defaults','Update the work function defaults to change which questionnaires appear here.')?></p>
                   <?php else: ?>
-                    <strong><?=t($t,'assignment_staff_only','Questionnaires are only assigned to staff accounts. These selections will take effect once the user role is set to staff.')?></strong>
+                    <strong><?=t($t,'assignment_non_staff_direct','Admins and supervisors only receive questionnaires selected as direct assignments below.')?></strong>
                     <p class="md-user-assignment-empty"><?=t($t,'assignment_manage_from_defaults','Update the work function defaults to change which questionnaires appear here.')?></p>
+                  <?php endif; ?>
+                  <strong><?=t($t,'direct_questionnaire_assignments','Direct questionnaire assignments')?></strong>
+                  <p class="md-user-assignment-empty"><?=t($t,'direct_questionnaire_assignments_hint','Select the published questionnaires this user can open and submit directly. Required for admins and supervisors.')?></p>
+                  <?php if ($publishedQuestionnaires): ?>
+                    <ul>
+                      <?php foreach ($publishedQuestionnaires as $questionnaire): ?>
+                        <?php $directChecked = in_array((int)$questionnaire['id'], $record['direct_assignment_ids'], true); ?>
+                        <li><label><input type="checkbox" name="questionnaire_ids[]" value="<?=$questionnaire['id']?>" <?=$directChecked ? 'checked' : ''?>> <?=htmlspecialchars($questionnaire['title'] !== '' ? $questionnaire['title'] : t($t,'questionnaire','Questionnaire'), ENT_QUOTES, 'UTF-8')?></label></li>
+                      <?php endforeach; ?>
+                    </ul>
+                  <?php else: ?>
+                    <p class="md-user-assignment-empty"><?=t($t,'no_published_questionnaires','No published questionnaires are available.')?></p>
                   <?php endif; ?>
                 </div>
               </div>
