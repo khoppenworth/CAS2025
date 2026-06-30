@@ -531,7 +531,6 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
         $assignmentCounts[$depSlug] = 0;
     }
 }
-?>
 
 $catalogSyncRecordSummary = static function (array $record, string $type) use ($allDepartmentOptions): string {
     $status = normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null ? 'Active' : 'Archived';
@@ -546,6 +545,7 @@ $catalogSyncRecordSummary = static function (array $record, string $type) use ($
     $parts[] = 'Status: ' . $status;
     return implode(' · ', $parts);
 };
+?>
 
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
 <meta charset="utf-8"><title><?=htmlspecialchars(t($t, 'work_function_defaults_title', 'Work Function Defaults'), ENT_QUOTES, 'UTF-8')?></title>
