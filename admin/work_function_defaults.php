@@ -5,6 +5,23 @@ if (!function_exists('resolve_department_slug')) {
 }
 require_once __DIR__ . '/../lib/department_catalog_sync.php';
 
+if (!function_exists('admin_catalog_sync_record_summary')) {
+    function admin_catalog_sync_record_summary(array $record, string $type, array $allDepartmentOptions): string
+    {
+        $status = normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null ? 'Active' : 'Archived';
+        $parts = [];
+        $parts[] = 'Label: ' . (string)($record['label'] ?? '');
+        if ($type === 'team') {
+            $departmentSlug = (string)($record['department_slug'] ?? '');
+            $parts[] = 'Directorate: ' . (string)($allDepartmentOptions[$departmentSlug] ?? $departmentSlug);
+        }
+        $parts[] = 'Slug: ' . (string)($record['slug'] ?? '');
+        $parts[] = 'Sort: ' . (string)((int)($record['sort_order'] ?? 0));
+        $parts[] = 'Status: ' . $status;
+        return implode(' · ', $parts);
+    }
+}
+
 auth_required(['admin']);
 refresh_current_user($pdo);
 require_profile_completion($pdo);
@@ -532,19 +549,7 @@ foreach ($departmentOptions as $depSlug => $_depLabel) {
     }
 }
 
-$catalogSyncRecordSummary = static function (array $record, string $type) use ($allDepartmentOptions): string {
-    $status = normalize_catalog_sync_archived_at($record['archived_at'] ?? null) === null ? 'Active' : 'Archived';
-    $parts = [];
-    $parts[] = 'Label: ' . (string)($record['label'] ?? '');
-    if ($type === 'team') {
-        $departmentSlug = (string)($record['department_slug'] ?? '');
-        $parts[] = 'Directorate: ' . (string)($allDepartmentOptions[$departmentSlug] ?? $departmentSlug);
-    }
-    $parts[] = 'Slug: ' . (string)($record['slug'] ?? '');
-    $parts[] = 'Sort: ' . (string)((int)($record['sort_order'] ?? 0));
-    $parts[] = 'Status: ' . $status;
-    return implode(' · ', $parts);
-};
+$catalogSyncRecordSummary = static fn (array $record, string $type): string => admin_catalog_sync_record_summary($record, $type, $allDepartmentOptions);
 ?>
 
 <!doctype html><html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>"><head>
