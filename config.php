@@ -356,7 +356,6 @@ function user_profile_is_complete(array $user): bool
         'phone',
         'department',
         'cadre',
-        'profile_role',
         'job_grade',
         'education_level',
         'highest_degree_subject',
@@ -371,6 +370,12 @@ function user_profile_is_complete(array $user): bool
         }
     }
 
+    if (
+        trim((string)($user['profile_role'] ?? '')) === 'other' &&
+        trim((string)($user['profile_role_other'] ?? '')) === ''
+    ) {
+        return false;
+    }
 
     return true;
 }
