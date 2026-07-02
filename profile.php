@@ -297,7 +297,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formValues['language'] = $language;
     $currentDepartmentSlug = $formValues['department'];
     $currentTeamSlug = $formValues['cadre'];
-    $fullPhone = $phoneCountryValue . $phoneLocalDigits;
+    $fullPhone = $phoneLocalDigits !== '' ? $phoneCountryValue . $phoneLocalDigits : null;
+    $genderDbValue = $gender !== '' ? $gender : null;
 
     $requiredFieldValues = [
         'full_name' => $fullName,
@@ -371,7 +372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fields = [
             'full_name' => $fullName,
             'email' => $email,
-            'gender' => $gender,
+            'gender' => $genderDbValue,
             'phone' => $fullPhone,
             'department' => $department,
             'cadre' => $cadre,

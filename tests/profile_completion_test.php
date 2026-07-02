@@ -100,4 +100,12 @@ foreach ([
 }
 
 
+
+if (!str_contains($profileSource, "\$genderDbValue = \$gender !== '' ? \$gender : null;")) {
+    throw new RuntimeException('Blank optional gender must be persisted as NULL, not an empty string that breaks MySQL ENUM columns.');
+}
+if (!str_contains($profileSource, "\$fullPhone = \$phoneLocalDigits !== '' ? \$phoneCountryValue . \$phoneLocalDigits : null;")) {
+    throw new RuntimeException('Blank optional phone must be persisted as NULL, not a country-code-only value.');
+}
+
 echo "Profile completion tests passed.\n";
