@@ -44,6 +44,47 @@ if (!function_exists('profile_normalize_gender_options')) {
     }
 }
 
+
+if (!function_exists('profile_workspace_required_fields')) {
+    function profile_workspace_required_fields(): array
+    {
+        if (function_exists('user_profile_required_fields')) {
+            return user_profile_required_fields();
+        }
+
+        return ['full_name', 'email', 'department', 'cadre', 'work_function'];
+    }
+}
+
+if (!function_exists('profile_workspace_missing_required_fields')) {
+    function profile_workspace_missing_required_fields(array $user): array
+    {
+        if (function_exists('user_profile_missing_required_fields')) {
+            return user_profile_missing_required_fields($user);
+        }
+
+        $missing = [];
+        foreach (profile_workspace_required_fields() as $field) {
+            if (trim((string)($user[$field] ?? '')) === '') {
+                $missing[] = $field;
+            }
+        }
+
+        return $missing;
+    }
+}
+
+if (!function_exists('profile_workspace_is_complete')) {
+    function profile_workspace_is_complete(array $user): bool
+    {
+        if (function_exists('user_profile_is_complete')) {
+            return user_profile_is_complete($user);
+        }
+
+        return profile_workspace_missing_required_fields($user) === [];
+    }
+}
+
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/lib/department_teams.php';
 }
@@ -62,6 +103,16 @@ $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
 $genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
+$profileMissingFields = profile_workspace_missing_required_fields($user);
+$profileReady = $profileMissingFields === [];
+$missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
+$profileMissingFieldLabels = [
+    'full_name' => t($t, 'name', 'Name'),
+    'email' => t($t, 'email', 'Email'),
+    'department' => t($t, 'department', 'Directorate'),
+    'cadre' => t($t, 'cadre', 'Team in the Directorate'),
+    'work_function' => t($t, 'work_function', 'Work Role'),
+];
 $forcePasswordReset = !empty($user['must_reset_password']);
 $forceResetNotice = $forcePasswordReset;
 if (!empty($_SESSION['pending_notice'])) {
@@ -251,8 +302,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $requiredFieldValues = [
         'full_name' => $fullName,
         'email' => $email,
-        'gender' => $gender,
-        'phone_local' => $phoneLocalDigits,
         'department' => $department,
         'cadre' => $cadre,
         'job_grade' => $jobGrade,
@@ -270,8 +319,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (
         $fullName === '' ||
         $email === '' ||
-        $gender === '' ||
-        $phoneLocalDigits === '' ||
         $department === '' ||
         $cadre === '' ||
         $jobGrade === '' ||
@@ -284,7 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $markFieldError($fieldErrors, 'email');
         $error = t($t,'invalid_email','Provide a valid email address.');
-    } elseif (!in_array($gender, $genderOptions, true)) {
+    } elseif ($gender !== '' && !in_array($gender, $genderOptions, true)) {
         $markFieldError($fieldErrors, 'gender');
         $error = t($t,'invalid_gender','Select a valid gender option.');
     } elseif (!isset($departmentOptions[$department])) {
@@ -299,23 +346,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($profileRole === 'other' && $profileRoleOther === '') {
         $markFieldError($fieldErrors, 'profile_role_other');
         $error = t($t,'invalid_profile_role_other','Please specify your role when selecting Other.');
-    } elseif (!isset($jobGradeOptions[$jobGrade])) {
+    } elseif ($jobGrade !== '' && !isset($jobGradeOptions[$jobGrade])) {
         $markFieldError($fieldErrors, 'job_grade');
         $error = t($t,'invalid_job_grade','Select a valid job grade.');
-    } elseif (!isset($educationLevelOptions[$educationLevel])) {
+    } elseif ($educationLevel !== '' && !isset($educationLevelOptions[$educationLevel])) {
         $markFieldError($fieldErrors, 'education_level');
         $error = t($t,'invalid_education_level','Select a valid education level.');
-    } elseif (!isset($experienceBandOptions[$totalWorkExperienceBand])) {
+    } elseif ($totalWorkExperienceBand !== '' && !isset($experienceBandOptions[$totalWorkExperienceBand])) {
         $markFieldError($fieldErrors, 'total_work_experience_band');
         $error = t($t,'invalid_total_experience_band','Select a valid total work experience option.');
-    } elseif (!isset($experienceBandOptions[$epssWorkExperienceBand])) {
+    } elseif ($epssWorkExperienceBand !== '' && !isset($experienceBandOptions[$epssWorkExperienceBand])) {
         $markFieldError($fieldErrors, 'epss_work_experience_band');
         $error = t($t,'invalid_epss_experience_band','Select a valid EPSS experience option.');
-    } elseif (($experienceBandRanks[$epssWorkExperienceBand] ?? 0) > ($experienceBandRanks[$totalWorkExperienceBand] ?? 0)) {
+    } elseif ($totalWorkExperienceBand !== '' && $epssWorkExperienceBand !== '' && (($experienceBandRanks[$epssWorkExperienceBand] ?? 0) > ($experienceBandRanks[$totalWorkExperienceBand] ?? 0))) {
         $markFieldError($fieldErrors, 'total_work_experience_band');
         $markFieldError($fieldErrors, 'epss_work_experience_band');
         $error = t($t,'invalid_experience_band_order','Total years of experience must be equal to or greater than EPSS experience.');
-    } elseif (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12) {
+    } elseif ($phoneLocalDigits !== '' && (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12)) {
         $markFieldError($fieldErrors, 'phone_local');
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
@@ -343,7 +390,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'total_work_experience_band' => $totalWorkExperienceBand,
             'epss_work_experience_band' => $epssWorkExperienceBand,
             'language' => $language,
-            'profile_completed' => 1,
+            'profile_completed' => profile_workspace_is_complete(array_merge($user, [
+                'full_name' => $fullName,
+                'email' => $email,
+                'department' => $department,
+                'cadre' => $cadre,
+            ])) ? 1 : 0,
         ];
         $params = array_values($fields);
         $set = implode(', ', array_map(static function ($key) { return "$key=?"; }, array_keys($fields)));
@@ -364,6 +416,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$phoneCountryValue, $phoneLocalValue] = $splitPhone($user['phone'] ?? '');
             $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
             $message = t($t,'profile_updated','Profile updated successfully.');
+            $profileMissingFields = profile_workspace_missing_required_fields($user);
+            $profileReady = $profileMissingFields === [];
+            $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
             $forceResetNotice = !empty($user['must_reset_password']);
         }
     }
@@ -386,8 +441,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
   </header>
 
-  <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if ($message): ?>
+    <div class="md-alert success">
+      <?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?>
+      <?php if ($profileReady): ?>
+        <div class="md-profile-next-actions">
+          <a class="md-button md-primary" href="<?=htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'submit_assessment', 'Submit Assessment'), ENT_QUOTES, 'UTF-8')?></a>
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'my_dashboard', 'My Dashboard'), ENT_QUOTES, 'UTF-8')?></a>
+        </div>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
   <?php if ($error): ?><div class="md-alert error"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if (!$profileReady && !$pendingNotice && !$forceResetNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'profile_completion_missing_notice', 'Complete these required account fields before opening My Workspace:'), ENT_QUOTES, 'UTF-8')?>
+      <strong><?=htmlspecialchars(implode(', ', array_map(static function (string $field) use ($profileMissingFieldLabels): string { return (string)($profileMissingFieldLabels[$field] ?? $field); }, $profileMissingFields)), ENT_QUOTES, 'UTF-8')?></strong>
+    </div>
+  <?php endif; ?>
   <?php if ($pendingNotice): ?>
     <div class="md-alert warning">
       <?=htmlspecialchars(t($t, 'pending_account_notice', 'Your account is pending supervisor approval. You can update your profile while you wait.'), ENT_QUOTES, 'UTF-8')?>
@@ -396,6 +467,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php if ($forceResetNotice): ?>
     <div class="md-alert warning">
       <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
+    </div>
+  <?php endif; ?>
+  <?php if ($missingWorkRoleNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'missing_work_role_notice', 'Your account is active but does not have an assigned Work Role. Please contact an administrator or supervisor to complete approval.'), ENT_QUOTES, 'UTF-8')?>
     </div>
   <?php endif; ?>
 
@@ -443,9 +519,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?=t($t,'email','Email')?></span>
         <input name="email" type="email" value="<?=htmlspecialchars($formValues['email'], ENT_QUOTES, 'UTF-8')?>" required>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('gender', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('gender'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'gender','Gender')?></span>
-        <select name="gender" required>
+        <select name="gender">
           <?php $gval = $formValues['gender']; ?>
           <option value="" disabled <?= $gval ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($genderOptions as $genderOption): ?>
@@ -453,7 +529,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('phone_local', true) . ' md-field-inline', ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('phone_local') . ' md-field-inline', ENT_QUOTES, 'UTF-8')?>">
         <span>
           <?=t($t,'phone','Phone Number')?>
         </span>
@@ -466,7 +542,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </option>
             <?php endforeach; ?>
           </select>
-          <input class="md-phone-local" type="text" name="phone_local" id="phone_local" data-phone-local inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="12" placeholder="<?=htmlspecialchars(t($t,'phone_number_placeholder','9-digit number'), ENT_QUOTES, 'UTF-8')?>" value="<?=htmlspecialchars($phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" aria-label="<?=htmlspecialchars(t($t,'phone','Phone Number'), ENT_QUOTES, 'UTF-8')?>" required>
+          <input class="md-phone-local" type="text" name="phone_local" id="phone_local" data-phone-local inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="12" placeholder="<?=htmlspecialchars(t($t,'phone_number_placeholder','9-digit number'), ENT_QUOTES, 'UTF-8')?>" value="<?=htmlspecialchars($phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" aria-label="<?=htmlspecialchars(t($t,'phone','Phone Number'), ENT_QUOTES, 'UTF-8')?>" >
           <input type="hidden" name="phone" value="<?=htmlspecialchars($phoneCountryValue . $phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" data-phone-full>
         </div>
       </label>
