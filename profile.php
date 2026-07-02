@@ -62,6 +62,8 @@ $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
 $genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
+$profileMissingFields = function_exists('user_profile_missing_required_fields') ? user_profile_missing_required_fields($user) : [];
+$missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
 $forcePasswordReset = !empty($user['must_reset_password']);
 $forceResetNotice = $forcePasswordReset;
 if (!empty($_SESSION['pending_notice'])) {
@@ -251,16 +253,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $requiredFieldValues = [
         'full_name' => $fullName,
         'email' => $email,
-        'gender' => $gender,
-        'phone_local' => $phoneLocalDigits,
         'department' => $department,
         'cadre' => $cadre,
-        'profile_role' => $profileRole,
-        'job_grade' => $jobGrade,
-        'education_level' => $educationLevel,
-        'highest_degree_subject' => $highestDegreeSubject,
-        'total_work_experience_band' => $totalWorkExperienceBand,
-        'epss_work_experience_band' => $epssWorkExperienceBand,
     ];
     foreach ($requiredFieldValues as $field => $value) {
         if ((string)$value === '') {
@@ -271,22 +265,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (
         $fullName === '' ||
         $email === '' ||
-        $gender === '' ||
-        $phoneLocalDigits === '' ||
         $department === '' ||
-        $cadre === '' ||
-        $profileRole === '' ||
-        $jobGrade === '' ||
-        $educationLevel === '' ||
-        $highestDegreeSubject === '' ||
-        $totalWorkExperienceBand === '' ||
-        $epssWorkExperienceBand === ''
+        $cadre === ''
     ) {
         $error = t($t,'profile_required','Please complete all required fields.');
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $markFieldError($fieldErrors, 'email');
         $error = t($t,'invalid_email','Provide a valid email address.');
-    } elseif (!in_array($gender, $genderOptions, true)) {
+    } elseif ($gender !== '' && !in_array($gender, $genderOptions, true)) {
         $markFieldError($fieldErrors, 'gender');
         $error = t($t,'invalid_gender','Select a valid gender option.');
     } elseif (!isset($departmentOptions[$department])) {
@@ -304,23 +290,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($profileRole === 'other' && $profileRoleOther === '') {
         $markFieldError($fieldErrors, 'profile_role_other');
         $error = t($t,'invalid_profile_role_other','Please specify your role when selecting Other.');
-    } elseif (!isset($jobGradeOptions[$jobGrade])) {
+    } elseif ($jobGrade !== '' && !isset($jobGradeOptions[$jobGrade])) {
         $markFieldError($fieldErrors, 'job_grade');
         $error = t($t,'invalid_job_grade','Select a valid job grade.');
-    } elseif (!isset($educationLevelOptions[$educationLevel])) {
+    } elseif ($educationLevel !== '' && !isset($educationLevelOptions[$educationLevel])) {
         $markFieldError($fieldErrors, 'education_level');
         $error = t($t,'invalid_education_level','Select a valid education level.');
-    } elseif (!isset($experienceBandOptions[$totalWorkExperienceBand])) {
+    } elseif ($totalWorkExperienceBand !== '' && !isset($experienceBandOptions[$totalWorkExperienceBand])) {
         $markFieldError($fieldErrors, 'total_work_experience_band');
         $error = t($t,'invalid_total_experience_band','Select a valid total work experience option.');
-    } elseif (!isset($experienceBandOptions[$epssWorkExperienceBand])) {
+    } elseif ($epssWorkExperienceBand !== '' && !isset($experienceBandOptions[$epssWorkExperienceBand])) {
         $markFieldError($fieldErrors, 'epss_work_experience_band');
         $error = t($t,'invalid_epss_experience_band','Select a valid EPSS experience option.');
-    } elseif (($experienceBandRanks[$epssWorkExperienceBand] ?? 0) > ($experienceBandRanks[$totalWorkExperienceBand] ?? 0)) {
+    } elseif ($totalWorkExperienceBand !== '' && $epssWorkExperienceBand !== '' && (($experienceBandRanks[$epssWorkExperienceBand] ?? 0) > ($experienceBandRanks[$totalWorkExperienceBand] ?? 0))) {
         $markFieldError($fieldErrors, 'total_work_experience_band');
         $markFieldError($fieldErrors, 'epss_work_experience_band');
         $error = t($t,'invalid_experience_band_order','Total years of experience must be equal to or greater than EPSS experience.');
-    } elseif (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12) {
+    } elseif ($phoneLocalDigits !== '' && (strlen($phoneLocalDigits) < 6 || strlen($phoneLocalDigits) > 12)) {
         $markFieldError($fieldErrors, 'phone_local');
         $error = t($t,'invalid_phone','Enter a valid phone number including the country code.');
     } elseif ($forcePasswordReset && trim((string)$password) === '') {
@@ -348,7 +334,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'total_work_experience_band' => $totalWorkExperienceBand,
             'epss_work_experience_band' => $epssWorkExperienceBand,
             'language' => $language,
-            'profile_completed' => 1,
+            'profile_completed' => user_profile_is_complete(array_merge($user, [
+                'full_name' => $fullName,
+                'email' => $email,
+                'department' => $department,
+                'cadre' => $cadre,
+            ])) ? 1 : 0,
         ];
         $params = array_values($fields);
         $set = implode(', ', array_map(static function ($key) { return "$key=?"; }, array_keys($fields)));
@@ -403,6 +394,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
     </div>
   <?php endif; ?>
+  <?php if ($missingWorkRoleNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'missing_work_role_notice', 'Your account is active but does not have an assigned Work Role. Please contact an administrator or supervisor to complete approval.'), ENT_QUOTES, 'UTF-8')?>
+    </div>
+  <?php endif; ?>
 
   <div class="md-required-popup" data-required-popup hidden>
     <div class="md-required-popup__backdrop" data-required-popup-close></div>
@@ -448,9 +444,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?=t($t,'email','Email')?></span>
         <input name="email" type="email" value="<?=htmlspecialchars($formValues['email'], ENT_QUOTES, 'UTF-8')?>" required>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('gender', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('gender'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'gender','Gender')?></span>
-        <select name="gender" required>
+        <select name="gender">
           <?php $gval = $formValues['gender']; ?>
           <option value="" disabled <?= $gval ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($genderOptions as $genderOption): ?>
@@ -458,7 +454,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('phone_local', true) . ' md-field-inline', ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('phone_local') . ' md-field-inline', ENT_QUOTES, 'UTF-8')?>">
         <span>
           <?=t($t,'phone','Phone Number')?>
         </span>
@@ -471,7 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </option>
             <?php endforeach; ?>
           </select>
-          <input class="md-phone-local" type="text" name="phone_local" id="phone_local" data-phone-local inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="12" placeholder="<?=htmlspecialchars(t($t,'phone_number_placeholder','9-digit number'), ENT_QUOTES, 'UTF-8')?>" value="<?=htmlspecialchars($phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" aria-label="<?=htmlspecialchars(t($t,'phone','Phone Number'), ENT_QUOTES, 'UTF-8')?>" required>
+          <input class="md-phone-local" type="text" name="phone_local" id="phone_local" data-phone-local inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="12" placeholder="<?=htmlspecialchars(t($t,'phone_number_placeholder','9-digit number'), ENT_QUOTES, 'UTF-8')?>" value="<?=htmlspecialchars($phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" aria-label="<?=htmlspecialchars(t($t,'phone','Phone Number'), ENT_QUOTES, 'UTF-8')?>" >
           <input type="hidden" name="phone" value="<?=htmlspecialchars($phoneCountryValue . $phoneLocalValue, ENT_QUOTES, 'UTF-8')?>" data-phone-full>
         </div>
       </label>
@@ -508,44 +504,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
         <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input <?= $profileRoleValue === 'other' ? 'required' : '' ?>>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('job_grade', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('job_grade'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'job_grade_label','Please select your Job Grade in the chosen directorate')?></span>
         <?php $jobGradeValue = $formValues['job_grade']; ?>
-        <select name="job_grade" required>
+        <select name="job_grade">
           <option value="" disabled <?= $jobGradeValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($jobGradeOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$jobGradeValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('education_level', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('education_level'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'education_level_label','Your Education Profile')?></span>
         <?php $educationLevelValue = $formValues['education_level']; ?>
-        <select name="education_level" required>
+        <select name="education_level">
           <option value="" disabled <?= $educationLevelValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($educationLevelOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$educationLevelValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('highest_degree_subject', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('highest_degree_subject'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'highest_degree_subject_label','What is the subject of your highest degree?')?></span>
-        <input name="highest_degree_subject" value="<?=htmlspecialchars($formValues['highest_degree_subject'], ENT_QUOTES, 'UTF-8')?>" required>
+        <input name="highest_degree_subject" value="<?=htmlspecialchars($formValues['highest_degree_subject'], ENT_QUOTES, 'UTF-8')?>">
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('total_work_experience_band', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('total_work_experience_band'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'total_work_experience_band_label','How many years of work experience do you have in total?')?></span>
         <?php $totalExperienceValue = $formValues['total_work_experience_band']; ?>
-        <select name="total_work_experience_band" required data-total-experience-select>
+        <select name="total_work_experience_band" data-total-experience-select>
           <option value="" disabled <?= $totalExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$totalExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('epss_work_experience_band', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('epss_work_experience_band'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'epss_work_experience_band_label','How long have you been working in EPSS?')?></span>
         <?php $epssExperienceValue = $formValues['epss_work_experience_band']; ?>
-        <select name="epss_work_experience_band" required data-epss-experience-select>
+        <select name="epss_work_experience_band" data-epss-experience-select>
           <option value="" disabled <?= $epssExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$epssExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
