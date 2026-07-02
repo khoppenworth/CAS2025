@@ -45,6 +45,49 @@ if (!function_exists('profile_normalize_gender_options')) {
 }
 
 
+
+if (!function_exists('user_profile_required_fields')) {
+    function user_profile_required_fields(): array
+    {
+        return [
+            'full_name',
+            'email',
+            'gender',
+            'phone',
+            'department',
+            'cadre',
+            'profile_role',
+            'job_grade',
+            'education_level',
+            'highest_degree_subject',
+            'total_work_experience_band',
+            'epss_work_experience_band',
+            'work_function',
+        ];
+    }
+}
+
+if (!function_exists('user_profile_missing_required_fields')) {
+    function user_profile_missing_required_fields(array $user): array
+    {
+        $missing = [];
+        foreach (user_profile_required_fields() as $field) {
+            if (trim((string)($user[$field] ?? '')) === '') {
+                $missing[] = $field;
+            }
+        }
+
+        return $missing;
+    }
+}
+
+if (!function_exists('user_profile_is_complete')) {
+    function user_profile_is_complete(array $user): bool
+    {
+        return user_profile_missing_required_fields($user) === [];
+    }
+}
+
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/lib/department_teams.php';
 }

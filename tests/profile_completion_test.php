@@ -114,6 +114,17 @@ foreach ([
     }
 }
 
+
+foreach ([
+    "if (!function_exists('user_profile_required_fields'))",
+    "if (!function_exists('user_profile_missing_required_fields'))",
+    "if (!function_exists('user_profile_is_complete'))",
+] as $fallbackGuard) {
+    if (!str_contains($profileSource, $fallbackGuard)) {
+        throw new RuntimeException('profile.php must include fallback guard to avoid profile-save fatals when helpers are unavailable: ' . $fallbackGuard);
+    }
+}
+
 foreach (['md-profile-next-actions', 'profile_completion_missing_notice', 'profile_workspace_is_complete'] as $removedComplexity) {
     if (str_contains($profileSource, $removedComplexity)) {
         throw new RuntimeException('Profile page should not contain removed complexity: ' . $removedComplexity);
