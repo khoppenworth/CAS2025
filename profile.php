@@ -44,6 +44,47 @@ if (!function_exists('profile_normalize_gender_options')) {
     }
 }
 
+
+if (!function_exists('profile_workspace_required_fields')) {
+    function profile_workspace_required_fields(): array
+    {
+        if (function_exists('user_profile_required_fields')) {
+            return user_profile_required_fields();
+        }
+
+        return ['full_name', 'email', 'department', 'cadre', 'work_function'];
+    }
+}
+
+if (!function_exists('profile_workspace_missing_required_fields')) {
+    function profile_workspace_missing_required_fields(array $user): array
+    {
+        if (function_exists('user_profile_missing_required_fields')) {
+            return user_profile_missing_required_fields($user);
+        }
+
+        $missing = [];
+        foreach (profile_workspace_required_fields() as $field) {
+            if (trim((string)($user[$field] ?? '')) === '') {
+                $missing[] = $field;
+            }
+        }
+
+        return $missing;
+    }
+}
+
+if (!function_exists('profile_workspace_is_complete')) {
+    function profile_workspace_is_complete(array $user): bool
+    {
+        if (function_exists('user_profile_is_complete')) {
+            return user_profile_is_complete($user);
+        }
+
+        return profile_workspace_missing_required_fields($user) === [];
+    }
+}
+
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/lib/department_teams.php';
 }
@@ -62,8 +103,16 @@ $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
 $genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
-$profileMissingFields = function_exists('user_profile_missing_required_fields') ? user_profile_missing_required_fields($user) : [];
+$profileMissingFields = profile_workspace_missing_required_fields($user);
+$profileReady = $profileMissingFields === [];
 $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
+$profileMissingFieldLabels = [
+    'full_name' => t($t, 'name', 'Name'),
+    'email' => t($t, 'email', 'Email'),
+    'department' => t($t, 'department', 'Directorate'),
+    'cadre' => t($t, 'cadre', 'Team in the Directorate'),
+    'work_function' => t($t, 'work_function', 'Work Role'),
+];
 $forcePasswordReset = !empty($user['must_reset_password']);
 $forceResetNotice = $forcePasswordReset;
 if (!empty($_SESSION['pending_notice'])) {
@@ -334,7 +383,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'total_work_experience_band' => $totalWorkExperienceBand,
             'epss_work_experience_band' => $epssWorkExperienceBand,
             'language' => $language,
-            'profile_completed' => user_profile_is_complete(array_merge($user, [
+            'profile_completed' => profile_workspace_is_complete(array_merge($user, [
                 'full_name' => $fullName,
                 'email' => $email,
                 'department' => $department,
@@ -360,6 +409,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$phoneCountryValue, $phoneLocalValue] = $splitPhone($user['phone'] ?? '');
             $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
             $message = t($t,'profile_updated','Profile updated successfully.');
+            $profileMissingFields = profile_workspace_missing_required_fields($user);
+            $profileReady = $profileMissingFields === [];
+            $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
             $forceResetNotice = !empty($user['must_reset_password']);
         }
     }
@@ -382,8 +434,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
   </header>
 
-  <?php if ($message): ?><div class="md-alert success"><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if ($message): ?>
+    <div class="md-alert success">
+      <?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8')?>
+      <?php if ($profileReady): ?>
+        <div class="md-profile-next-actions">
+          <a class="md-button md-primary" href="<?=htmlspecialchars(url_for('submit_assessment.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'submit_assessment', 'Submit Assessment'), ENT_QUOTES, 'UTF-8')?></a>
+          <a class="md-button md-outline" href="<?=htmlspecialchars(url_for('my_performance.php'), ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars(t($t, 'my_dashboard', 'My Dashboard'), ENT_QUOTES, 'UTF-8')?></a>
+        </div>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
   <?php if ($error): ?><div class="md-alert error"><?=htmlspecialchars($error, ENT_QUOTES, 'UTF-8')?></div><?php endif; ?>
+  <?php if (!$profileReady && !$pendingNotice && !$forceResetNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'profile_completion_missing_notice', 'Complete these required account fields before opening My Workspace:'), ENT_QUOTES, 'UTF-8')?>
+      <strong><?=htmlspecialchars(implode(', ', array_map(static function (string $field) use ($profileMissingFieldLabels): string { return (string)($profileMissingFieldLabels[$field] ?? $field); }, $profileMissingFields)), ENT_QUOTES, 'UTF-8')?></strong>
+    </div>
+  <?php endif; ?>
   <?php if ($pendingNotice): ?>
     <div class="md-alert warning">
       <?=htmlspecialchars(t($t, 'pending_account_notice', 'Your account is pending supervisor approval. You can update your profile while you wait.'), ENT_QUOTES, 'UTF-8')?>

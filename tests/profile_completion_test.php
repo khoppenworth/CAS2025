@@ -59,24 +59,40 @@ if (preg_match('/\$requiredFieldValues\s*=\s*\[(.*?)\];/s', $profileSource, $mat
 foreach ([
     'gender',
     'phone_local',
-    'job_grade',
-    'education_level',
-    'highest_degree_subject',
-    'total_work_experience_band',
-    'epss_work_experience_band',
 ] as $optionalField) {
     if (str_contains($requiredFieldBlock, "'" . $optionalField . "'")) {
         throw new RuntimeException($optionalField . ' should not be in the server-side required field list for workspace access.');
     }
 }
+
 foreach ([
-    '/<select\s+name="gender"\s+required>/i',
-    '/name="phone_local"[^>]*\srequired(?:\s|>)/i',
+    'job_grade',
+    'education_level',
+    'highest_degree_subject',
+    'total_work_experience_band',
+    'epss_work_experience_band',
+] as $mandatoryProfileField) {
+    if (!str_contains($requiredFieldBlock, "'" . $mandatoryProfileField . "'")) {
+        throw new RuntimeException($mandatoryProfileField . ' must remain mandatory on the profile form.');
+    }
+}
+if (!str_contains($profileSource, 'name="highest_degree_subject"') || !str_contains($profileSource, "highest_degree_subject'], ENT_QUOTES, 'UTF-8')?>\" required")) {
+    throw new RuntimeException('highest_degree_subject must remain mandatory on the profile form.');
+}
+foreach ([
     '/<select\s+name="job_grade"\s+required>/i',
     '/<select\s+name="education_level"\s+required>/i',
-    '/name="highest_degree_subject"[^>]*\srequired(?:\s|>)/i',
-    '/<select\s+name="total_work_experience_band"[^>]*\srequired(?:\s|>)/i',
-    '/<select\s+name="epss_work_experience_band"[^>]*\srequired(?:\s|>)/i',
+    '/<select\s+name="total_work_experience_band"[^>]*\srequired\b/i',
+    '/<select\s+name="epss_work_experience_band"[^>]*\srequired\b/i',
+] as $requiredProfilePattern) {
+    if (preg_match($requiredProfilePattern, $profileSource) !== 1) {
+        throw new RuntimeException('Mandatory profile field is missing required markup matching: ' . $requiredProfilePattern);
+    }
+}
+
+foreach ([
+    '/<select\s+name="gender"\s+required>/i',
+    '/name="phone_local"[^>]*\srequired\b/i',
 ] as $forbiddenRequiredPattern) {
     if (preg_match($forbiddenRequiredPattern, $profileSource) === 1) {
         throw new RuntimeException('Optional profile field still has required markup matching: ' . $forbiddenRequiredPattern);
