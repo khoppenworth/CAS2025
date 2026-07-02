@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-performance-cache-v5';
+const CACHE_NAME = 'my-performance-cache-v6';
 const BASE_SCOPE = (self.registration && self.registration.scope) ? self.registration.scope.replace(/\/+$/, '') : '';
 const OFFLINE_URL = withBase('offline.html');
 
@@ -10,23 +10,15 @@ function withBase(path) {
 }
 
 const APP_SHELL_URLS = [
-  withBase('my_performance.php'),
-  withBase('submit_assessment.php'),
-  withBase('profile.php'),
-  withBase('dashboard.php'),
   withBase('offline.html'),
 ];
 
 const CORE_ASSETS = [
-  withBase(''),
-  withBase('index.php'),
-  withBase('login.php'),
   OFFLINE_URL,
   withBase('assets/css/material.css'),
   withBase('assets/css/styles.css'),
   withBase('assets/js/app.js'),
-  withBase('assets/js/phone-input.js'),
-  withBase('logo.php')
+  withBase('assets/js/phone-input.js')
 ];
 
 const PRECACHE_URLS = Array.from(new Set([...CORE_ASSETS, ...APP_SHELL_URLS]));
@@ -135,29 +127,37 @@ async function getOfflineResponse(cache) {
 
 async function handleNavigationRequest(event) {
   const cache = await caches.open(CACHE_NAME);
+  const requestURL = new URL(event.request.url);
+  const isDynamicPhp = requestURL.pathname.endsWith('.php');
   try {
     if (event.preloadResponse) {
       const preload = await event.preloadResponse;
       if (preload) {
-        event.waitUntil(putInCache(event.request, preload.clone()));
+        if (!isDynamicPhp) {
+          event.waitUntil(putInCache(event.request, preload.clone()));
+        }
         return preload;
       }
     }
-    const response = await fetch(event.request);
-    await putInCache(event.request, response.clone());
+    const response = await fetch(event.request, isDynamicPhp ? { cache: 'no-store' } : undefined);
+    if (!isDynamicPhp) {
+      await putInCache(event.request, response.clone());
+    }
     return response;
   } catch (err) {
-    const cached = await cache.match(event.request);
-    if (cached) {
-      return cached;
-    }
-    const rootShell = await cache.match(withBase(''));
-    if (rootShell) {
-      return rootShell;
-    }
-    const fallback = await cache.match(withBase('index.php'));
-    if (fallback) {
-      return fallback;
+    if (!isDynamicPhp) {
+      const cached = await cache.match(event.request);
+      if (cached) {
+        return cached;
+      }
+      const rootShell = await cache.match(withBase(''));
+      if (rootShell) {
+        return rootShell;
+      }
+      const fallback = await cache.match(withBase('index.php'));
+      if (fallback) {
+        return fallback;
+      }
     }
     return getOfflineResponse(cache);
   }
@@ -195,7 +195,7 @@ async function warmDynamicContent(urls) {
       } catch (err) {
         return;
       }
-      if (!isSameOrigin(absoluteURL)) {
+      if (!isSameOrigin(absoluteURL) || absoluteURL.pathname.endsWith('.php')) {
         return;
       }
       const request = new Request(absoluteURL.toString(), { credentials: 'include' });
@@ -281,7 +281,7 @@ self.addEventListener('fetch', (event) => {
 
   const destination = request.destination;
   if (['style', 'script', 'font'].includes(destination) || /\.(?:css|js|woff2?|ttf|eot)$/i.test(requestURL.pathname)) {
-    event.respondWith(staleWhileRevalidate(event));
+    event.respondWith(networkFirst(event));
     return;
   }
 

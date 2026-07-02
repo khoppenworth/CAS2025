@@ -576,6 +576,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label class="<?=htmlspecialchars($fieldClass('profile_role', true), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'profile_role_label','Select your role')?></span>
         <?php $profileRoleValue = $formValues['profile_role']; ?>
+        <?php $profileRoleOtherRequired = $profileRoleValue === 'other'; ?>
         <select name="profile_role" data-profile-role-select required>
           <option value="" <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($profileRoleOptions as $optionValue => $optionLabel): ?>
@@ -583,9 +584,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('profile_role_other'), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-wrapper <?= $profileRoleValue === 'other' ? '' : 'hidden' ?>>
+      <label class="<?=htmlspecialchars($fieldClass('profile_role_other', $profileRoleOtherRequired), ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-wrapper <?= $profileRoleOtherRequired ? '' : 'hidden' ?>>
         <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
-        <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input <?= $profileRoleValue === 'other' ? 'required' : '' ?>>
+        <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input <?= $profileRoleOtherRequired ? 'required' : '' ?>>
       </label>
       <label class="<?=htmlspecialchars($fieldClass('job_grade'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'job_grade_label','Please select your Job Grade in the chosen directorate')?></span>
@@ -785,6 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!profileRoleSelect || !profileRoleOtherWrapper || !profileRoleOtherInput) return;
       const isOther = profileRoleSelect.value === 'other';
       profileRoleOtherWrapper.hidden = !isOther;
+      profileRoleOtherWrapper.classList.toggle('md-field--required', isOther);
       profileRoleOtherInput.required = isOther;
       if (!isOther) {
         profileRoleOtherInput.value = '';

@@ -115,6 +115,22 @@ foreach ([
 }
 
 
+
+foreach ([
+    "\$profileRoleOtherRequired = \$profileRoleValue === 'other';",
+    "\$fieldClass('profile_role_other', \$profileRoleOtherRequired)",
+    "profileRoleOtherWrapper.classList.toggle('md-field--required', isOther)",
+] as $conditionalOtherRequirement) {
+    if (!str_contains($profileSource, $conditionalOtherRequirement)) {
+        throw new RuntimeException('Other role field must toggle required asterisk state: ' . $conditionalOtherRequirement);
+    }
+}
+
+$styleSource = file_get_contents($root . '/assets/css/styles.css');
+if ($styleSource === false || !str_contains($styleSource, '.md-profile-fields .md-field--required > span:first-child::after')) {
+    throw new RuntimeException('Required field asterisk CSS must include the profile-field specific selector.');
+}
+
 foreach ([
     "if (!function_exists('user_profile_required_fields'))",
     "if (!function_exists('user_profile_missing_required_fields'))",
