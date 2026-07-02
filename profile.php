@@ -305,11 +305,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'email' => $email,
         'department' => $department,
         'cadre' => $cadre,
-        'job_grade' => $jobGrade,
-        'education_level' => $educationLevel,
-        'highest_degree_subject' => $highestDegreeSubject,
-        'total_work_experience_band' => $totalWorkExperienceBand,
-        'epss_work_experience_band' => $epssWorkExperienceBand,
     ];
     foreach ($requiredFieldValues as $field => $value) {
         if ((string)$value === '') {
@@ -321,12 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fullName === '' ||
         $email === '' ||
         $department === '' ||
-        $cadre === '' ||
-        $jobGrade === '' ||
-        $educationLevel === '' ||
-        $highestDegreeSubject === '' ||
-        $totalWorkExperienceBand === '' ||
-        $epssWorkExperienceBand === ''
+        $cadre === ''
     ) {
         $error = t($t,'profile_required','Please complete all required fields.');
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -341,7 +331,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($cadre === '') {
         $markFieldError($fieldErrors, 'cadre');
         $error = t($t,'invalid_team_department','Select a valid team in the directorate.');
-    } elseif ($profileRole !== '' && !isset($profileRoleOptions[$profileRole])) {
+    } elseif ($profileRole === '') {
+        $markFieldError($fieldErrors, 'profile_role');
+        $error = t($t,'profile_role_required','Select your role.');
+    } elseif (!isset($profileRoleOptions[$profileRole])) {
         $markFieldError($fieldErrors, 'profile_role');
         $error = t($t,'invalid_profile_role','Select a valid role option.');
     } elseif ($profileRole === 'other' && $profileRoleOther === '') {
@@ -566,10 +559,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('profile_role'), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('profile_role', true), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'profile_role_label','Select your role')?></span>
         <?php $profileRoleValue = $formValues['profile_role']; ?>
-        <select name="profile_role" data-profile-role-select>
+        <select name="profile_role" data-profile-role-select required>
           <option value="" <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($profileRoleOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$profileRoleValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
@@ -580,44 +573,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span><?=t($t,'profile_role_other_label','Other (please specify)')?></span>
         <input name="profile_role_other" value="<?=htmlspecialchars($formValues['profile_role_other'], ENT_QUOTES, 'UTF-8')?>" data-profile-role-other-input <?= $profileRoleValue === 'other' ? 'required' : '' ?>>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('job_grade', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('job_grade'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'job_grade_label','Please select your Job Grade in the chosen directorate')?></span>
         <?php $jobGradeValue = $formValues['job_grade']; ?>
-        <select name="job_grade" required>
+        <select name="job_grade">
           <option value="" disabled <?= $jobGradeValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($jobGradeOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$jobGradeValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('education_level', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('education_level'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'education_level_label','Your Education Profile')?></span>
         <?php $educationLevelValue = $formValues['education_level']; ?>
-        <select name="education_level" required>
+        <select name="education_level">
           <option value="" disabled <?= $educationLevelValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($educationLevelOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$educationLevelValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('highest_degree_subject', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('highest_degree_subject'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'highest_degree_subject_label','What is the subject of your highest degree?')?></span>
-        <input name="highest_degree_subject" value="<?=htmlspecialchars($formValues['highest_degree_subject'], ENT_QUOTES, 'UTF-8')?>" required>
+        <input name="highest_degree_subject" value="<?=htmlspecialchars($formValues['highest_degree_subject'], ENT_QUOTES, 'UTF-8')?>">
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('total_work_experience_band', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('total_work_experience_band'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'total_work_experience_band_label','How many years of work experience do you have in total?')?></span>
         <?php $totalExperienceValue = $formValues['total_work_experience_band']; ?>
-        <select name="total_work_experience_band" required data-total-experience-select>
+        <select name="total_work_experience_band" data-total-experience-select>
           <option value="" disabled <?= $totalExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$totalExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('epss_work_experience_band', true), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('epss_work_experience_band'), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'epss_work_experience_band_label','How long have you been working in EPSS?')?></span>
         <?php $epssExperienceValue = $formValues['epss_work_experience_band']; ?>
-        <select name="epss_work_experience_band" required data-epss-experience-select>
+        <select name="epss_work_experience_band" data-epss-experience-select>
           <option value="" disabled <?= $epssExperienceValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($experienceBandOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" data-experience-rank="<?=htmlspecialchars((string)($experienceBandRanks[$optionValue] ?? 0), ENT_QUOTES, 'UTF-8')?>" <?=$epssExperienceValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>
