@@ -1,10 +1,11 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/profile_completion.php';
 require_once __DIR__ . '/lib/secure_links.php';
 
 auth_required(['staff', 'supervisor', 'admin']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 
 $token = isset($_GET['t']) ? (string)$_GET['t'] : '';
 $resolved = secure_links_resolve_token($pdo, $token);

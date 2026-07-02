@@ -1,12 +1,13 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/profile_completion.php';
 require_once __DIR__ . '/lib/scoring.php';
 require_once __DIR__ . '/lib/performance_sections.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
 require_once __DIR__ . '/lib/secure_links.php';
 auth_required(['staff','supervisor','admin']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);

@@ -1762,7 +1762,17 @@ body.theme-dark .md-help-bubble::before {
 
 .md-field--required > span::after {
   content: ' *';
-  color: #d92d20;
+  color: #d92d20 !important;
+  font-weight: 700;
+}
+
+.md-profile-fields .md-field--required > span:first-child::after {
+  content: none;
+}
+
+.md-required-marker {
+  color: #d92d20 !important;
+  display: inline !important;
   font-weight: 700;
 }
 

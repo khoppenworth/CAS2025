@@ -1,10 +1,11 @@
 <?php
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/profile_completion.php';
 require_once __DIR__ . '/../lib/analytics_snapshot_v2.php';
 
 auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 $viewer = current_user();
 $viewerRole = (string)($viewer['role'] ?? ($_SESSION['user']['role'] ?? ''));
 $viewerId = (int)($viewer['id'] ?? ($_SESSION['user']['id'] ?? 0));
