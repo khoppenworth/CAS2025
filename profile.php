@@ -255,6 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'phone_local' => $phoneLocalDigits,
         'department' => $department,
         'cadre' => $cadre,
+        'profile_role' => $profileRole,
         'job_grade' => $jobGrade,
         'education_level' => $educationLevel,
         'highest_degree_subject' => $highestDegreeSubject,
@@ -274,6 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phoneLocalDigits === '' ||
         $department === '' ||
         $cadre === '' ||
+        $profileRole === '' ||
         $jobGrade === '' ||
         $educationLevel === '' ||
         $highestDegreeSubject === '' ||
@@ -293,7 +295,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($cadre === '') {
         $markFieldError($fieldErrors, 'cadre');
         $error = t($t,'invalid_team_department','Select a valid team in the directorate.');
-    } elseif ($profileRole !== '' && !isset($profileRoleOptions[$profileRole])) {
+    } elseif ($profileRole === '') {
+        $markFieldError($fieldErrors, 'profile_role');
+        $error = t($t,'profile_role_required','Select your role.');
+    } elseif (!isset($profileRoleOptions[$profileRole])) {
         $markFieldError($fieldErrors, 'profile_role');
         $error = t($t,'invalid_profile_role','Select a valid role option.');
     } elseif ($profileRole === 'other' && $profileRoleOther === '') {
@@ -489,10 +494,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endforeach; ?>
         </select>
       </label>
-      <label class="<?=htmlspecialchars($fieldClass('profile_role'), ENT_QUOTES, 'UTF-8')?>">
+      <label class="<?=htmlspecialchars($fieldClass('profile_role', true), ENT_QUOTES, 'UTF-8')?>">
         <span><?=t($t,'profile_role_label','Select your role')?></span>
         <?php $profileRoleValue = $formValues['profile_role']; ?>
-        <select name="profile_role" data-profile-role-select>
+        <select name="profile_role" data-profile-role-select required>
           <option value="" <?= $profileRoleValue !== '' ? '' : 'selected' ?>><?=t($t,'select_option','Select')?></option>
           <?php foreach ($profileRoleOptions as $optionValue => $optionLabel): ?>
             <option value="<?=htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8')?>" <?=$profileRoleValue === $optionValue ? 'selected' : ''?>><?=htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8')?></option>

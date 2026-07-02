@@ -358,7 +358,6 @@ function user_profile_is_complete(array $user): bool
         'full_name',
         'email',
         'gender',
-        'date_of_birth',
         'phone',
         'department',
         'cadre',
@@ -366,7 +365,6 @@ function user_profile_is_complete(array $user): bool
         'job_grade',
         'education_level',
         'highest_degree_subject',
-        'work_experience_profile',
         'total_work_experience_band',
         'epss_work_experience_band',
     ];
