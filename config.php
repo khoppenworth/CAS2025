@@ -357,8 +357,16 @@ function user_profile_required_fields(): array
     return [
         'full_name',
         'email',
+        'gender',
+        'phone',
         'department',
         'cadre',
+        'profile_role',
+        'job_grade',
+        'education_level',
+        'highest_degree_subject',
+        'total_work_experience_band',
+        'epss_work_experience_band',
         'work_function',
     ];
 }

@@ -45,46 +45,6 @@ if (!function_exists('profile_normalize_gender_options')) {
 }
 
 
-if (!function_exists('profile_workspace_required_fields')) {
-    function profile_workspace_required_fields(): array
-    {
-        if (function_exists('user_profile_required_fields')) {
-            return user_profile_required_fields();
-        }
-
-        return ['full_name', 'email', 'department', 'cadre', 'work_function'];
-    }
-}
-
-if (!function_exists('profile_workspace_missing_required_fields')) {
-    function profile_workspace_missing_required_fields(array $user): array
-    {
-        if (function_exists('user_profile_missing_required_fields')) {
-            return user_profile_missing_required_fields($user);
-        }
-
-        $missing = [];
-        foreach (profile_workspace_required_fields() as $field) {
-            if (trim((string)($user[$field] ?? '')) === '') {
-                $missing[] = $field;
-            }
-        }
-
-        return $missing;
-    }
-}
-
-if (!function_exists('profile_workspace_is_complete')) {
-    function profile_workspace_is_complete(array $user): bool
-    {
-        if (function_exists('user_profile_is_complete')) {
-            return user_profile_is_complete($user);
-        }
-
-        return profile_workspace_missing_required_fields($user) === [];
-    }
-}
-
 if (!function_exists('resolve_department_slug')) {
     require_once __DIR__ . '/lib/department_teams.php';
 }
@@ -103,16 +63,8 @@ $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
 $genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
-$profileMissingFields = profile_workspace_missing_required_fields($user);
-$profileReady = $profileMissingFields === [];
+$profileMissingFields = function_exists('user_profile_missing_required_fields') ? user_profile_missing_required_fields($user) : [];
 $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
-$profileMissingFieldLabels = [
-    'full_name' => t($t, 'name', 'Name'),
-    'email' => t($t, 'email', 'Email'),
-    'department' => t($t, 'department', 'Directorate'),
-    'cadre' => t($t, 'cadre', 'Team in the Directorate'),
-    'work_function' => t($t, 'work_function', 'Work Role'),
-];
 $forcePasswordReset = !empty($user['must_reset_password']);
 $forceResetNotice = $forcePasswordReset;
 if (!empty($_SESSION['pending_notice'])) {
@@ -305,6 +257,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'email' => $email,
         'department' => $department,
         'cadre' => $cadre,
+        'profile_role' => $profileRole,
+        'job_grade' => $jobGrade,
+        'education_level' => $educationLevel,
+        'highest_degree_subject' => $highestDegreeSubject,
+        'total_work_experience_band' => $totalWorkExperienceBand,
+        'epss_work_experience_band' => $epssWorkExperienceBand,
     ];
     foreach ($requiredFieldValues as $field => $value) {
         if ((string)$value === '') {
@@ -316,7 +274,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fullName === '' ||
         $email === '' ||
         $department === '' ||
-        $cadre === ''
+        $cadre === '' ||
+        $profileRole === '' ||
+        $jobGrade === '' ||
+        $educationLevel === '' ||
+        $highestDegreeSubject === '' ||
+        $totalWorkExperienceBand === '' ||
+        $epssWorkExperienceBand === ''
     ) {
         $error = t($t,'profile_required','Please complete all required fields.');
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -384,11 +348,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'total_work_experience_band' => $totalWorkExperienceBand,
             'epss_work_experience_band' => $epssWorkExperienceBand,
             'language' => $language,
-            'profile_completed' => profile_workspace_is_complete(array_merge($user, [
+            'profile_completed' => user_profile_is_complete(array_merge($user, [
                 'full_name' => $fullName,
                 'email' => $email,
+                'gender' => $gender,
+                'phone' => $fullPhone,
                 'department' => $department,
                 'cadre' => $cadre,
+                'profile_role' => $profileRole,
+                'job_grade' => $jobGrade,
+                'education_level' => $educationLevel,
+                'highest_degree_subject' => $highestDegreeSubject,
+                'total_work_experience_band' => $totalWorkExperienceBand,
+                'epss_work_experience_band' => $epssWorkExperienceBand,
             ])) ? 1 : 0,
         ];
         $params = array_values($fields);
@@ -410,9 +382,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$phoneCountryValue, $phoneLocalValue] = $splitPhone($user['phone'] ?? '');
             $phoneFlagValue = $phoneFlags[$phoneCountryValue] ?? $phoneCountries[0]['flag'];
             $message = t($t,'profile_updated','Profile updated successfully.');
-            $profileMissingFields = profile_workspace_missing_required_fields($user);
-            $profileReady = $profileMissingFields === [];
-            $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
+            $profileMissingFields = function_exists('user_profile_missing_required_fields') ? user_profile_missing_required_fields($user) : [];
+                        $missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
             $forceResetNotice = !empty($user['must_reset_password']);
         }
     }
