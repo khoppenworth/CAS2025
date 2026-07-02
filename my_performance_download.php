@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/profile_completion.php';
 require_once __DIR__ . '/lib/simple_pdf.php';
 require_once __DIR__ . '/lib/course_recommendations.php';
 require_once __DIR__ . '/lib/analytics_report.php';
@@ -8,7 +9,7 @@ require_once __DIR__ . '/lib/scoring.php';
 
 auth_required(['staff', 'supervisor', 'admin']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 
 $secureLinkContext = $GLOBALS['secure_link_context'] ?? null;
 $isSecureLinkRequest = is_array($secureLinkContext)

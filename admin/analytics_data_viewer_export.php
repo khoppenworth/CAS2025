@@ -1,11 +1,12 @@
 <?php
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/profile_completion.php';
 require_once __DIR__ . '/../lib/analytics_data_viewer.php';
 require_once __DIR__ . '/../lib/scoring.php';
 
 auth_required(['admin', 'supervisor']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 $viewer = current_user();
 
 $questionnaireId = isset($_GET['questionnaire_id']) ? max(0, (int)$_GET['questionnaire_id']) : 0;

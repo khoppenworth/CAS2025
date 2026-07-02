@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/profile_completion.php';
 require_once __DIR__ . '/../lib/course_recommendations.php';
 if (!function_exists('work_function_definitions')) {
     require_once __DIR__ . '/../lib/work_functions.php';
@@ -7,7 +8,7 @@ if (!function_exists('work_function_definitions')) {
 
 auth_required(['admin']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 
 $locale = ensure_locale();
 $t = load_lang($locale);

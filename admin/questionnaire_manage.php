@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../lib/profile_completion.php';
 require_once __DIR__.'/../config.php';
 require_once __DIR__ . '/../lib/questionnaire_submission.php';
 if (!function_exists('available_work_functions')) {
@@ -6,7 +7,7 @@ if (!function_exists('available_work_functions')) {
 }
 auth_required(['admin']);
 refresh_current_user($pdo);
-require_profile_completion($pdo);
+cas_require_profile_completion($pdo);
 $locale = ensure_locale();
 $t = load_lang($locale);
 $cfg = get_site_config($pdo);

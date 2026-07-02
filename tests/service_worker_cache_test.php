@@ -8,7 +8,7 @@ if ($source === false) {
     throw new RuntimeException('Unable to read service-worker.js');
 }
 
-if (!str_contains($source, "const CACHE_NAME = 'my-performance-cache-v6';")) {
+if (!str_contains($source, "const CACHE_NAME = 'my-performance-cache-v7';")) {
     throw new RuntimeException('Service worker cache name must be bumped when profile/assets change.');
 }
 

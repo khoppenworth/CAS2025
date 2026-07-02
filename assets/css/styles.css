@@ -1767,6 +1767,16 @@ body.theme-dark .md-help-bubble::before {
   font-weight: 700;
 }
 
+.md-profile-fields .md-field--required > span:first-child::after {
+  content: none;
+}
+
+.md-required-marker {
+  color: #d92d20 !important;
+  display: inline !important;
+  font-weight: 700;
+}
+
 .md-field--error input,
 .md-field--error select,
 .md-field--error textarea {

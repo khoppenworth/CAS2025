@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/lib/profile_completion.php';
 
 $isBootstrapRequested = !defined('APP_BOOTSTRAPPED');
 if ($isBootstrapRequested) {
@@ -354,136 +355,24 @@ function current_user() { return $_SESSION['user'] ?? null; }
 
 function user_profile_required_fields(): array
 {
-    return [
-        'full_name',
-        'email',
-        'gender',
-        'phone',
-        'department',
-        'cadre',
-        'profile_role',
-        'job_grade',
-        'education_level',
-        'highest_degree_subject',
-        'total_work_experience_band',
-        'epss_work_experience_band',
-        'work_function',
-    ];
+    return cas_profile_required_fields();
 }
 
 function user_profile_missing_required_fields(array $user): array
 {
-    $missing = [];
-    foreach (user_profile_required_fields() as $field) {
-        if (trim((string)($user[$field] ?? '')) === '') {
-            $missing[] = $field;
-        }
-    }
-
-    return $missing;
+    return cas_profile_missing_required_fields($user);
 }
 
 function user_profile_is_complete(array $user): bool
 {
-    return user_profile_missing_required_fields($user) === [];
+    return cas_profile_is_complete($user);
 }
 
-function require_profile_completion(PDO $pdo, string $redirect = 'profile.php'): void {
-    if (!isset($_SESSION['user']['id'])) { return; }
-    $userId = (int)($_SESSION['user']['id'] ?? 0);
-    if ($userId <= 0) {
-        return;
-    }
-
-    try {
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
-        $stmt->execute([$userId]);
-        $latestUser = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (is_array($latestUser)) {
-            $_SESSION['user'] = $latestUser;
-            $isComplete = user_profile_is_complete($latestUser);
-            if ((int)($latestUser['profile_completed'] ?? 0) !== ($isComplete ? 1 : 0)) {
-                $pdo->prepare('UPDATE users SET profile_completed = ? WHERE id = ?')->execute([$isComplete ? 1 : 0, $userId]);
-                $_SESSION['user']['profile_completed'] = $isComplete ? 1 : 0;
-            }
-            if ($isComplete) {
-                return;
-            }
-        }
-    } catch (PDOException $e) {
-        error_log('require_profile_completion profile check failed: ' . $e->getMessage());
-    }
-
-    if (($_SESSION['user']['profile_completed'] ?? 0) == 1) { return; }
-
-    $scriptSources = [
-        (string)($_SERVER['SCRIPT_NAME'] ?? ''),
-        (string)($_SERVER['PHP_SELF'] ?? ''),
-    ];
-
-    $currentScript = '';
-    foreach ($scriptSources as $source) {
-        if ($source === '') {
-            continue;
-        }
-        $basename = basename($source);
-        if ($basename !== '') {
-            $currentScript = $basename;
-            break;
-        }
-    }
-
-    $redirectString = (string)$redirect;
-    $redirectPath = $redirectString;
-    $parsedRedirect = @parse_url($redirectString);
-    if (is_array($parsedRedirect) && isset($parsedRedirect['path'])) {
-        $redirectPath = (string)$parsedRedirect['path'];
-    }
-
-    $redirectScript = basename($redirectPath);
-    if ($currentScript !== '' && $redirectScript !== '' && $currentScript === $redirectScript) {
-        return;
-    }
-
-    $defaultTarget = function_exists('url_for') ? url_for('profile.php') : ((defined('BASE_URL') ? (string)BASE_URL : '/') . 'profile.php');
-    $target = $redirectString;
-
-    $isAbsolute = is_array($parsedRedirect) && isset($parsedRedirect['scheme']) && $parsedRedirect['scheme'] !== '';
-    if (!$isAbsolute) {
-        if (function_exists('cleanRedirect')) {
-            $target = cleanRedirect($redirectString, $defaultTarget);
-        } elseif (function_exists('url_for')) {
-            $target = url_for($redirectString);
-        } else {
-            $base = defined('BASE_URL') ? (string)BASE_URL : '/';
-            $normalizedBase = rtrim($base, '/');
-            $normalizedPath = '/' . ltrim($redirectPath, '/');
-            if ($redirectPath === '' || $redirectPath === '/') {
-                $normalizedPath = '/';
-            }
-            if ($normalizedBase === '') {
-                $target = $normalizedPath;
-            } else {
-                $target = $normalizedBase . $normalizedPath;
-            }
-            if (is_array($parsedRedirect)) {
-                if (isset($parsedRedirect['query']) && $parsedRedirect['query'] !== '') {
-                    $target .= '?' . $parsedRedirect['query'];
-                }
-                if (isset($parsedRedirect['fragment']) && $parsedRedirect['fragment'] !== '') {
-                    $target .= '#' . $parsedRedirect['fragment'];
-                }
-            }
-        }
-    }
-
-    if ($target === '' || $target === null) {
-        $target = $defaultTarget;
-    }
-
-    header('Location: ' . $target);
-    exit;
+function require_profile_completion(PDO $pdo, string $redirect = 'profile.php'): void
+{
+    cas_require_profile_completion($pdo, $redirect);
 }
+
 
 require_once __DIR__.'/i18n.php';
 

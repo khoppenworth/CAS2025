@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-performance-cache-v6';
+const CACHE_NAME = 'my-performance-cache-v7';
 const BASE_SCOPE = (self.registration && self.registration.scope) ? self.registration.scope.replace(/\/+$/, '') : '';
 const OFFLINE_URL = withBase('offline.html');
 
