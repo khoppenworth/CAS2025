@@ -1760,9 +1760,10 @@ body.theme-dark .md-help-bubble::before {
   margin-bottom: 0.35rem;
 }
 
-.md-field--required > span::after {
+.md-field--required > span::after,
+.md-profile-fields .md-field--required > span:first-child::after {
   content: ' *';
-  color: #d92d20;
+  color: #d92d20 !important;
   font-weight: 700;
 }
 
