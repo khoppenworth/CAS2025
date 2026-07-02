@@ -62,6 +62,8 @@ $genderOptions = profile_normalize_gender_options($cfg['gender_options'] ?? []);
 $genderLabels = profile_gender_option_labels($t);
 $pendingStatus = ($user['account_status'] ?? 'active') === 'pending';
 $pendingNotice = $pendingStatus;
+$profileMissingFields = function_exists('user_profile_missing_required_fields') ? user_profile_missing_required_fields($user) : [];
+$missingWorkRoleNotice = !$pendingStatus && in_array('work_function', $profileMissingFields, true);
 $forcePasswordReset = !empty($user['must_reset_password']);
 $forceResetNotice = $forcePasswordReset;
 if (!empty($_SESSION['pending_notice'])) {
@@ -401,6 +403,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php if ($forceResetNotice): ?>
     <div class="md-alert warning">
       <?=htmlspecialchars(t($t, 'force_password_reset_notice', 'For security, you must set a new password before continuing.'), ENT_QUOTES, 'UTF-8')?>
+    </div>
+  <?php endif; ?>
+  <?php if ($missingWorkRoleNotice): ?>
+    <div class="md-alert warning">
+      <?=htmlspecialchars(t($t, 'missing_work_role_notice', 'Your account is active but does not have an assigned Work Role. Please contact an administrator or supervisor to complete approval.'), ENT_QUOTES, 'UTF-8')?>
     </div>
   <?php endif; ?>
 
