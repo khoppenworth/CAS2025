@@ -352,13 +352,12 @@ function auth_required(array $roles = []): void {
 }
 function current_user() { return $_SESSION['user'] ?? null; }
 
-function user_profile_is_complete(array $user): bool
+function user_profile_required_fields(): array
 {
-    $requiredFields = [
+    return [
         'full_name',
         'email',
         'gender',
-        'date_of_birth',
         'phone',
         'department',
         'cadre',
@@ -366,19 +365,27 @@ function user_profile_is_complete(array $user): bool
         'job_grade',
         'education_level',
         'highest_degree_subject',
-        'work_experience_profile',
         'total_work_experience_band',
         'epss_work_experience_band',
+        'work_function',
     ];
+}
 
-    foreach ($requiredFields as $field) {
+function user_profile_missing_required_fields(array $user): array
+{
+    $missing = [];
+    foreach (user_profile_required_fields() as $field) {
         if (trim((string)($user[$field] ?? '')) === '') {
-            return false;
+            $missing[] = $field;
         }
     }
 
+    return $missing;
+}
 
-    return true;
+function user_profile_is_complete(array $user): bool
+{
+    return user_profile_missing_required_fields($user) === [];
 }
 
 function require_profile_completion(PDO $pdo, string $redirect = 'profile.php'): void {
