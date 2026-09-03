@@ -87,6 +87,7 @@ function analytics_capacity_build_where(array $filters, bool $includeYear = true
 
 function analytics_capacity_fetch_response_rows(PDO $pdo, array $filters, bool $includeYear = true, bool $includeDepartment = true): array
 {
+    $filters = analytics_capacity_resolve_questionnaire_family($pdo, $filters);
     [$where, $params] = analytics_capacity_build_where($filters, $includeYear, $includeDepartment);
     $sql = "SELECT qr.id, qr.user_id, qr.questionnaire_id, qr.performance_period_id, qr.status, qr.score, qr.created_at, "
         . "q.title, COALESCE(NULLIF(q.family_key,''), CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, "
