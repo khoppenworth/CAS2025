@@ -1,0 +1,43 @@
+name: Publish UAT 0.5.85
+
+on:
+  push:
+    branches:
+      - release/0.5.85
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create UAT release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 0.5.85 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release 0.5.85 already exists; nothing to do."
+            exit 0
+          fi
+
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Analytics redesign for UAT
+
+          - Adds the new tabbed Analytics workspace with a redesigned Overview and Capacity Areas & Gaps page.
+          - Makes actual average competency score the primary performance metric and keeps staff meeting the 80% target as a separate KPI.
+          - Adds the annual 2026–2028 performance trend using latest completed assessment per employee, questionnaire family, and year.
+          - Adds Capacity Area gap ranking, directorate heatmap, staff-below-benchmark details, and explicit eLearning course matches.
+          - Adds ApexCharts 4.7.0 alongside the existing Chart.js implementation to avoid regressions in legacy Analytics.
+          - Adds A4 landscape print / Save as PDF layouts for the redesigned dashboards.
+          - Preserves the legacy detailed Analytics view as the Questionnaire Analysis tab.
+          - No database schema migration is required for this release.
+
+          Pull request: #817
+          EOF
+
+          gh release create 0.5.85 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target f02fedffb0fb0c3411c45ea120963e24bfd00478 \
+            --title "Release UAT 0.5.85" \
+            --notes-file /tmp/release-notes.md
