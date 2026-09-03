@@ -21,10 +21,33 @@ function analytics_capacity_normalize_filters(array $raw): array
     return [
         'year' => analytics_capacity_valid_year($raw['year'] ?? 0),
         'questionnaire_id' => max(0, (int)($raw['questionnaire_id'] ?? 0)),
+        'questionnaire_family_key' => trim((string)($raw['questionnaire_family_key'] ?? '')),
         'department' => trim((string)($raw['department'] ?? '')),
         'team' => trim((string)($raw['team'] ?? '')),
         'work_function' => trim((string)($raw['work_function'] ?? '')),
     ];
+}
+
+/**
+ * Resolve the selected questionnaire to its stable family key so annual trends survive questionnaire version changes.
+ */
+function analytics_capacity_resolve_questionnaire_family(PDO $pdo, array $filters): array
+{
+    $qid = (int)($filters['questionnaire_id'] ?? 0);
+    if ($qid <= 0) {
+        $filters['questionnaire_family_key'] = '';
+        return $filters;
+    }
+    try {
+        $stmt = $pdo->prepare("SELECT COALESCE(NULLIF(family_key,''), CONCAT('questionnaire-', id)) FROM questionnaire WHERE id = ?");
+        $stmt->execute([$qid]);
+        $familyKey = trim((string)($stmt->fetchColumn() ?: ''));
+        $filters['questionnaire_family_key'] = $familyKey;
+    } catch (Throwable $e) {
+        error_log('analytics capacity questionnaire family lookup failed: ' . $e->getMessage());
+        $filters['questionnaire_family_key'] = '';
+    }
+    return $filters;
 }
 
 function analytics_capacity_build_where(array $filters, bool $includeYear = true, bool $includeDepartment = true): array
@@ -32,7 +55,10 @@ function analytics_capacity_build_where(array $filters, bool $includeYear = true
     $where = ["qr.status IN ('submitted','approved','approved_late')"];
     $params = [];
 
-    if (($filters['questionnaire_id'] ?? 0) > 0) {
+    if (($filters['questionnaire_family_key'] ?? '') !== '') {
+        $where[] = "COALESCE(NULLIF(q.family_key,''), CONCAT('questionnaire-', q.id)) = ?";
+        $params[] = (string)$filters['questionnaire_family_key'];
+    } elseif (($filters['questionnaire_id'] ?? 0) > 0) {
         $where[] = 'qr.questionnaire_id = ?';
         $params[] = (int)$filters['questionnaire_id'];
     }
