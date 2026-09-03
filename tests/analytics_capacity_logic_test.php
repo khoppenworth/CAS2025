@@ -48,11 +48,25 @@ $filters = analytics_capacity_normalize_filters([
 if ($filters !== [
     'year' => 2028,
     'questionnaire_id' => 12,
+    'questionnaire_family_key' => '',
     'department' => 'Supply Chain',
     'team' => 'warehouse',
     'work_function' => 'logistics',
 ]) {
     fwrite(STDERR, "Filter normalization failed.\n");
+    exit(1);
+}
+
+$familyFilters = $filters;
+$familyFilters['questionnaire_family_key'] = 'annual-supply';
+[$where, $params] = analytics_capacity_build_where($familyFilters, true, true);
+$whereText = implode(' ', $where);
+if (!str_contains($whereText, 'q.family_key') || in_array(12, $params, true)) {
+    fwrite(STDERR, "Questionnaire family filtering should supersede exact questionnaire ID filtering.\n");
+    exit(1);
+}
+if (!in_array('annual-supply', $params, true)) {
+    fwrite(STDERR, "Questionnaire family key was not bound into analytics filters.\n");
     exit(1);
 }
 
