@@ -30,6 +30,8 @@ $navKeyMap = [
     'admin/questionnaire_manage.php' => 'admin.manage_questionnaires',
     'admin/work_function_defaults.php' => 'admin.work_function_defaults',
     'admin/analytics.php' => 'team.analytics',
+    'admin/analytics_dashboard.php' => 'team.analytics',
+    'admin/analytics_capacity.php' => 'team.analytics',
     'admin/export.php' => 'admin.export',
     'admin/branding.php' => 'admin.branding',
     'admin/settings.php' => 'admin.settings',
@@ -428,7 +430,7 @@ if ($profileInitials === '') {
             </a>
           </li>
           <li>
-            <a href="<?=htmlspecialchars(url_for('admin/analytics.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.analytics')?>>
+            <a href="<?=htmlspecialchars(url_for('admin/analytics_dashboard.php'), ENT_QUOTES, 'UTF-8')?>" <?=$topNavLinkAttributes('team.analytics')?>>
               <span class="md-topnav-link-content">
                 <span class="md-topnav-link-title"><?=t($t, 'analytics', 'Analytics')?></span>
               </span>
