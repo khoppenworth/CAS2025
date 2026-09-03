@@ -123,6 +123,7 @@ $filterQuery = array_filter([
 
 $apexUrl = 'https://cdn.jsdelivr.net/npm/apexcharts@4.7.0/dist/apexcharts.min.js';
 $pageHelpKey = 'team.analytics';
+$drawerKey = 'team.analytics';
 ?>
 <!doctype html>
 <html lang="<?=htmlspecialchars($locale, ENT_QUOTES, 'UTF-8')?>">
@@ -217,7 +218,7 @@ $pageHelpKey = 'team.analytics';
   </div>
 
   <nav class="analytics-tabs no-print" aria-label="<?=htmlspecialchars(t($t, 'analytics_tabs', 'Analytics sections'), ENT_QUOTES, 'UTF-8')?>">
-    <a href="<?=htmlspecialchars(url_for('admin/analytics.php?view=overview'), ENT_QUOTES, 'UTF-8')?>">1. <?=t($t, 'analytics_overview', 'Overview')?></a>
+    <a href="<?=htmlspecialchars(url_for('admin/analytics_dashboard.php') . '?' . http_build_query($filterQuery), ENT_QUOTES, 'UTF-8')?>">1. <?=t($t, 'analytics_overview', 'Overview')?></a>
     <a class="is-active" href="<?=htmlspecialchars(url_for('admin/analytics_capacity.php') . '?' . http_build_query($filterQuery), ENT_QUOTES, 'UTF-8')?>">2. <?=t($t, 'capacity_areas_gaps_short', 'Capacity Areas & Gaps')?></a>
     <a href="<?=htmlspecialchars(url_for('admin/analytics.php?view=drilldown&questionnaire_id=' . (int)$filters['questionnaire_id']), ENT_QUOTES, 'UTF-8')?>">3. <?=t($t, 'questionnaire_analysis', 'Questionnaire Analysis')?></a>
     <a href="<?=htmlspecialchars(url_for('admin/course_mappings.php'), ENT_QUOTES, 'UTF-8')?>">4. <?=t($t, 'learning_recommendations', 'Learning Recommendations')?></a>
