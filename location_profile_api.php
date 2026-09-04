@@ -1,0 +1,80 @@
+<?php
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/locations.php';
+
+auth_required();
+refresh_current_user($pdo);
+ensure_location_schema($pdo);
+
+header('Content-Type: application/json; charset=utf-8');
+$user = current_user();
+$userId = (int)($user['id'] ?? 0);
+if ($userId <= 0) {
+    http_response_code(401);
+    echo json_encode(['ok'=>false,'error'=>'Authentication required.']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $currentLocationId = (int)($user['location_id'] ?? 0);
+    $records = location_records($pdo, false);
+    $locations = [];
+    foreach ($records as $row) {
+        $id = (int)($row['id'] ?? 0);
+        $active = (int)($row['is_active'] ?? 0) === 1;
+        if (!$active && $id !== $currentLocationId) {
+            continue;
+        }
+        $locations[] = [
+            'id' => $id,
+            'name' => (string)($row['name'] ?? ''),
+            'type' => (string)($row['location_type'] ?? ''),
+            'region' => (string)($row['administrative_region'] ?? ''),
+            'active' => $active,
+        ];
+    }
+    echo json_encode([
+        'ok' => true,
+        'current_location_id' => $currentLocationId,
+        'locations' => $locations,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['ok'=>false,'error'=>'Method not allowed.']);
+    exit;
+}
+
+csrf_check();
+$locationId = max(0, (int)($_POST['location_id'] ?? 0));
+if ($locationId > 0 && !location_is_active($pdo, $locationId)) {
+    http_response_code(422);
+    echo json_encode(['ok'=>false,'error'=>'Select an active EPSS work location.']);
+    exit;
+}
+
+$previousLocationId = (int)($user['location_id'] ?? 0);
+try {
+    $pdo->prepare('UPDATE users SET location_id = ? WHERE id = ?')->execute([$locationId > 0 ? $locationId : null, $userId]);
+    try {
+        $stmt = $pdo->prepare('INSERT INTO logs (user_id, action, meta) VALUES (?,?,?)');
+        $stmt->execute([
+            $userId,
+            'profile_location_updated',
+            json_encode([
+                'from_location_id' => $previousLocationId > 0 ? $previousLocationId : null,
+                'to_location_id' => $locationId > 0 ? $locationId : null,
+            ], JSON_UNESCAPED_SLASHES),
+        ]);
+    } catch (Throwable $e) {
+        error_log('Profile location audit log failed: ' . $e->getMessage());
+    }
+    refresh_current_user($pdo);
+    echo json_encode(['ok'=>true,'location_id'=>$locationId], JSON_UNESCAPED_SLASHES);
+} catch (Throwable $e) {
+    error_log('Profile location update failed: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok'=>false,'error'=>'Unable to save work location.']);
+}
