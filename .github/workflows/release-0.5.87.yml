@@ -1,0 +1,41 @@
+name: Publish UAT 0.5.87
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/release-0.5.87.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 0.5.87 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release 0.5.87 already exists."
+            exit 0
+          fi
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Location/GIS UAT fixes
+
+          - Fixes Work Location / Duty Station not saving from the staff profile.
+          - Shows Work Location / Duty Station in User Management card and list views.
+          - Allows administrators to update duty station from User Management through the authenticated location API.
+          - Removes the duplicate Locations & GIS analytics tab.
+          - Retains the existing 0.5.86 location schema; no new migration is required.
+
+          QA: PR #819 CI and post-merge main CI both passed PHP lint and the MySQL smoke test.
+
+          Pull request: #819
+          EOF
+          gh release create 0.5.87 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "575ea14d1b283935e2dde5e8568b880eeb369aa9" \
+            --title "Release UAT 0.5.87" \
+            --notes-file /tmp/release-notes.md
