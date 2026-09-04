@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - '.release/0.5.86'
+      - '.github/workflows/release-0.5.86.yml'
 
 permissions:
   contents: write
