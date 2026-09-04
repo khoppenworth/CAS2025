@@ -43,9 +43,13 @@ SELECT slug, label
 FROM department_catalog
 WHERE archived_at IS NULL
 ORDER BY sort_order, label;
+-- MariaDB error 1137 also occurs when an INSERT into a TEMPORARY table reads that
+-- same table in a NOT EXISTS subquery. Count it in a separate statement first.
+SET @demo_department_count := (SELECT COUNT(*) FROM tmp_demo_departments);
 INSERT INTO tmp_demo_departments (slug, label)
 SELECT 'general_service', 'General Services'
-WHERE NOT EXISTS (SELECT 1 FROM tmp_demo_departments);
+FROM DUAL
+WHERE @demo_department_count = 0;
 SET @demo_department_count := (SELECT COUNT(*) FROM tmp_demo_departments);
 
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_locations;
