@@ -1,0 +1,43 @@
+name: Publish UAT 0.5.89
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/release-0.5.89.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 0.5.89 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release 0.5.89 already exists."
+            exit 0
+          fi
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Demo dataset MariaDB hotfix
+
+          - Fixes `SQLSTATE[HY000] ... 1137 Can't reopen table` when enabling the demo dataset.
+          - Replaces the reused temporary digit table with MariaDB/MySQL-safe independent derived digit sources.
+          - Makes demo enabling idempotent through upserts rather than destructive pre-cleanup.
+          - Retains the 80 synthetic staff, all active EPSS locations, 2024–2028 history, and granular question-level demo answers introduced in 0.5.88.
+          - Adds a regression contract for the temporary-table pattern.
+          - Adds CI execution of the number generator against both MySQL 8 and MariaDB 10.11.
+          - No database migration is required.
+
+          QA: PR #821 and post-merge main CI passed PHP lint, SQL contract checks, MySQL 8 regression, and MariaDB 10.11 regression.
+
+          Pull request: #821
+          EOF
+          gh release create 0.5.89 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "953ad12333e7c54e933afabd237c4674539684da" \
+            --title "Release UAT 0.5.89" \
+            --notes-file /tmp/release-notes.md
