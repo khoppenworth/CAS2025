@@ -42,3 +42,5 @@ jobs:
             --target "e40ad78b159fa28808eb40917e9f2ec368a2aef6" \
             --title "Release UAT 0.5.88" \
             --notes-file /tmp/release-notes.md
+
+# trigger
