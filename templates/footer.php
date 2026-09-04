@@ -61,3 +61,4 @@ $currentYear = date('Y');
 </script>
 <script src="<?=asset_url('assets/adminlte/plugins/chart.js/Chart.bundle.min.js')?>"></script>
 <script src="<?=asset_url('assets/js/app.js')?>"></script>
+<script src="<?=asset_url('assets/js/locations-ui.js')?>"></script>
