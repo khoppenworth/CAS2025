@@ -1,114 +1,7 @@
 -- dummy_data.sql: analytics-rich synthetic demo dataset for existing CAS questionnaires.
---
--- Design goals:
---   * Keep demo rows unmistakably separate via demo_* usernames.
---   * Cover all active EPSS work locations (HQ + hubs) without changing location master data.
---   * Cover departments, work roles, gender, education, grade and experience dimensions.
---   * Populate 2024-2028 so the current 2026-2028 trend dashboard has multiple periods.
---   * Create response-item answers, not only response headers, so section/capacity/gap charts work.
---   * Remain idempotent: enabling the demo dataset first removes the previous demo dataset.
---
--- The Admin -> Settings demo toggle executes this file inside a transaction.
+-- Safe for MariaDB/MySQL and idempotent without deleting existing demo rows first.
 
 SET @password := '$2y$12$IQkYkVMIQE9G/dFkTcvObO1ekoYyOz2gk.d79KxQMOnPOrldv7drq';
-
--- Clean up previous demo and dummy user data -------------------------------------
-DELETE tr
-FROM training_recommendation tr
-JOIN questionnaire_response qr ON qr.id = tr.questionnaire_response_id
-JOIN users u ON u.id = qr.user_id
-WHERE u.username LIKE 'demo_%'
-   OR u.username LIKE 'dummy_%';
-
-DELETE qri
-FROM questionnaire_response_item qri
-JOIN questionnaire_response qr ON qr.id = qri.response_id
-JOIN users u ON u.id = qr.user_id
-WHERE u.username LIKE 'demo_%'
-   OR u.username LIKE 'dummy_%';
-
-DELETE FROM questionnaire_response
-WHERE user_id IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-DELETE FROM questionnaire_assignment
-WHERE staff_id IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-DELETE FROM analytics_report_schedule
-WHERE created_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-DELETE FROM analytics_report_snapshot_v2
-WHERE generated_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-UPDATE questionnaire_assignment
-SET assigned_by = NULL
-WHERE assigned_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-UPDATE questionnaire_response
-SET reviewed_by = NULL
-WHERE reviewed_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-UPDATE users
-SET approved_by = NULL
-WHERE approved_by IN (
-    SELECT demo_user_id
-    FROM (
-        SELECT id AS demo_user_id
-        FROM users
-        WHERE username LIKE 'demo_%'
-           OR username LIKE 'dummy_%'
-    ) AS demo_user_ids
-);
-
-UPDATE competency_benchmark_policy
-SET created_by = NULL
-WHERE created_by IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-DELETE FROM logs
-WHERE user_id IN (
-    SELECT id
-    FROM users
-    WHERE username LIKE 'demo_%'
-       OR username LIKE 'dummy_%'
-);
-
-DELETE FROM users
-WHERE username LIKE 'demo_%'
-   OR username LIKE 'dummy_%';
 
 -- Ensure annual performance periods exist --------------------------------------
 INSERT INTO performance_period (label, period_start, period_end)
@@ -122,19 +15,22 @@ ON DUPLICATE KEY UPDATE
     period_start = VALUES(period_start),
     period_end = VALUES(period_end);
 
--- Build compact temporary dimension tables -------------------------------------
-DROP TEMPORARY TABLE IF EXISTS tmp_demo_digit;
-CREATE TEMPORARY TABLE tmp_demo_digit (n INT NOT NULL PRIMARY KEY) ENGINE=Memory;
-INSERT INTO tmp_demo_digit (n) VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
-
+-- Build 1..80 without reopening a TEMPORARY table. MariaDB/MySQL error 1137 is
+-- triggered when the same temporary table is referenced multiple times in one
+-- statement, so the digit sources below are independent derived tables.
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_numbers;
 CREATE TEMPORARY TABLE tmp_demo_numbers (n INT NOT NULL PRIMARY KEY) ENGINE=Memory;
 INSERT INTO tmp_demo_numbers (n)
-SELECT d1.n + (d2.n * 10) + (d3.n * 100) + 1
-FROM tmp_demo_digit d1
-CROSS JOIN tmp_demo_digit d2
-CROSS JOIN tmp_demo_digit d3
-WHERE d1.n + (d2.n * 10) + (d3.n * 100) + 1 <= 80;
+SELECT ones.n + (tens.n * 10) + 1
+FROM (
+    SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+    UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
+) AS ones
+CROSS JOIN (
+    SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+    UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+) AS tens
+WHERE ones.n + (tens.n * 10) + 1 <= 80;
 
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_departments;
 CREATE TEMPORARY TABLE tmp_demo_departments (
@@ -179,7 +75,7 @@ INSERT INTO tmp_demo_work_functions (seq, slug) VALUES
 (6, 'team_lead'),
 (7, 'expert');
 
--- Insert a demo supervisor with a complete profile -------------------------------
+-- Demo supervisor ---------------------------------------------------------------
 INSERT INTO users (
     username, password, role, full_name, email, gender, phone,
     department, directorate, cadre, work_function, location_id,
@@ -195,12 +91,35 @@ VALUES (
     'manager', 'manager', 'grade_15', 'masters_plus', 'Public Administration',
     'Synthetic demonstration profile for CAS analytics.', '10_plus', '5_10',
     'active', 1, 1, 'en'
-);
+)
+ON DUPLICATE KEY UPDATE
+    password = VALUES(password),
+    role = VALUES(role),
+    full_name = VALUES(full_name),
+    email = VALUES(email),
+    gender = VALUES(gender),
+    phone = VALUES(phone),
+    department = VALUES(department),
+    directorate = VALUES(directorate),
+    cadre = VALUES(cadre),
+    work_function = VALUES(work_function),
+    location_id = VALUES(location_id),
+    profile_role = VALUES(profile_role),
+    business_role = VALUES(business_role),
+    job_grade = VALUES(job_grade),
+    education_level = VALUES(education_level),
+    highest_degree_subject = VALUES(highest_degree_subject),
+    work_experience_profile = VALUES(work_experience_profile),
+    total_work_experience_band = VALUES(total_work_experience_band),
+    epss_work_experience_band = VALUES(epss_work_experience_band),
+    account_status = 'active',
+    profile_completed = 1,
+    must_reset_password = 1,
+    language = 'en';
 
 SET @demo_supervisor_id := (SELECT id FROM users WHERE username = 'demo_supervisor' LIMIT 1);
 
--- Insert 80 synthetic staff. With 20 active EPSS locations this yields 4 staff
--- per physical location while also cycling across every configured department.
+-- 80 synthetic staff distributed across all active locations and departments -----
 INSERT INTO users (
     username, password, role, full_name, email, gender, date_of_birth, phone,
     department, directorate, cadre, work_function, location_id,
@@ -287,9 +206,34 @@ FROM tmp_demo_numbers n
 JOIN tmp_demo_departments d
   ON d.seq = MOD(n.n - 1, GREATEST(@demo_department_count, 1)) + 1
 JOIN tmp_demo_work_functions wf
-  ON wf.seq = MOD(n.n - 1, 7) + 1;
+  ON wf.seq = MOD(n.n - 1, 7) + 1
+ON DUPLICATE KEY UPDATE
+    password = VALUES(password),
+    role = VALUES(role),
+    full_name = VALUES(full_name),
+    email = VALUES(email),
+    gender = VALUES(gender),
+    date_of_birth = VALUES(date_of_birth),
+    phone = VALUES(phone),
+    department = VALUES(department),
+    directorate = VALUES(directorate),
+    cadre = VALUES(cadre),
+    work_function = VALUES(work_function),
+    location_id = VALUES(location_id),
+    profile_role = VALUES(profile_role),
+    business_role = VALUES(business_role),
+    job_grade = VALUES(job_grade),
+    education_level = VALUES(education_level),
+    highest_degree_subject = VALUES(highest_degree_subject),
+    work_experience_profile = VALUES(work_experience_profile),
+    total_work_experience_band = VALUES(total_work_experience_band),
+    epss_work_experience_band = VALUES(epss_work_experience_band),
+    account_status = 'active',
+    profile_completed = 1,
+    must_reset_password = 1,
+    language = 'en';
 
--- Select all existing questionnaires that can contribute to analytics ------------
+-- Existing questionnaires that can contribute to analytics ----------------------
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_questionnaires;
 CREATE TEMPORARY TABLE tmp_demo_questionnaires (questionnaire_id INT NOT NULL PRIMARY KEY) ENGINE=Memory;
 INSERT INTO tmp_demo_questionnaires (questionnaire_id)
@@ -313,7 +257,7 @@ SELECT id, CAST(label AS UNSIGNED), period_start, period_end
 FROM performance_period
 WHERE label IN ('2024', '2025', '2026', '2027', '2028');
 
--- Assign every demo staff member to every selected questionnaire. ----------------
+-- Explicit demo assignments -----------------------------------------------------
 INSERT INTO questionnaire_assignment (staff_id, questionnaire_id, assigned_by, assigned_at)
 SELECT
     u.id,
@@ -322,11 +266,13 @@ SELECT
     DATE_ADD('2024-01-05', INTERVAL MOD(CAST(SUBSTRING(u.username, 12) AS UNSIGNED) * 3 + q.questionnaire_id, 45) DAY)
 FROM users u
 CROSS JOIN tmp_demo_questionnaires q
-WHERE u.username LIKE 'demo_staff_%';
+WHERE u.username LIKE 'demo_staff_%'
+ON DUPLICATE KEY UPDATE
+    assigned_by = VALUES(assigned_by),
+    assigned_at = VALUES(assigned_at);
 
--- Create one response per demo staff/questionnaire/year for most staff. Roughly
--- 12.5% are intentionally left unassessed so completion/coverage indicators are
--- not artificially 100%. Scores trend upward by year while retaining visible gaps.
+-- Multi-year responses. About 12.5% are intentionally absent so completion is
+-- realistic rather than 100%; scores trend upward by year and vary by location.
 INSERT INTO questionnaire_response (
     user_id, questionnaire_id, performance_period_id, status, score,
     reviewed_by, reviewed_at, review_comment, created_at
@@ -349,7 +295,7 @@ SELECT
             + ((p.year_value - 2024) * 3)
             - CASE WHEN MOD(COALESCE(u.location_id, 0), 5) = 0 THEN 6 ELSE 0 END
         )
-    ) AS demo_score,
+    ),
     CASE
         WHEN MOD(CAST(SUBSTRING(u.username, 12) AS UNSIGNED) + q.questionnaire_id + p.year_value, 4) = 0
             THEN NULL
@@ -376,22 +322,24 @@ FROM users u
 CROSS JOIN tmp_demo_questionnaires q
 CROSS JOIN tmp_demo_periods p
 WHERE u.username LIKE 'demo_staff_%'
-  AND MOD(CAST(SUBSTRING(u.username, 12) AS UNSIGNED) * 13 + q.questionnaire_id * 5 + p.year_value, 8) <> 0;
+  AND MOD(CAST(SUBSTRING(u.username, 12) AS UNSIGNED) * 13 + q.questionnaire_id * 5 + p.year_value, 8) <> 0
+ON DUPLICATE KEY UPDATE
+    status = VALUES(status),
+    score = VALUES(score),
+    reviewed_by = VALUES(reviewed_by),
+    reviewed_at = VALUES(reviewed_at),
+    review_comment = VALUES(review_comment),
+    created_at = VALUES(created_at);
 
--- Populate granular response answers. These rows are what allow the capacity-area,
--- section-gap and heatmap calculations to work. Answer choices are deterministic
--- and correlated with each response's synthetic overall score.
+-- Granular answers for section/capacity/gap analytics. Re-enabling the dataset
+-- does not duplicate response items already present for the same response/linkId.
 INSERT INTO questionnaire_response_item (response_id, linkId, answer)
 SELECT
     qr.id,
     qi.linkId,
     CASE
         WHEN qi.type = 'likert' THEN
-            CONCAT(
-                '[{"valueInteger":',
-                LEAST(5, GREATEST(1, ROUND(qr.score / 20))),
-                '}]'
-            )
+            CONCAT('[{"valueInteger":', LEAST(5, GREATEST(1, ROUND(qr.score / 20))), '}]')
         WHEN qi.type = 'boolean' THEN
             CASE
                 WHEN MOD(qr.user_id * 17 + qi.id * 13 + YEAR(qr.created_at), 100) < qr.score
@@ -465,7 +413,13 @@ JOIN users u
  AND u.username LIKE 'demo_staff_%'
 JOIN questionnaire_item qi
   ON qi.questionnaire_id = qr.questionnaire_id
- AND qi.is_active = 1;
+ AND qi.is_active = 1
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM questionnaire_response_item existing
+    WHERE existing.response_id = qr.id
+      AND existing.linkId = qi.linkId
+);
 
 -- Drop temporary working tables --------------------------------------------------
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_periods;
@@ -474,4 +428,3 @@ DROP TEMPORARY TABLE IF EXISTS tmp_demo_work_functions;
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_locations;
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_departments;
 DROP TEMPORARY TABLE IF EXISTS tmp_demo_numbers;
-DROP TEMPORARY TABLE IF EXISTS tmp_demo_digit;
