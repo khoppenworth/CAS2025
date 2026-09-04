@@ -39,3 +39,5 @@ jobs:
             --target "575ea14d1b283935e2dde5e8568b880eeb369aa9" \
             --title "Release UAT 0.5.87" \
             --notes-file /tmp/release-notes.md
+
+# One-time UAT release trigger.
