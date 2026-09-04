@@ -28,5 +28,40 @@ jobs:
           php-version: '8.1'
       - name: PHP lint
         run: make lint
+      - name: Demo dataset SQL contract
+        run: php tests/demo_dataset_sql_test.php
+      - name: MySQL demo number generator regression
+        env:
+          DEMO_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          DEMO_DB_USER: root
+          DEMO_DB_PASS: root
+        run: php tests/demo_dataset_sql_test.php --mysql
       - name: MySQL smoke test
         run: mysql -h 127.0.0.1 -uroot -proot -e "SHOW DATABASES;"
+
+  mariadb-demo-seed:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - name: MariaDB 10.11 demo number generator regression
+        env:
+          DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
+          DEMO_DB_USER: root
+          DEMO_DB_PASS: root
+        run: php tests/demo_dataset_sql_test.php --mysql
