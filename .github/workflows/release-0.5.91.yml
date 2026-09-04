@@ -1,0 +1,43 @@
+# one-time UAT publisher
+name: Publish UAT 0.5.91
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/release-0.5.91.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 0.5.91 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release 0.5.91 already exists."
+            exit 0
+          fi
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Granular raw assessment data export
+
+          - Expands Administration → Export Data to one row per staff submission × answered question.
+          - Includes staff profile and organizational attributes, questionnaire/version family, period, score and 80% threshold.
+          - Includes full question text, section, question type/order/weight, actual human-readable answer and original raw JSON.
+          - Includes available options, correct/expected answers and per-question correctness where applicable.
+          - Includes reviewer details, review comments, recommended training courses and recommendation reasons.
+          - Adds UTF-8/Excel-compatible CSV output and dynamic profile-column compatibility.
+          - Adds a regression contract for the detailed export.
+          - No database migration is required.
+
+          Pull request: #823
+          EOF
+          gh release create 0.5.91 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "90b4390348c0655a28729400b059059b4d1ecb6c" \
+            --title "Release UAT 0.5.91" \
+            --notes-file /tmp/release-notes.md
