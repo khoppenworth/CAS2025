@@ -70,4 +70,19 @@ if (!in_array('annual-supply', $params, true)) {
     exit(1);
 }
 
+// Regression: CA1 is a local code, not a globally comparable capacity identifier.
+$supplyCa1 = analytics_capacity_identity('supply-chain-officers', 'CA1');
+$financeCa1 = analytics_capacity_identity('finance-officers', 'CA1');
+if ($supplyCa1 === $financeCa1) {
+    fwrite(STDERR, "CA1 from different questionnaire families must never share an analytics identity.\n");
+    exit(1);
+}
+
+// Normalization should avoid accidental duplicates within the same questionnaire family.
+$supplyCa1Normalized = analytics_capacity_identity('  SUPPLY-CHAIN-OFFICERS ', '  ca1  ');
+if ($supplyCa1 !== $supplyCa1Normalized) {
+    fwrite(STDERR, "Capacity identity normalization failed for equivalent family/label values.\n");
+    exit(1);
+}
+
 echo "Analytics capacity logic tests passed.\n";

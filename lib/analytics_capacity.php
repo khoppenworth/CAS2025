@@ -38,15 +38,16 @@ function analytics_capacity_resolve_questionnaire_family(PDO $pdo, array $filter
         $filters['questionnaire_family_key'] = '';
         return $filters;
     }
+
     try {
         $stmt = $pdo->prepare("SELECT COALESCE(NULLIF(family_key,''), CONCAT('questionnaire-', id)) FROM questionnaire WHERE id = ?");
         $stmt->execute([$qid]);
-        $familyKey = trim((string)($stmt->fetchColumn() ?: ''));
-        $filters['questionnaire_family_key'] = $familyKey;
+        $filters['questionnaire_family_key'] = trim((string)($stmt->fetchColumn() ?: ''));
     } catch (Throwable $e) {
         error_log('analytics capacity questionnaire family lookup failed: ' . $e->getMessage());
         $filters['questionnaire_family_key'] = '';
     }
+
     return $filters;
 }
 
@@ -62,6 +63,7 @@ function analytics_capacity_build_where(array $filters, bool $includeYear = true
         $where[] = 'qr.questionnaire_id = ?';
         $params[] = (int)$filters['questionnaire_id'];
     }
+
     if ($includeYear && ($filters['year'] ?? 0) > 0) {
         $year = (int)$filters['year'];
         $where[] = 'qr.created_at >= ?';
@@ -69,6 +71,7 @@ function analytics_capacity_build_where(array $filters, bool $includeYear = true
         $where[] = 'qr.created_at < ?';
         $params[] = sprintf('%04d-01-01 00:00:00', $year + 1);
     }
+
     if ($includeDepartment && ($filters['department'] ?? '') !== '') {
         $where[] = 'u.department = ?';
         $params[] = (string)$filters['department'];
@@ -89,6 +92,7 @@ function analytics_capacity_fetch_response_rows(PDO $pdo, array $filters, bool $
 {
     $filters = analytics_capacity_resolve_questionnaire_family($pdo, $filters);
     [$where, $params] = analytics_capacity_build_where($filters, $includeYear, $includeDepartment);
+
     $sql = "SELECT qr.id, qr.user_id, qr.questionnaire_id, qr.performance_period_id, qr.status, qr.score, qr.created_at, "
         . "q.title, COALESCE(NULLIF(q.family_key,''), CONCAT('questionnaire-', q.id)) AS questionnaire_family_key, "
         . "COALESCE(pp.label,'') AS period_label, u.username, u.full_name, u.department, u.cadre, u.work_function "
@@ -98,6 +102,7 @@ function analytics_capacity_fetch_response_rows(PDO $pdo, array $filters, bool $
         . "LEFT JOIN performance_period pp ON pp.id = qr.performance_period_id "
         . 'WHERE ' . implode(' AND ', $where) . ' '
         . 'ORDER BY qr.created_at ASC, qr.id ASC';
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -105,7 +110,6 @@ function analytics_capacity_fetch_response_rows(PDO $pdo, array $filters, bool $
 
 /**
  * One canonical response per employee, questionnaire family and assessment year.
- * The latest completed response wins; this prevents repeat attempts from weighting averages multiple times.
  */
 function analytics_capacity_latest_per_employee(array $rows): array
 {
@@ -152,6 +156,7 @@ function analytics_capacity_attainment(array $rows, float $target = 80.0): array
             $hit++;
         }
     }
+
     return [
         'total' => $total,
         'hit' => $hit,
@@ -164,18 +169,13 @@ function analytics_capacity_annual_trend(PDO $pdo, array $filters, int $firstYea
     $rows = analytics_capacity_latest_per_employee(
         analytics_capacity_fetch_response_rows($pdo, $filters, false, true)
     );
+
     $byYear = [];
     foreach ($rows as $row) {
         $year = (int)substr((string)($row['created_at'] ?? ''), 0, 4);
-        if ($year > 0) {
+        if ($year >= $firstYear && $year <= $lastYear) {
             $byYear[$year][] = $row;
         }
-    }
-
-    if ($byYear) {
-        $availableYears = array_keys($byYear);
-        $firstYear = min($firstYear, min($availableYears));
-        $lastYear = max($lastYear, max($availableYears));
     }
 
     $trend = [];
@@ -192,32 +192,65 @@ function analytics_capacity_annual_trend(PDO $pdo, array $filters, int $firstYea
     return $trend;
 }
 
+/**
+ * Capacity area codes such as CA1 are local to a questionnaire/framework context.
+ * Never use the visible section label alone as a cross-questionnaire identifier.
+ */
+function analytics_capacity_identity(string $questionnaireFamilyKey, string $label): string
+{
+    $family = strtolower(trim(preg_replace('/\s+/', ' ', $questionnaireFamilyKey) ?? $questionnaireFamilyKey));
+    $area = strtolower(trim(preg_replace('/\s+/', ' ', $label) ?? $label));
+    return hash('sha256', $family . "\x1f" . $area);
+}
+
 function analytics_capacity_section_rows(PDO $pdo, array $canonicalRows, array $translations): array
 {
     if (!$canonicalRows) {
         return [];
     }
+
     $breakdowns = compute_section_breakdowns($pdo, $canonicalRows, $translations, true);
+    $responsesById = [];
+    foreach ($canonicalRows as $row) {
+        $id = (int)($row['id'] ?? 0);
+        if ($id > 0) {
+            $responsesById[$id] = $row;
+        }
+    }
+
     $aggregates = [];
     foreach ($breakdowns as $responseId => $breakdown) {
-        $response = null;
-        foreach ($canonicalRows as $candidate) {
-            if ((int)($candidate['id'] ?? 0) === (int)$responseId) {
-                $response = $candidate;
-                break;
-            }
-        }
+        $response = $responsesById[(int)$responseId] ?? null;
         if (!$response) {
             continue;
         }
+
+        $familyKey = trim((string)($response['questionnaire_family_key'] ?? ''));
+        $questionnaireTitle = trim((string)($response['title'] ?? ''));
+        $questionnaireId = (int)($response['questionnaire_id'] ?? 0);
+
         foreach (($breakdown['sections'] ?? []) as $section) {
             $label = trim((string)($section['label'] ?? ''));
             $score = $section['score'] ?? null;
-            if ($label === '' || $score === null || !is_numeric($score)) {
+            if ($label === '' || $familyKey === '' || $score === null || !is_numeric($score)) {
                 continue;
             }
-            $aggregates[$label]['scores'][] = (float)$score;
-            $aggregates[$label]['responses'][] = [
+
+            $capacityKey = analytics_capacity_identity($familyKey, $label);
+            if (!isset($aggregates[$capacityKey])) {
+                $aggregates[$capacityKey] = [
+                    'capacity_key' => $capacityKey,
+                    'label' => $label,
+                    'questionnaire_family_key' => $familyKey,
+                    'questionnaire_title' => $questionnaireTitle,
+                    'questionnaire_id' => $questionnaireId,
+                    'scores' => [],
+                    'responses' => [],
+                ];
+            }
+
+            $aggregates[$capacityKey]['scores'][] = (float)$score;
+            $aggregates[$capacityKey]['responses'][] = [
                 'response_id' => (int)$responseId,
                 'user_id' => (int)($response['user_id'] ?? 0),
                 'username' => (string)($response['username'] ?? ''),
@@ -225,73 +258,100 @@ function analytics_capacity_section_rows(PDO $pdo, array $canonicalRows, array $
                 'department' => (string)($response['department'] ?? ''),
                 'team' => (string)($response['cadre'] ?? ''),
                 'work_function' => (string)($response['work_function'] ?? ''),
+                'questionnaire_id' => $questionnaireId,
+                'questionnaire_title' => $questionnaireTitle,
+                'questionnaire_family_key' => $familyKey,
                 'score' => round((float)$score, 1),
             ];
         }
     }
 
     $rows = [];
-    foreach ($aggregates as $label => $aggregate) {
-        $scores = $aggregate['scores'] ?? [];
+    foreach ($aggregates as $aggregate) {
+        $scores = $aggregate['scores'];
         $count = count($scores);
         if ($count === 0) {
             continue;
         }
+
         $average = round(array_sum($scores) / $count, 1);
-        $below = 0;
-        foreach ($scores as $score) {
-            if ((float)$score < 80.0) {
-                $below++;
-            }
-        }
+        $below = count(array_filter($scores, static fn($score): bool => (float)$score < 80.0));
+
         $rows[] = [
-            'label' => $label,
+            'capacity_key' => $aggregate['capacity_key'],
+            'label' => $aggregate['label'],
+            'questionnaire_family_key' => $aggregate['questionnaire_family_key'],
+            'questionnaire_title' => $aggregate['questionnaire_title'],
+            'questionnaire_id' => $aggregate['questionnaire_id'],
             'average_score' => $average,
             'benchmark' => 80.0,
             'gap' => round($average - 80.0, 1),
             'level' => questionnaire_competency_level($average),
             'staff_assessed' => $count,
             'staff_below_target' => $below,
-            'below_percent' => $count > 0 ? round(($below / $count) * 100, 1) : 0.0,
+            'below_percent' => round(($below / $count) * 100, 1),
             'priority_score' => round(max(0.0, 80.0 - $average) * $below, 1),
-            'responses' => $aggregate['responses'] ?? [],
+            'responses' => $aggregate['responses'],
         ];
     }
+
     usort($rows, static function (array $a, array $b): int {
         $priority = ($b['priority_score'] <=> $a['priority_score']);
-        return $priority !== 0 ? $priority : ($a['average_score'] <=> $b['average_score']);
+        if ($priority !== 0) {
+            return $priority;
+        }
+        $questionnaire = strnatcasecmp((string)$a['questionnaire_title'], (string)$b['questionnaire_title']);
+        return $questionnaire !== 0 ? $questionnaire : strnatcasecmp((string)$a['label'], (string)$b['label']);
     });
+
     return $rows;
 }
 
+/**
+ * Return directorate-scoped heatmap bands instead of a false CA1-by-directorate matrix.
+ * Each directorate retains the capacity areas defined by its questionnaire context.
+ */
 function analytics_capacity_department_heatmap(PDO $pdo, array $filters, array $translations): array
 {
+    $heatmapFilters = $filters;
+    $heatmapFilters['department'] = '';
+
     $rows = analytics_capacity_latest_per_employee(
-        analytics_capacity_fetch_response_rows($pdo, $filters, true, false)
+        analytics_capacity_fetch_response_rows($pdo, $heatmapFilters, true, false)
     );
+
     $byDepartment = [];
     foreach ($rows as $row) {
         $department = trim((string)($row['department'] ?? ''));
         $department = $department !== '' ? $department : 'Unknown';
         $byDepartment[$department][] = $row;
     }
-
-    $matrix = [];
-    $capacityLabels = [];
-    foreach ($byDepartment as $department => $departmentRows) {
-        foreach (analytics_capacity_section_rows($pdo, $departmentRows, $translations) as $capacityRow) {
-            $label = (string)$capacityRow['label'];
-            $capacityLabels[$label] = true;
-            $matrix[$label][$department] = (float)$capacityRow['average_score'];
-        }
-    }
-    ksort($capacityLabels, SORT_NATURAL | SORT_FLAG_CASE);
     ksort($byDepartment, SORT_NATURAL | SORT_FLAG_CASE);
 
+    $groups = [];
+    foreach ($byDepartment as $department => $departmentRows) {
+        $capacities = analytics_capacity_section_rows($pdo, $departmentRows, $translations);
+        usort($capacities, static function (array $a, array $b): int {
+            $questionnaire = strnatcasecmp((string)$a['questionnaire_title'], (string)$b['questionnaire_title']);
+            return $questionnaire !== 0 ? $questionnaire : strnatcasecmp((string)$a['label'], (string)$b['label']);
+        });
+
+        $groups[] = [
+            'department' => $department,
+            'capacities' => array_map(static fn(array $row): array => [
+                'capacity_key' => $row['capacity_key'],
+                'label' => $row['label'],
+                'questionnaire_title' => $row['questionnaire_title'],
+                'questionnaire_family_key' => $row['questionnaire_family_key'],
+                'average_score' => $row['average_score'],
+                'staff_assessed' => $row['staff_assessed'],
+            ], $capacities),
+        ];
+    }
+
     return [
-        'departments' => array_keys($byDepartment),
-        'capacities' => array_keys($capacityLabels),
-        'matrix' => $matrix,
+        'groups' => $groups,
+        'department_count' => count($groups),
     ];
 }
 
@@ -301,6 +361,7 @@ function analytics_capacity_course_matches(PDO $pdo, string $capacityLabel, arra
     if ($capacityLabel === '') {
         return [];
     }
+
     $score = $score ?? 0.0;
     $needle = '%' . $capacityLabel . '%';
     $sql = "SELECT id, code, title, course_objective, expected_competency, thematic_area, mode_of_delivery, duration, moodle_url "
@@ -309,10 +370,12 @@ function analytics_capacity_course_matches(PDO $pdo, string $capacityLabel, arra
         . "AND (questionnaire_id = ? OR questionnaire_id IS NULL) "
         . "AND (thematic_area LIKE ? OR expected_competency LIKE ? OR title LIKE ?) ";
     $params = [$score, $score, (int)($filters['questionnaire_id'] ?? 0), $needle, $needle, $needle];
+
     if (($filters['work_function'] ?? '') !== '') {
         $sql .= "AND (recommended_for = ? OR recommended_for = '' OR recommended_for IS NULL) ";
         $params[] = (string)$filters['work_function'];
     }
+
     $sql .= 'ORDER BY questionnaire_id IS NULL ASC, min_score ASC, title ASC LIMIT 6';
     try {
         $stmt = $pdo->prepare($sql);
