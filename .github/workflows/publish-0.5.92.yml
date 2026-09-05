@@ -1,0 +1,40 @@
+name: Publish UAT 0.5.92
+
+on:
+  push:
+    branches:
+      - release/0.5.92
+    paths:
+      - .github/workflows/publish-0.5.92.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Contextual Capacity Areas and professional heatmap
+
+          - Fixes Capacity Area identity so codes such as CA1 are never treated as globally equivalent across different questionnaire/directorate contexts.
+          - Uses questionnaire family + Capacity Area label as the analytics identity.
+          - Replaces the misleading shared CA-by-directorate matrix with directorate-scoped heatmap bands.
+          - Shows each directorate's own Capacity Areas with questionnaire context visible on each tile.
+          - Improves heatmap contrast with professional dark red, amber, yellow, green and dark-green backgrounds plus readable light/dark text.
+          - Polishes filters, metric cards, typography, spacing, tables, trend styling and learning panels.
+          - Keeps the annual 2026–2028 trend prominent and keeps Average Score separate from the >=80% target KPI.
+          - Adds regression coverage proving that CA1 from different questionnaire families cannot collapse to the same analytics identity.
+          - No database migration is required.
+
+          Pull request: #824
+          EOF
+          gh release create 0.5.92 \
+            --repo "${{ github.repository }}" \
+            --target c1a50e6d08c299f3b664c9e9bf57dddfc1e613df \
+            --title "Release UAT 0.5.92" \
+            --notes-file /tmp/release-notes.md
