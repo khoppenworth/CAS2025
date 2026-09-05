@@ -13,54 +13,140 @@ $pdo->exec("CREATE TABLE questionnaire_department (questionnaire_id INTEGER NOT 
 $pdo->exec("CREATE TABLE questionnaire_assignment (staff_id INTEGER NOT NULL, questionnaire_id INTEGER NOT NULL)");
 $pdo->exec("CREATE TABLE questionnaire_team (questionnaire_id INTEGER NOT NULL, team_slug TEXT NOT NULL)");
 $pdo->exec("CREATE TABLE questionnaire_work_function (questionnaire_id INTEGER NOT NULL, work_function TEXT NOT NULL)");
-$pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES
-    (1, 'Finance Review', 'published'),
-    (2, 'HR Review', 'published'),
-    (3, 'Draft Review', 'draft'),
-    (4, 'Director Review', 'published'),
-    (5, 'Finance Grants Team Review', 'published')");
-$pdo->exec("INSERT INTO users (id, department, cadre) VALUES (10, 'finance', 'Grants'), (11, 'finance', 'Accounting'), (1, 'finance', 'Grants'), (2, 'hrm', 'Accounting'), (3, 'finance', 'Accounting')");
-$pdo->exec("INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES (1, 'finance'), (2, 'hrm'), (4, 'finance')");
-$pdo->exec("INSERT INTO questionnaire_team (questionnaire_id, team_slug) VALUES (5, 'grants')");
-$pdo->exec("INSERT INTO questionnaire_assignment (staff_id, questionnaire_id) VALUES (20, 2), (1, 2), (1, 3)");
-$pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES (4, 'director')");
 
-$financeStaff = [
+$pdo->exec("INSERT INTO questionnaire (id, title, status) VALUES
+    (1, 'Finance General Review', 'published'),
+    (2, 'HR General Review', 'published'),
+    (3, 'Draft Review', 'draft'),
+    (4, 'Finance Director Review', 'published'),
+    (5, 'Finance Grants Team Review', 'published'),
+    (6, 'Finance Expert Review', 'published'),
+    (7, 'Orphan Director Review', 'published'),
+    (8, 'Direct Director Review', 'published'),
+    (9, 'Direct General Review', 'published'),
+    (10, 'HR Expert Review', 'published')");
+
+$pdo->exec("INSERT INTO users (id, department, cadre) VALUES
+    (1, 'finance', 'Grants'),
+    (2, '', ''),
+    (3, 'finance', 'Accounting'),
+    (10, 'finance', 'Grants'),
+    (11, 'finance', 'Accounting'),
+    (12, 'finance', 'Accounting'),
+    (13, 'hrm', 'Accounting'),
+    (20, '', ''),
+    (21, '', ''),
+    (30, 'finance', 'Accounting')");
+
+$pdo->exec("INSERT INTO questionnaire_department (questionnaire_id, department_slug) VALUES
+    (1, 'finance'),
+    (2, 'hrm'),
+    (4, 'finance'),
+    (6, 'finance'),
+    (10, 'hrm')");
+$pdo->exec("INSERT INTO questionnaire_team (questionnaire_id, team_slug) VALUES (5, 'grants')");
+$pdo->exec("INSERT INTO questionnaire_assignment (staff_id, questionnaire_id) VALUES
+    (20, 2),
+    (20, 3),
+    (20, 8),
+    (20, 9),
+    (21, 8),
+    (1, 2),
+    (1, 3),
+    (30, 8)");
+$pdo->exec("INSERT INTO questionnaire_work_function (questionnaire_id, work_function) VALUES
+    (4, 'director'),
+    (6, 'expert'),
+    (7, 'director'),
+    (8, 'director'),
+    (10, 'expert')");
+
+/** @param array<string,mixed> $user */
+function visible_questionnaire_ids(PDO $pdo, array $user): array
+{
+    $ids = array_map(
+        static fn(array $row): int => (int)$row['id'],
+        available_questionnaires_for_user($pdo, $user)
+    );
+    sort($ids, SORT_NUMERIC);
+    return $ids;
+}
+
+$financeExpert = [
     'id' => 10,
     'role' => 'staff',
     'department' => 'finance',
-    'work_function' => 'finance',
+    'work_function' => 'expert',
     'cadre' => 'Grants',
 ];
-$financeIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $financeStaff));
-if ($financeIds !== [1, 5]) {
-    fwrite(STDERR, 'Finance grants staff should see department and team questionnaires after role filtering. Got: ' . json_encode($financeIds) . PHP_EOL);
+$financeExpertIds = visible_questionnaire_ids($pdo, $financeExpert);
+if ($financeExpertIds !== [1, 5, 6]) {
+    fwrite(STDERR, 'Finance grants expert should see matching department/team questionnaires and expert-scoped review. Got: ' . json_encode($financeExpertIds) . PHP_EOL);
     exit(1);
 }
 
-
-$accountingStaff = [
+$financeAccountingExpert = [
     'id' => 11,
     'role' => 'staff',
     'department' => 'finance',
-    'work_function' => 'finance',
+    'work_function' => 'expert',
     'cadre' => 'Accounting',
 ];
-$accountingIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $accountingStaff));
-if ($accountingIds !== [1]) {
-    fwrite(STDERR, 'Finance accounting staff should not see grants team-only questionnaires. Got: ' . json_encode($accountingIds) . PHP_EOL);
+$financeAccountingExpertIds = visible_questionnaire_ids($pdo, $financeAccountingExpert);
+if ($financeAccountingExpertIds !== [1, 6]) {
+    fwrite(STDERR, 'Finance accounting expert should not see grants-team or director-only questionnaires. Got: ' . json_encode($financeAccountingExpertIds) . PHP_EOL);
     exit(1);
 }
 
-$directStaff = [
+$financeDirector = [
+    'id' => 12,
+    'role' => 'staff',
+    'department' => 'finance',
+    'work_function' => 'director',
+    'cadre' => 'Accounting',
+];
+$financeDirectorIds = visible_questionnaire_ids($pdo, $financeDirector);
+if ($financeDirectorIds !== [1, 4]) {
+    fwrite(STDERR, 'Finance director should see unrestricted and director-scoped finance questionnaires only. Got: ' . json_encode($financeDirectorIds) . PHP_EOL);
+    exit(1);
+}
+
+$hrExpert = [
+    'id' => 13,
+    'role' => 'staff',
+    'department' => 'hrm',
+    'work_function' => 'expert',
+    'cadre' => 'Accounting',
+];
+$hrExpertIds = visible_questionnaire_ids($pdo, $hrExpert);
+if ($hrExpertIds !== [2, 10]) {
+    fwrite(STDERR, 'HR expert should see only HR department questionnaires allowed for the expert role. Got: ' . json_encode($hrExpertIds) . PHP_EOL);
+    exit(1);
+}
+
+$directExpert = [
     'id' => 20,
     'role' => 'staff',
     'department' => '',
-    'work_function' => 'hrm',
+    'work_function' => 'expert',
+    'cadre' => '',
 ];
-$directIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $directStaff));
-if ($directIds !== [2]) {
-    fwrite(STDERR, 'Directly assigned staff should only see their direct published assignment. Got: ' . json_encode($directIds) . PHP_EOL);
+$directExpertIds = visible_questionnaire_ids($pdo, $directExpert);
+if ($directExpertIds !== [2, 9]) {
+    fwrite(STDERR, 'Direct assignments should still require publication and matching work-role restrictions. Got: ' . json_encode($directExpertIds) . PHP_EOL);
+    exit(1);
+}
+
+$directDirector = [
+    'id' => 21,
+    'role' => 'staff',
+    'department' => '',
+    'work_function' => 'director',
+    'cadre' => '',
+];
+$directDirectorIds = visible_questionnaire_ids($pdo, $directDirector);
+if ($directDirectorIds !== [8]) {
+    fwrite(STDERR, 'Directly assigned director should see the matching director-scoped questionnaire. Got: ' . json_encode($directDirectorIds) . PHP_EOL);
     exit(1);
 }
 
@@ -68,12 +154,12 @@ $admin = [
     'id' => 1,
     'role' => 'admin',
     'department' => 'finance',
-    'work_function' => 'finance',
+    'work_function' => 'expert',
     'cadre' => 'Grants',
 ];
-$adminIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $admin));
-if ($adminIds !== [1, 5, 2]) {
-    fwrite(STDERR, 'Admins should see profile-assigned and directly assigned published questionnaires, without all-questionnaire fallback. Got: ' . json_encode($adminIds) . PHP_EOL);
+$adminIds = visible_questionnaire_ids($pdo, $admin);
+if ($adminIds !== [1, 2, 5, 6]) {
+    fwrite(STDERR, 'Admin should combine profile scope and direct assignments while respecting work-role filters. Got: ' . json_encode($adminIds) . PHP_EOL);
     exit(1);
 }
 
@@ -84,24 +170,43 @@ $directorAdmin = [
     'work_function' => 'director',
     'cadre' => 'Accounting',
 ];
-$directorAdminIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $directorAdmin));
-if ($directorAdminIds !== [4, 1]) {
-    fwrite(STDERR, 'Admins should use their profile work role when filtering department questionnaires. Got: ' . json_encode($directorAdminIds) . PHP_EOL);
+$directorAdminIds = visible_questionnaire_ids($pdo, $directorAdmin);
+if ($directorAdminIds !== [1, 4]) {
+    fwrite(STDERR, 'Admin should use profile work role when filtering department questionnaires. Got: ' . json_encode($directorAdminIds) . PHP_EOL);
     exit(1);
 }
 
-$unassignedAdmin = ['id' => 2, 'role' => 'admin', 'department' => '', 'work_function' => '', 'cadre' => ''];
-$unassignedAdminIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $unassignedAdmin));
+$unassignedAdmin = [
+    'id' => 2,
+    'role' => 'admin',
+    'department' => '',
+    'work_function' => 'director',
+    'cadre' => '',
+];
+$unassignedAdminIds = visible_questionnaire_ids($pdo, $unassignedAdmin);
 if ($unassignedAdminIds !== []) {
-    fwrite(STDERR, 'Admins without profile or direct assignments should not see questionnaires. Got: ' . json_encode($unassignedAdminIds) . PHP_EOL);
+    fwrite(STDERR, 'A work-role row must never grant access without department, team, or direct assignment. Got: ' . json_encode($unassignedAdminIds) . PHP_EOL);
+    exit(1);
+}
+
+$supervisor = [
+    'id' => 30,
+    'role' => 'supervisor',
+    'department' => 'finance',
+    'work_function' => 'director',
+    'cadre' => 'Accounting',
+];
+$supervisorIds = visible_questionnaire_ids($pdo, $supervisor);
+if ($supervisorIds !== [8]) {
+    fwrite(STDERR, 'Supervisor submission access should remain direct-assignment-only and respect work-role restrictions. Got: ' . json_encode($supervisorIds) . PHP_EOL);
     exit(1);
 }
 
 $pdo->exec('DROP TABLE questionnaire_department');
 $pdo->exec('DROP TABLE questionnaire_team');
-$closedIds = array_map(static fn(array $row): int => (int)$row['id'], available_questionnaires_for_user($pdo, $financeStaff));
+$closedIds = visible_questionnaire_ids($pdo, $financeExpert);
 if ($closedIds !== []) {
-    fwrite(STDERR, 'Staff visibility must not fall back to all questionnaires when assignment lookup fails. Got: ' . json_encode($closedIds) . PHP_EOL);
+    fwrite(STDERR, 'Missing assignment tables must not activate legacy work-role fallback. Got: ' . json_encode($closedIds) . PHP_EOL);
     exit(1);
 }
 
