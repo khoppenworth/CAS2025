@@ -275,12 +275,15 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
         }
     }
 
-    $preservePaths = [
+    $targetPreserve = isset($target['preserve']) && is_array($target['preserve'])
+        ? array_filter(array_map('strval', $target['preserve']))
+        : [];
+    $preservePaths = array_values(array_unique(array_merge([
         'config.php',
         'assets/uploads',
         'storage',
         'storage/upgrades',
-    ];
+    ], $targetPreserve)));
 
     $installedBeforeRestore = $engine->currentRelease();
     $safetyRelease = null;
