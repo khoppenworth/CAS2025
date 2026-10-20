@@ -147,7 +147,9 @@ function run_database_restore_regression(): void
         $engine = new UpgradeEngine($root);
 
         $pdo->exec('CREATE TABLE original_record (id INT PRIMARY KEY, label VARCHAR(100) NOT NULL)');
-        $pdo->exec("INSERT INTO original_record (id, label) VALUES (1, 'baseline')");
+        $baselineLabel = "baseline;\nsecond line";
+        $insertBaseline = $pdo->prepare('INSERT INTO original_record (id, label) VALUES (1, ?)');
+        $insertBaseline->execute([$baselineLabel]);
         $pdo->exec('CREATE VIEW original_view AS SELECT id, label FROM original_record');
 
         $dump = $root . '/baseline.sql';
@@ -163,7 +165,7 @@ function run_database_restore_regression(): void
         $engine->restoreDatabaseFromDump($pdo, $dump);
 
         $label = $pdo->query('SELECT label FROM original_record WHERE id=1')->fetchColumn();
-        restore_assert($label === 'baseline', 'Backed-up database data was not restored.');
+        restore_assert($label === $baselineLabel, 'Backed-up multiline database data was not restored.');
 
         $columns = $pdo->query("SHOW COLUMNS FROM original_record LIKE 'newer_column'")->fetchAll();
         restore_assert($columns === [], 'A column introduced after backup survived restore.');
