@@ -663,27 +663,7 @@ final class UpgradeEngine
                 $pdo->exec('DROP TABLE IF EXISTS `' . $safe . '`');
             }
 
-            $buffer = '';
-            while (($line = fgets($handle)) !== false) {
-                $trimmed = trim($line);
-                if ($trimmed === '' || strpos($trimmed, '--') === 0) {
-                    continue;
-                }
-
-                $buffer .= $line;
-                if (substr(rtrim($line), -1) === ';') {
-                    $statement = trim($buffer);
-                    if ($statement !== '') {
-                        $pdo->exec($statement);
-                    }
-                    $buffer = '';
-                }
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $pdo->exec($statement);
-            }
+            $this->executeSqlDumpStream($pdo, $handle);
         } finally {
             fclose($handle);
             $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
@@ -1099,6 +1079,90 @@ final class UpgradeEngine
         }
 
         return $directory;
+    }
+
+    /**
+     * Execute SQL from a generated backup without treating semicolons inside
+     * quoted strings/identifiers as statement terminators.
+     *
+     * @param resource $handle
+     */
+    private function executeSqlDumpStream(PDO $pdo, $handle): void
+    {
+        $buffer = '';
+        $quote = null;
+        $escaped = false;
+
+        while (($line = fgets($handle)) !== false) {
+            if ($quote === null && trim($buffer) === '' && preg_match('/^\\s*--/', $line) === 1) {
+                continue;
+            }
+
+            $length = strlen($line);
+            for ($i = 0; $i < $length; $i++) {
+                $char = $line[$i];
+
+                if ($quote !== null) {
+                    $buffer .= $char;
+
+                    if ($quote === '`') {
+                        if ($char === '`') {
+                            if ($i + 1 < $length && $line[$i + 1] === '`') {
+                                $buffer .= $line[++$i];
+                            } else {
+                                $quote = null;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if ($escaped) {
+                        $escaped = false;
+                        continue;
+                    }
+
+                    if ($char === '\\\\') {
+                        $escaped = true;
+                        continue;
+                    }
+
+                    if ($char === $quote) {
+                        if ($i + 1 < $length && $line[$i + 1] === $quote) {
+                            $buffer .= $line[++$i];
+                        } else {
+                            $quote = null;
+                        }
+                    }
+                    continue;
+                }
+
+                if ($char === "'" || $char === '"' || $char === '`') {
+                    $quote = $char;
+                    $buffer .= $char;
+                    continue;
+                }
+
+                if ($char === ';') {
+                    $statement = trim($buffer);
+                    if ($statement !== '') {
+                        $pdo->exec($statement);
+                    }
+                    $buffer = '';
+                    continue;
+                }
+
+                $buffer .= $char;
+            }
+        }
+
+        if ($quote !== null) {
+            throw new RuntimeException('Database dump ended inside a quoted SQL value.');
+        }
+
+        $statement = trim($buffer);
+        if ($statement !== '') {
+            $pdo->exec($statement);
+        }
     }
 
     private function directoryHasContent(string $path): bool
