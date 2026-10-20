@@ -1121,7 +1121,7 @@ final class UpgradeEngine
     {
         $exclusions = ['storage/upgrades'];
         foreach ($preserve as $item) {
-            $normalized = trim(str_replace('\\\\', '/', (string)$item), '/');
+            $normalized = trim(str_replace('\\', '/', (string)$item), '/');
             if ($normalized === '' || in_array($normalized, $exclusions, true)) {
                 continue;
             }
@@ -1144,7 +1144,7 @@ final class UpgradeEngine
                 continue;
             }
 
-            $relative = str_replace('\\\\', '/', $relative);
+            $relative = str_replace('\\', '/', $relative);
             if ($this->shouldSkip($relative, $exclusions)) {
                 continue;
             }
@@ -1171,9 +1171,9 @@ final class UpgradeEngine
 
     private function containsPreservedDescendant(string $relative, array $exclusions): bool
     {
-        $relative = trim(str_replace('\\\\', '/', $relative), '/');
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
-            $entry = trim(str_replace('\\\\', '/', (string)$entry), '/');
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry !== '' && str_starts_with($entry, $relative . '/')) {
                 return true;
             }
@@ -1184,9 +1184,9 @@ final class UpgradeEngine
 
     private function shouldSkip(string $relative, array $exclusions): bool
     {
-        $relative = trim(str_replace('\\\\', '/', $relative), '/');
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
-            $entry = trim(str_replace('\\\\', '/', (string)$entry), '/');
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
