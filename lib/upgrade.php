@@ -1121,7 +1121,7 @@ final class UpgradeEngine
                         continue;
                     }
 
-                    if ($char === '\\\\') {
+                    if ($char === '\\') {
                         $escaped = true;
                         continue;
                     }
