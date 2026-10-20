@@ -79,17 +79,31 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         'storage/upgrades',
     ], $extraPreserve)));
 
+    $installedBeforeUpgrade = $engine->currentRelease();
+    $previousRelease = null;
+    if (is_array($installedBeforeUpgrade)) {
+        $previousRelease = [
+            'tag' => $installedBeforeUpgrade['tag'] ?? null,
+            'name' => $installedBeforeUpgrade['label'] ?? ($installedBeforeUpgrade['tag'] ?? null),
+            'repo' => $installedBeforeUpgrade['repo'] ?? null,
+            'url' => $installedBeforeUpgrade['url'] ?? null,
+            'installed_at' => $installedBeforeUpgrade['installed_at'] ?? null,
+        ];
+    }
+
     $run = $engine->beginRun('upgrade', [
         'repo' => $repo,
         'ref' => $targetRef,
         'version_label' => $targetLabel,
         'release_url' => $releaseUrl,
         'preserve' => $preservePaths,
+        'previous_release' => $previousRelease,
     ]);
 
     $applicationArchive = $run['dir'] . DIRECTORY_SEPARATOR . 'application.zip';
     $databaseDump = $run['dir'] . DIRECTORY_SEPARATOR . 'database.sql';
     $tempDir = null;
+    $mutationStarted = false;
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -116,6 +130,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'package_path' => $engine->relativeToRoot($download['archive']),
         ]);
         info('Package downloaded. Applying files...');
+        $mutationStarted = true;
         $engine->deployRelease($download['extract_root'], $preservePaths);
         info('Release deployed successfully.');
         applyConfigMigrations($engine);
@@ -139,10 +154,56 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
+        $rollbackStatus = 'not_required';
+        $rollbackErrors = [];
+
+        if ($mutationStarted) {
+            $rollbackStatus = 'started';
+            fwrite(STDERR, 'Upgrade failed after application changes began. Attempting automatic rollback...' . PHP_EOL);
+
+            try {
+                if (!is_file($applicationArchive)) {
+                    throw new RuntimeException('Pre-upgrade application snapshot is missing.');
+                }
+                $engine->restoreApplicationSnapshot($applicationArchive, $preservePaths);
+                fwrite(STDERR, 'Application rollback completed.' . PHP_EOL);
+            } catch (Throwable $rollbackError) {
+                $rollbackErrors[] = 'Application rollback failed: ' . $rollbackError->getMessage();
+            }
+
+            try {
+                if (!is_file($databaseDump)) {
+                    throw new RuntimeException('Pre-upgrade database backup is missing.');
+                }
+                $engine->restoreDatabaseFromDump($pdo, $databaseDump);
+                fwrite(STDERR, 'Database rollback completed.' . PHP_EOL);
+            } catch (Throwable $rollbackError) {
+                $rollbackErrors[] = 'Database rollback failed: ' . $rollbackError->getMessage();
+            }
+
+            if ($rollbackErrors === []) {
+                $rollbackStatus = 'success';
+                if (is_array($previousRelease)) {
+                    $engine->storeInstalledRelease($previousRelease);
+                }
+            } else {
+                $rollbackStatus = 'failed';
+            }
+        }
+
+        $engine->updateRun($run, [
+            'rollback_status' => $rollbackStatus,
+            'rollback_errors' => $rollbackErrors,
+            'rolled_back_at' => $rollbackStatus === 'success' ? date(DATE_ATOM) : null,
+        ]);
         $engine->completeRun($run, 'failed', $e->getMessage());
+
         fwrite(STDERR, 'Upgrade failed: ' . $e->getMessage() . PHP_EOL);
         fwrite(STDERR, 'Application snapshot: ' . $engine->relativeToRoot($applicationArchive) . PHP_EOL);
         fwrite(STDERR, 'Database backup: ' . $engine->relativeToRoot($databaseDump) . PHP_EOL);
+        foreach ($rollbackErrors as $rollbackError) {
+            fwrite(STDERR, $rollbackError . PHP_EOL);
+        }
         exit(1);
     } finally {
         if ($tempDir !== null) {
@@ -150,6 +211,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         }
     }
 }
+
 
 function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
 {
@@ -177,7 +239,7 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
         }
     } else {
         foreach ($runs as $run) {
-            if (($run['status'] ?? '') === 'success') {
+            if (($run['status'] ?? '') === 'success' && ($run['kind'] ?? 'upgrade') === 'upgrade') {
                 $target = $run;
                 break;
             }
@@ -193,33 +255,134 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
         fwrite(STDERR, 'The selected backup does not include an application snapshot.' . PHP_EOL);
         exit(1);
     }
-
     $snapshotAbsolute = $engine->absoluteFromRoot($snapshotRelative);
-    info('Restoring application snapshot from ' . $snapshotRelative . '...');
-    $engine->restoreApplicationSnapshot($snapshotAbsolute, [
-        'config.php',
-        'assets/uploads',
-        'storage',
-        'storage/upgrades',
-    ]);
-    info('Application files restored.');
+    if (!is_file($snapshotAbsolute)) {
+        fwrite(STDERR, 'The selected application snapshot is missing from the server.' . PHP_EOL);
+        exit(1);
+    }
 
+    $dbRelative = (string)($target['db_backup'] ?? '');
+    $dbAbsolute = '';
     if ($restoreDb) {
-        $dbRelative = (string)($target['db_backup'] ?? '');
         if ($dbRelative === '') {
             fwrite(STDERR, 'The selected backup does not include a database dump.' . PHP_EOL);
             exit(1);
         }
         $dbAbsolute = $engine->absoluteFromRoot($dbRelative);
-        info('Restoring database from ' . $dbRelative . '...');
-        $engine->restoreDatabaseFromDump($pdo, $dbAbsolute);
-        info('Database restored successfully.');
-    } else {
-        info('Database restore skipped. Use --restore-db to enable it.');
+        if (!is_file($dbAbsolute)) {
+            fwrite(STDERR, 'The selected database dump is missing from the server.' . PHP_EOL);
+            exit(1);
+        }
     }
 
-    info('Restore operation completed.');
+    $targetPreserve = isset($target['preserve']) && is_array($target['preserve'])
+        ? array_filter(array_map('strval', $target['preserve']))
+        : [];
+    $preservePaths = array_values(array_unique(array_merge([
+        'config.php',
+        'assets/uploads',
+        'storage',
+        'storage/upgrades',
+    ], $targetPreserve)));
+
+    $installedBeforeRestore = $engine->currentRelease();
+    $safetyRelease = null;
+    if (is_array($installedBeforeRestore)) {
+        $safetyRelease = [
+            'tag' => $installedBeforeRestore['tag'] ?? null,
+            'name' => $installedBeforeRestore['label'] ?? ($installedBeforeRestore['tag'] ?? null),
+            'repo' => $installedBeforeRestore['repo'] ?? null,
+            'url' => $installedBeforeRestore['url'] ?? null,
+            'installed_at' => $installedBeforeRestore['installed_at'] ?? null,
+        ];
+    }
+
+    // Always capture a fresh pre-restore recovery point before destructive
+    // rollback. If the requested restore fails, this safety snapshot is used
+    // automatically to return the server to its starting state.
+    $safety = $engine->beginRun('restore-safety', [
+        'ref' => $safetyRelease['tag'] ?? '',
+        'version_label' => 'Pre-restore safety backup',
+        'previous_release' => $safetyRelease,
+        'source_backup_id' => (string)($target['id'] ?? ($target['timestamp'] ?? '')),
+        'preserve' => $preservePaths,
+    ]);
+    $safetyApplication = $safety['dir'] . DIRECTORY_SEPARATOR . 'application.zip';
+    $safetyDatabase = $safety['dir'] . DIRECTORY_SEPARATOR . 'database.sql';
+
+    try {
+        info('Creating pre-restore safety snapshot...');
+        $engine->createApplicationArchive($safetyApplication, $preservePaths);
+        $engine->createDatabaseDumpFile($pdo, $safetyDatabase);
+        $engine->updateRun($safety, [
+            'app_snapshot' => $engine->relativeToRoot($safetyApplication),
+            'db_backup' => $engine->relativeToRoot($safetyDatabase),
+        ]);
+        $engine->completeRun($safety, 'success');
+        info('Pre-restore safety snapshot created.');
+    } catch (Throwable $safetyError) {
+        $engine->completeRun($safety, 'failed', $safetyError->getMessage());
+        fwrite(STDERR, 'Restore aborted because the pre-restore safety snapshot could not be created: '
+            . $safetyError->getMessage() . PHP_EOL);
+        exit(1);
+    }
+
+    try {
+        info('Restoring application snapshot from ' . $snapshotRelative . '...');
+        $engine->restoreApplicationSnapshot($snapshotAbsolute, $preservePaths);
+        info('Application files restored.');
+
+        if ($restoreDb) {
+            info('Restoring database from ' . $dbRelative . '...');
+            $engine->restoreDatabaseFromDump($pdo, $dbAbsolute);
+            info('Database restored successfully.');
+        } else {
+            info('Database restore skipped. Use --restore-db to enable it.');
+        }
+
+        $previousRelease = $target['previous_release'] ?? null;
+        if (is_array($previousRelease)) {
+            $engine->storeInstalledRelease($previousRelease);
+            info('Installed release metadata restored.');
+        } else {
+            info('Selected legacy backup does not contain previous release metadata; installed version metadata was left unchanged.');
+        }
+
+        info('Restore operation completed.');
+    } catch (Throwable $restoreError) {
+        fwrite(STDERR, 'Restore failed: ' . $restoreError->getMessage() . PHP_EOL);
+        fwrite(STDERR, 'Attempting automatic recovery to the pre-restore safety snapshot...' . PHP_EOL);
+
+        $recoveryErrors = [];
+        try {
+            $engine->restoreApplicationSnapshot($safetyApplication, $preservePaths);
+        } catch (Throwable $recoveryError) {
+            $recoveryErrors[] = 'Application safety recovery failed: ' . $recoveryError->getMessage();
+        }
+
+        if ($restoreDb) {
+            try {
+                $engine->restoreDatabaseFromDump($pdo, $safetyDatabase);
+            } catch (Throwable $recoveryError) {
+                $recoveryErrors[] = 'Database safety recovery failed: ' . $recoveryError->getMessage();
+            }
+        }
+
+        if ($recoveryErrors === []) {
+            if (is_array($safetyRelease)) {
+                $engine->storeInstalledRelease($safetyRelease);
+            }
+            fwrite(STDERR, 'Pre-restore safety recovery completed successfully.' . PHP_EOL);
+        } else {
+            foreach ($recoveryErrors as $recoveryError) {
+                fwrite(STDERR, $recoveryError . PHP_EOL);
+            }
+        }
+
+        exit(1);
+    }
 }
+
 
 function runList(UpgradeEngine $engine): void
 {
