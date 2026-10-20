@@ -53,6 +53,7 @@ function run_filesystem_restore_regression(): void
         @mkdir($root . '/storage2', 0755, true);
 
         file_put_contents($root . '/config.php', 'current-config');
+        file_put_contents($root . '/.env', 'current-env');
         file_put_contents($root . '/app/existing.txt', 'newer-content');
         file_put_contents($root . '/app/newer-only.txt', 'must-disappear');
         file_put_contents($root . '/assets/current.css', 'newer-style');
@@ -76,6 +77,7 @@ function run_filesystem_restore_regression(): void
             'assets/uploads',
             'storage',
             'storage/upgrades',
+            '.env',
         ]);
 
         restore_assert(
@@ -97,6 +99,10 @@ function run_filesystem_restore_regression(): void
         restore_assert(
             file_get_contents($root . '/config.php') === 'current-config',
             'config.php was not preserved.'
+        );
+        restore_assert(
+            file_get_contents($root . '/.env') === 'current-env',
+            'A custom preserved path was not preserved.'
         );
         restore_assert(
             file_get_contents($root . '/assets/uploads/keep.txt') === 'current-upload',
