@@ -1,0 +1,47 @@
+# one-time UAT publisher
+name: Publish UAT 0.5.93
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/release-0.5.93.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view 0.5.93 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release 0.5.93 already exists."
+            exit 0
+          fi
+          cat > /tmp/release-notes.md <<'EOF'
+          ## System backup and restore hardening
+
+          - Makes application restore an exact rollback for non-preserved paths instead of an overlay.
+          - Removes files introduced after the selected backup while preserving config.php, uploads, and runtime storage.
+          - Makes database backup fail-fast when schema/data export is incomplete.
+          - Validates database dumps before destructive work.
+          - Removes current tables/views before restoring the backed-up schema and data so post-backup objects cannot survive rollback.
+          - Creates a fresh pre-restore safety point before every administrator restore and automatically recovers to it if the requested restore fails.
+          - Adds automatic application + database rollback after a failed upgrade.
+          - Restores installed-release metadata when the restore point contains it.
+          - Defaults the System Restore UI to application + database rollback.
+          - Adds round-trip restore regression coverage on MySQL 8 and MariaDB 10.11.
+          - Updates the backup/restore runbook.
+          - No UI modernization is included in this release.
+
+          Pull request: #826
+          EOF
+          gh release create 0.5.93 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Release UAT 0.5.93" \
+            --notes-file /tmp/release-notes.md
