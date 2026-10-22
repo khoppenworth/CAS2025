@@ -1,0 +1,156 @@
+# Reusable UAT release workflow.
+# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
+# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# Later releases: use Actions -> Publish verified UAT release -> Run workflow.
+name: Publish verified UAT release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "New UAT version, e.g. 0.5.95"
+        required: true
+        type: string
+      target_sha:
+        description: "Optional tested main-branch commit SHA; blank = current main"
+        required: false
+        type: string
+      release_notes:
+        description: "Description of the verified release"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-uat-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release and verify successful CI
+        id: validate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TARGET_SHA: ${{ inputs.target_sha }}
+          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+            # This automatic path is deliberately only for the recovery release.
+            VERSION="0.5.94"
+            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
+            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
+            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
+            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
+              echo "::error::Recovery release tree differs from original 0.5.92."
+              exit 1
+            fi
+            cat > "$NOTES_FILE" <<'NOTES'
+          ## Emergency rollback to the last-known-good 0.5.92 source
+
+          - Restores every tracked application file to the exact contents of release 0.5.92.
+          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
+          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
+          - No new application features, UI changes, or database migration are included.
+          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
+          - Recovery PR: #827.
+          NOTES
+          else
+            VERSION="$INPUT_VERSION"
+            TARGET_SHA="${INPUT_TARGET_SHA:-$(git rev-parse origin/main)}"
+            if [[ -z "$INPUT_RELEASE_NOTES" ]]; then
+              echo "::error::Release notes must not be empty."
+              exit 1
+            fi
+            printf '%s\n' "$INPUT_RELEASE_NOTES" > "$NOTES_FILE"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must use N.N.N, e.g. 0.5.95."
+            exit 1
+          fi
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Target must be a complete 40-character commit SHA."
+            exit 1
+          fi
+          if ! git cat-file -e "${TARGET_SHA}^{commit}"; then
+            echo "::error::Target commit does not exist locally."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "::error::Target commit is not in main branch history."
+            exit 1
+          fi
+
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; no changes made."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q .; then
+            echo "::error::Tag $VERSION already exists without a release; will not overwrite it."
+            exit 1
+          fi
+
+          # An existing successful push-to-main CI run must test the EXACT release SHA.
+          CI_PASSED="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "CI" and .event == "push" and .head_branch == "main" and .conclusion == "success")] | length')"
+          if [[ "$CI_PASSED" -lt 1 ]]; then
+            echo "::error::No successful push-to-main CI workflow was found for $TARGET_SHA."
+            exit 1
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "Ready: $VERSION from tested main-branch commit $TARGET_SHA."
+
+      - name: Publish and verify GitHub Release
+        if: steps.validate.outputs.skip == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.validate.outputs.version }}
+          TARGET_SHA: ${{ steps.validate.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Release UAT $VERSION" \
+            --notes-file "$RUNNER_TEMP/verified-uat-release-notes.md"
+
+          TAG_TARGET="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq '.object.sha')"
+          if [[ "$TAG_TARGET" != "$TARGET_SHA" ]]; then
+            echo "::error::Published tag does not point to the verified target commit."
+            exit 1
+          fi
+          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json url --jq '.url'
+          echo "Published and verified release $VERSION at $TARGET_SHA."
