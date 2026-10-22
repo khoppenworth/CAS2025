@@ -1,147 +1,80 @@
-# System upgrade and restore utility
+# System upgrade utility
 
-The `scripts/system_upgrade.php` CLI script manages CAS application upgrades,
-pre-upgrade snapshots, database backups, and rollback.
+The `scripts/system_upgrade.php` CLI script automates application and database
+upgrades by downloading release archives, capturing snapshots, staging
+deployments, and applying bundled SQL migrations in a repeatable fashion.
 
 ## Prerequisites
 
 * PHP 8.1+
 * PHP `zip` extension (`ext-zip`)
-* PDO MySQL/MariaDB support
-* Network access to the GitHub repository that hosts releases
-* Write access to `storage/upgrades/` and to the application files being upgraded
-
-The backup/restore engine uses PDO for database export and restore; it does not
-depend on external `mysqldump` or `mysql` binaries.
+* `git`, `mysqldump`, and `mysql` binaries available in `PATH`
+* `tar` binary (only required when restoring backups created with HRassess v3.0 or earlier)
+* Network access to the GitHub repository that hosts your releases
 
 ## Usage
 
 ```bash
 # Deploy a specific tag or branch
-php scripts/system_upgrade.php --action=upgrade --repo=owner/repository --ref=0.5.93
+php scripts/system_upgrade.php --action=upgrade --repo=https://github.com/your-org/HRassessv300.git --ref=v3.1.0
 
 # Deploy the latest GitHub release
-php scripts/system_upgrade.php --action=upgrade --repo=owner/repository --latest-release
+php scripts/system_upgrade.php --action=upgrade --repo=https://github.com/your-org/HRassessv300.git --latest-release
 
-# List available upgrade restore points
+# Restore from the most recent successful backup (files only)
+php scripts/system_upgrade.php --action=downgrade
+
+# Restore a specific backup including the database
+php scripts/system_upgrade.php --action=downgrade --backup-id=20240211_101112 --restore-db
+
+# List available backups
 php scripts/system_upgrade.php --action=list-backups
-
-# Restore application files from a specific restore point
-php scripts/system_upgrade.php --action=downgrade --backup-id=20261020_120000
-
-# Restore application files and database (recommended for a full rollback)
-php scripts/system_upgrade.php --action=downgrade --backup-id=20261020_120000 --restore-db
 ```
 
-## Upgrade restore-point layout
+### Options
 
-Every upgrade creates a restore point before application changes begin:
+| Option | Description |
+|--------|-------------|
+| `--repo` | Git repository URL. If omitted the script tries to read `origin` from the local clone. |
+| `--ref` | Branch, tag, or commit to deploy (defaults to `main`). |
+| `--latest-release` | Resolve the latest GitHub release tag and deploy it. Requires `--repo`. |
+| `--backup-dir` | Directory for storing backups (defaults to `<app>/backups`). |
+| `--preserve` | Comma-separated paths to keep untouched during upgrades (defaults to `config.php`, `backups`, `assets/backups`, `assets/uploads`, and `storage`). |
+| `--backup-id` | Timestamp of the backup to restore (shown in `list-backups`). |
+| `--restore-db` | Restore the database when downgrading. |
 
-```text
-storage/upgrades/runs/<backup-id>/
-├── application.zip
-├── database.sql
-└── manifest.json
-```
+## Backup layout
 
-The manifest records the target release, the release installed before the
-upgrade, preserved paths, and the snapshot/database locations.
+Each upgrade captures the pre-upgrade state and stores it in the backup
+directory:
 
-The application snapshot intentionally excludes environment/runtime paths that
-must survive an application rollback, including:
+* `app-<timestamp>.zip` – snapshot of the application files before the upgrade
+  (excludes preserved paths)
+* `db-<timestamp>.sql` – SQL dump of the database before the upgrade
+* `upgrade-<timestamp>.json` – manifest describing release metadata, snapshot
+  paths, and deployment status
 
-* `config.php`
-* `assets/uploads`
-* `storage`
-* `storage/upgrades`
+If an upgrade fails, the script automatically restores the previous state using
+the snapshot and database dump before marking the manifest status as `failed`.
 
-## Restore behavior
+## Config migrations
 
-A restore is an **exact rollback for non-preserved application files**, not an
-overlay.
+The upgrade utility preserves `config.php` to protect environment-specific
+settings such as database credentials. To ensure new helper functions are still
+available, the upgrade flow injects a `require_once __DIR__ . '/config.migrations.php';`
+include into `config.php` (if it is missing). The `config.migrations.php` file
+is versioned with the application and safely defines forward-compatible helper
+functions only when they do not already exist.
 
-Before restoring, the utility:
+## Customising preserved paths
 
-1. verifies that the selected application snapshot exists;
-2. verifies the selected database dump when database restore is requested;
-3. creates a fresh **pre-restore safety snapshot** of the currently running
-   application and database.
-
-During application restore, current non-preserved files are removed before the
-snapshot is copied back. This means files introduced by a newer release do not
-survive an older restore.
-
-During database restore, the dump is validated before destructive work starts.
-The current database tables/views are then removed and the backed-up schema and
-data are recreated. This prevents tables, columns, views, and rows introduced
-after the backup from remaining after rollback.
-
-If the requested restore fails after mutation begins, CAS automatically
-attempts to recover from the pre-restore safety snapshot.
-
-For a normal administrator-initiated system rollback, restore **application +
-database** together. The Administration → System Upgrade page selects database
-restore by default.
-
-## Failed-upgrade protection
-
-An upgrade takes both the application snapshot and database dump before applying
-the new release.
-
-If an upgrade fails after application changes have begun, the utility
-automatically attempts to restore both snapshots and records the rollback result
-in the run manifest.
-
-If the automatic rollback itself encounters an error, the upgrade exits
-non-zero and records the rollback errors in the manifest/log rather than
-reporting a successful recovery.
-
-## Database backup safeguards
-
-Database export is fail-fast:
-
-* failure to enumerate database objects aborts backup creation;
-* failure to export any table definition or table data aborts backup creation;
-* an empty database backup is rejected;
-* restore rejects a dump that contains no schema definitions before changing
-  the current database.
-
-Database restore tests run in CI against both MySQL 8 and MariaDB 10.11.
-
-## Manual downloadable backup
-
-The **Download backup** action creates a separate portable ZIP containing
-application/data exports, a SQL backup, uploads, and metadata.
-
-Upgrade rollback restore points under `storage/upgrades/runs/` remain the
-source used by the System Restore selector. Keep downloaded manual backup ZIPs
-as an additional off-server recovery copy.
-
-## Preserved paths
-
-Additional environment-specific paths can be preserved during an upgrade with
-`--preserve`:
+Environment-specific files can be shielded from upgrades by passing a
+comma-separated list through `--preserve`. For example, to keep a local `.env`
+file untouched:
 
 ```bash
-php scripts/system_upgrade.php --action=upgrade \
-  --repo=owner/repository \
-  --ref=0.5.93 \
-  --preserve=.env,local-config
+php scripts/system_upgrade.php --action=upgrade --repo=... --ref=main --preserve=.env
 ```
 
-Preserve matching is path-boundary aware. Preserving `storage`, for example,
-does not also preserve an unrelated path such as `storage2`.
-
-## Verification before major changes
-
-Before a high-impact release, verify at least one full round trip on the test
-server:
-
-1. create/confirm an upgrade restore point;
-2. create a test file/table/column/row after that restore point;
-3. restore application + database;
-4. confirm the newer-only objects disappeared and the backed-up state returned;
-5. confirm `config.php`, uploads, and required runtime storage were preserved.
-
-The automated `tests/system_restore_test.php` regression covers these core
-application and database rollback behaviors in CI.
+The list always includes `config.php` and the backup directory to prevent them
+from being overwritten or removed.
