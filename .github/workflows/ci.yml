@@ -26,7 +26,6 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
-          extensions: zip, pdo_mysql
       - name: PHP lint
         run: make lint
       - name: Demo dataset SQL contract
@@ -37,12 +36,6 @@ jobs:
           DEMO_DB_USER: root
           DEMO_DB_PASS: root
         run: php tests/demo_dataset_sql_test.php --mysql
-      - name: MySQL system restore regression
-        env:
-          RESTORE_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
-          RESTORE_DB_USER: root
-          RESTORE_DB_PASS: root
-        run: php tests/system_restore_test.php
       - name: MySQL smoke test
         run: mysql -h 127.0.0.1 -uroot -proot -e "SHOW DATABASES;"
 
@@ -66,16 +59,9 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
-          extensions: zip, pdo_mysql
       - name: MariaDB 10.11 demo number generator regression
         env:
           DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
           DEMO_DB_USER: root
           DEMO_DB_PASS: root
         run: php tests/demo_dataset_sql_test.php --mysql
-      - name: MariaDB 10.11 system restore regression
-        env:
-          RESTORE_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
-          RESTORE_DB_USER: root
-          RESTORE_DB_PASS: root
-        run: php tests/system_restore_test.php

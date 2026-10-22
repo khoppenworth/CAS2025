@@ -739,7 +739,7 @@ $pageHelpKey = 'admin.dashboard';
             </label>
             <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Choose a snapshot to restore or download.')?></p>
             <label class="md-upgrade-checkbox">
-              <input type="checkbox" name="restore_db" value="1" checked>
+              <input type="checkbox" name="restore_db" value="1">
               <span><?=t($t,'restore_database','Restore database')?></span>
             </label>
             <p class="md-upgrade-meta"><?=t($t,'restore_database_hint','Also restore the database from the selected backup.')?></p>

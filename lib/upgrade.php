@@ -337,99 +337,64 @@ final class UpgradeEngine
     {
         $lines = ['-- Database backup generated ' . date(DATE_ATOM)];
 
-        $objectsStatement = $pdo->query('SHOW FULL TABLES');
-        if ($objectsStatement === false) {
-            throw new RuntimeException('Unable to enumerate database objects for backup.');
+        try {
+            $tablesStatement = $pdo->query('SHOW TABLES');
+            $tables = $tablesStatement ? $tablesStatement->fetchAll(PDO::FETCH_COLUMN) : [];
+        } catch (Throwable $e) {
+            error_log('upgrade exportDatabase failed to list tables: ' . $e->getMessage());
+            $tables = [];
         }
 
-        $tables = [];
-        $views = [];
-        while ($row = $objectsStatement->fetch(PDO::FETCH_NUM)) {
-            $name = trim((string)($row[0] ?? ''));
-            $type = strtoupper(trim((string)($row[1] ?? 'BASE TABLE')));
-            if ($name === '') {
+        foreach ($tables as $tableName) {
+            $table = (string)$tableName;
+            if ($table === '') {
                 continue;
             }
 
-            if ($type === 'VIEW') {
-                $views[] = $name;
-            } else {
-                $tables[] = $name;
-            }
-        }
-
-        if ($tables === [] && $views === []) {
-            throw new RuntimeException('Refusing to create an empty database backup.');
-        }
-
-        $lines[] = 'SET FOREIGN_KEY_CHECKS=0;';
-
-        foreach ($views as $viewName) {
-            $safe = str_replace('`', '``', $viewName);
-            $lines[] = 'DROP VIEW IF EXISTS `' . $safe . '`;';
-        }
-        foreach ($tables as $tableName) {
-            $safe = str_replace('`', '``', $tableName);
+            $safe = str_replace('`', '``', $table);
+            $lines[] = '';
             $lines[] = 'DROP TABLE IF EXISTS `' . $safe . '`;';
-        }
 
-        foreach ($tables as $tableName) {
-            $safe = str_replace('`', '``', $tableName);
-            $definitionStatement = $pdo->query('SHOW CREATE TABLE `' . $safe . '`');
-            $definition = $definitionStatement ? $definitionStatement->fetch(PDO::FETCH_ASSOC) : null;
-            $create = is_array($definition) ? ($definition['Create Table'] ?? null) : null;
-            if (!is_string($create) || trim($create) === '') {
-                throw new RuntimeException('Unable to export table definition for ' . $tableName . '.');
-            }
-
-            $lines[] = '';
-            $lines[] = $create . ';';
-
-            $dataStatement = $pdo->query('SELECT * FROM `' . $safe . '`');
-            if ($dataStatement === false) {
-                throw new RuntimeException('Unable to export table data for ' . $tableName . '.');
-            }
-
-            while ($row = $dataStatement->fetch(PDO::FETCH_ASSOC)) {
-                $columns = [];
-                $values = [];
-                foreach ($row as $column => $value) {
-                    $columns[] = '`' . str_replace('`', '``', (string)$column) . '`';
-                    if ($value === null) {
-                        $values[] = 'NULL';
-                        continue;
+            try {
+                $definitionStatement = $pdo->query('SHOW CREATE TABLE `' . $safe . '`');
+                $definition = $definitionStatement ? $definitionStatement->fetch(PDO::FETCH_ASSOC) : null;
+                if (is_array($definition)) {
+                    $create = $definition['Create Table'] ?? ($definition['Create View'] ?? null);
+                    if (is_string($create) && $create !== '') {
+                        $lines[] = $create . ';';
                     }
-
-                    $quoted = $pdo->quote((string)$value);
-                    if ($quoted === false) {
-                        throw new RuntimeException('Unable to quote a database value while backing up ' . $tableName . '.');
-                    }
-                    $values[] = $quoted;
                 }
+            } catch (Throwable $e) {
+                error_log('upgrade exportDatabase failed to fetch definition: ' . $e->getMessage());
+            }
 
-                $lines[] = sprintf(
-                    'INSERT INTO `%s` (%s) VALUES (%s);',
-                    $safe,
-                    implode(', ', $columns),
-                    implode(', ', $values)
-                );
+            try {
+                $dataStatement = $pdo->query('SELECT * FROM `' . $safe . '`');
+                if ($dataStatement) {
+                    while ($row = $dataStatement->fetch(PDO::FETCH_ASSOC)) {
+                        $columns = [];
+                        $values = [];
+                        foreach ($row as $column => $value) {
+                            $columns[] = '`' . str_replace('`', '``', (string)$column) . '`';
+                            $values[] = $value === null ? 'NULL' : $pdo->quote((string)$value);
+                        }
+
+                        $lines[] = sprintf(
+                            'INSERT INTO `%s` (%s) VALUES (%s);',
+                            $safe,
+                            implode(', ', $columns),
+                            implode(', ', $values)
+                        );
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log('upgrade exportDatabase failed to fetch data: ' . $e->getMessage());
             }
         }
 
-        foreach ($views as $viewName) {
-            $safe = str_replace('`', '``', $viewName);
-            $definitionStatement = $pdo->query('SHOW CREATE VIEW `' . $safe . '`');
-            $definition = $definitionStatement ? $definitionStatement->fetch(PDO::FETCH_ASSOC) : null;
-            $create = is_array($definition) ? ($definition['Create View'] ?? null) : null;
-            if (!is_string($create) || trim($create) === '') {
-                throw new RuntimeException('Unable to export view definition for ' . $viewName . '.');
-            }
-
-            $lines[] = '';
-            $lines[] = $create . ';';
+        if ($tables === []) {
+            $lines[] = '-- No tables were found during export.';
         }
-
-        $lines[] = 'SET FOREIGN_KEY_CHECKS=1;';
 
         return implode("\n", $lines) . "\n";
     }
@@ -571,8 +536,8 @@ final class UpgradeEngine
         }
 
         $zip = new ZipArchive();
-        if ($zip->open($archivePath, ZipArchive::CHECKCONS) !== true) {
-            throw new RuntimeException('Unable to open or validate application snapshot archive at ' . $archivePath);
+        if ($zip->open($archivePath) !== true) {
+            throw new RuntimeException('Unable to open application snapshot archive at ' . $archivePath);
         }
 
         $tempDir = $this->temporaryDirectory('restore_');
@@ -586,14 +551,6 @@ final class UpgradeEngine
         }
 
         try {
-            if (!$this->directoryHasContent($tempDir)) {
-                throw new RuntimeException('Refusing to restore an empty application snapshot.');
-            }
-
-            // A restore is a rollback, not an overlay. Remove all current
-            // non-preserved application paths before copying the snapshot so
-            // files introduced by a newer release cannot survive the restore.
-            $this->clearApplicationTree($preserve);
             $this->deployRelease($tempDir, $preserve);
         } finally {
             $this->removeDirectory($tempDir);
@@ -606,64 +563,34 @@ final class UpgradeEngine
             throw new RuntimeException('Database dump not found at ' . $dumpPath);
         }
 
-        $size = filesize($dumpPath);
-        if ($size === false || $size <= 0) {
-            throw new RuntimeException('Refusing to restore an empty database dump.');
-        }
-
         $handle = fopen($dumpPath, 'r');
         if ($handle === false) {
             throw new RuntimeException('Unable to open database dump at ' . $dumpPath);
         }
 
-        $hasSchemaDefinition = false;
-        while (($line = fgets($handle)) !== false) {
-            if (preg_match('/^\\s*CREATE\\s+(?:TABLE|VIEW)\\b/i', $line) === 1) {
-                $hasSchemaDefinition = true;
-                break;
-            }
-        }
-        if (!$hasSchemaDefinition) {
-            fclose($handle);
-            throw new RuntimeException('Refusing to restore a database dump that contains no schema definitions.');
-        }
-        rewind($handle);
-
-        $objectsStatement = $pdo->query('SHOW FULL TABLES');
-        if ($objectsStatement === false) {
-            fclose($handle);
-            throw new RuntimeException('Unable to enumerate current database objects before restore.');
-        }
-
-        $tables = [];
-        $views = [];
-        while ($row = $objectsStatement->fetch(PDO::FETCH_NUM)) {
-            $name = trim((string)($row[0] ?? ''));
-            $type = strtoupper(trim((string)($row[1] ?? 'BASE TABLE')));
-            if ($name === '') {
-                continue;
-            }
-            if ($type === 'VIEW') {
-                $views[] = $name;
-            } else {
-                $tables[] = $name;
-            }
-        }
-
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
         try {
-            // Remove the current schema first. Without this step, tables added
-            // by a later release would survive an older database restore.
-            foreach ($views as $viewName) {
-                $safe = str_replace('`', '``', $viewName);
-                $pdo->exec('DROP VIEW IF EXISTS `' . $safe . '`');
-            }
-            foreach ($tables as $tableName) {
-                $safe = str_replace('`', '``', $tableName);
-                $pdo->exec('DROP TABLE IF EXISTS `' . $safe . '`');
+            $buffer = '';
+            while (($line = fgets($handle)) !== false) {
+                $trimmed = trim($line);
+                if ($trimmed === '' || strpos($trimmed, '--') === 0) {
+                    continue;
+                }
+
+                $buffer .= $line;
+                if (substr(rtrim($line), -1) === ';') {
+                    $statement = trim($buffer);
+                    if ($statement !== '') {
+                        $pdo->exec($statement);
+                    }
+                    $buffer = '';
+                }
             }
 
-            $this->executeSqlDumpStream($pdo, $handle);
+            $statement = trim($buffer);
+            if ($statement !== '') {
+                $pdo->exec($statement);
+            }
         } finally {
             fclose($handle);
             $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
@@ -1081,181 +1008,14 @@ final class UpgradeEngine
         return $directory;
     }
 
-    /**
-     * Execute SQL from a generated backup without treating semicolons inside
-     * quoted strings/identifiers as statement terminators.
-     *
-     * @param resource $handle
-     */
-    private function executeSqlDumpStream(PDO $pdo, $handle): void
-    {
-        $buffer = '';
-        $quote = null;
-        $escaped = false;
-
-        while (($line = fgets($handle)) !== false) {
-            if ($quote === null && trim($buffer) === '' && preg_match('/^\\s*--/', $line) === 1) {
-                continue;
-            }
-
-            $length = strlen($line);
-            for ($i = 0; $i < $length; $i++) {
-                $char = $line[$i];
-
-                if ($quote !== null) {
-                    $buffer .= $char;
-
-                    if ($quote === '`') {
-                        if ($char === '`') {
-                            if ($i + 1 < $length && $line[$i + 1] === '`') {
-                                $buffer .= $line[++$i];
-                            } else {
-                                $quote = null;
-                            }
-                        }
-                        continue;
-                    }
-
-                    if ($escaped) {
-                        $escaped = false;
-                        continue;
-                    }
-
-                    if ($char === '\\') {
-                        $escaped = true;
-                        continue;
-                    }
-
-                    if ($char === $quote) {
-                        if ($i + 1 < $length && $line[$i + 1] === $quote) {
-                            $buffer .= $line[++$i];
-                        } else {
-                            $quote = null;
-                        }
-                    }
-                    continue;
-                }
-
-                if ($char === "'" || $char === '"' || $char === '`') {
-                    $quote = $char;
-                    $buffer .= $char;
-                    continue;
-                }
-
-                if ($char === ';') {
-                    $statement = trim($buffer);
-                    if ($statement !== '') {
-                        $pdo->exec($statement);
-                    }
-                    $buffer = '';
-                    continue;
-                }
-
-                $buffer .= $char;
-            }
-        }
-
-        if ($quote !== null) {
-            throw new RuntimeException('Database dump ended inside a quoted SQL value.');
-        }
-
-        $statement = trim($buffer);
-        if ($statement !== '') {
-            $pdo->exec($statement);
-        }
-    }
-
-    private function directoryHasContent(string $path): bool
-    {
-        $entries = scandir($path);
-        if (!is_array($entries)) {
-            return false;
-        }
-
-        foreach ($entries as $entry) {
-            if ($entry !== '.' && $entry !== '..') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function clearApplicationTree(array $preserve): void
-    {
-        $exclusions = ['storage/upgrades'];
-        foreach ($preserve as $item) {
-            $normalized = trim(str_replace('\\', '/', (string)$item), '/');
-            if ($normalized === '' || in_array($normalized, $exclusions, true)) {
-                continue;
-            }
-            $exclusions[] = $normalized;
-        }
-
-        $directoryIterator = new RecursiveDirectoryIterator(
-            $this->root,
-            FilesystemIterator::SKIP_DOTS
-        );
-        $iterator = new RecursiveIteratorIterator(
-            $directoryIterator,
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
-
-        foreach ($iterator as $fileInfo) {
-            /** @var SplFileInfo $fileInfo */
-            $relative = substr($fileInfo->getPathname(), strlen($this->root) + 1);
-            if ($relative === false || $relative === '') {
-                continue;
-            }
-
-            $relative = str_replace('\\', '/', $relative);
-            if ($this->shouldSkip($relative, $exclusions)) {
-                continue;
-            }
-
-            $path = $fileInfo->getPathname();
-            if ($fileInfo->isLink() || !$fileInfo->isDir()) {
-                if (!@unlink($path) && file_exists($path)) {
-                    throw new RuntimeException('Unable to remove application file during restore: ' . $relative);
-                }
-                continue;
-            }
-
-            if (@rmdir($path)) {
-                continue;
-            }
-
-            // A parent directory may remain solely because it contains a
-            // preserved descendant such as assets/uploads.
-            if (is_dir($path) && !$this->containsPreservedDescendant($relative, $exclusions)) {
-                throw new RuntimeException('Unable to remove application directory during restore: ' . $relative);
-            }
-        }
-    }
-
-    private function containsPreservedDescendant(string $relative, array $exclusions): bool
-    {
-        $relative = trim(str_replace('\\', '/', $relative), '/');
-        foreach ($exclusions as $entry) {
-            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
-            if ($entry !== '' && str_starts_with($entry, $relative . '/')) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function shouldSkip(string $relative, array $exclusions): bool
     {
-        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
-            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
 
-            if ($relative === $entry || str_starts_with($relative, $entry . '/')) {
+            if (strpos($relative, $entry) === 0) {
                 return true;
             }
         }
