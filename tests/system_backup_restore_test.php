@@ -23,6 +23,7 @@ $assert = static function (bool $condition, string $message): void {
 $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-test-' . bin2hex(random_bytes(5));
 $externalBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-import-' . bin2hex(random_bytes(5)) . '.zip';
 $unsafeZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-unsafe-' . bin2hex(random_bytes(5)) . '.zip';
+$downloadedCopy = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-downloaded-' . bin2hex(random_bytes(5)) . '.zip';
 
 $removeDirectory = static function (string $path) use (&$removeDirectory): void {
     if (!is_dir($path)) {
@@ -100,12 +101,33 @@ try {
         "backslash then apostrophe \\'",
         "line one\\\nline two ends with apostrophe '",
         "doubled-looking apostrophes '' inside",
+        "semicolon; inside; text",
+        "double quote \" and apostrophe ' together",
+        "backtick ` and SQL-looking text DROP TABLE nope;",
+        "tabs\tcarriage\rreturn\nnewline",
+        "Unicode café – Amharic ሰላም – emoji 😀",
+        "\\\\''\\\\'' repeated escape-looking sequence",
+        "quote at line end '\nnext line",
     ];
+
+    $fragments = ["plain", "'", "\\", ";", "''", "\\'", "\\\\", "\n", "\t", "\"", "`", "é", "ሰላም", "😀"];
+    $generated = [];
+    foreach ($fragments as $leftIndex => $left) {
+        foreach ($fragments as $rightIndex => $right) {
+            if (($leftIndex + $rightIndex) % 5 !== 0) {
+                continue;
+            }
+            $generated[] = "case-" . $leftIndex . "-" . $rightIndex . ":" . $left . "|middle;quoted'\\\\|" . $right;
+        }
+    }
+    $edgeValues = array_merge($edgeValues, $generated);
+
     foreach ($edgeValues as $index => $edgeValue) {
         $insert->execute(['edge-' . $index, $edgeValue]);
     }
 
     $pdo->exec("INSERT INTO related_data (baseline_id, value_text) VALUES (1, 'child value')");
+    $pdo->exec("CREATE VIEW baseline_view AS SELECT id, CONCAT(label, ';quoted''value') AS decorated FROM baseline_data");
 
     $manager = new SystemBackupManager($root);
 
@@ -118,6 +140,33 @@ try {
     $assert(is_file($backup['absolute_path']), 'Backup set was not created.');
     $validation = $manager->validateBackupSet($backup['absolute_path']);
     $assert($validation['valid'] === true, 'Backup set did not pass integrity validation.');
+
+    // Repeated backups must not recursively include prior backups under storage/upgrades.
+    $repeatTarget = $root . '/storage/upgrades/manual/repeat.zip';
+    $repeat = $manager->createBackupSet($pdo, 'manual', $repeatTarget, [
+        'id' => 'repeat_test',
+        'label' => 'Repeat backup exclusion test',
+    ]);
+    $assert(
+        ($backup['manifest']['application']['file_count'] ?? null) === ($repeat['manifest']['application']['file_count'] ?? null),
+        'Repeated backup changed the application file count, suggesting recursive backup inclusion.'
+    );
+    $assert(
+        ($backup['manifest']['application']['tree_hash'] ?? '') === ($repeat['manifest']['application']['tree_hash'] ?? ''),
+        'Repeated backup changed the application tree hash even though only storage/upgrades changed.'
+    );
+
+    // A separately downloaded/copied already-created backup must remain independently valid.
+    $listedBackup = $manager->findBackupSet('roundtrip_test');
+    $assert($listedBackup !== null, 'Created backup set is not listed for later download.');
+    $assert((int)($listedBackup['size'] ?? 0) > 0, 'Listed backup set does not expose a valid download size.');
+    $assert(copy((string)$listedBackup['backup_set_path'], $downloadedCopy), 'Unable to simulate separate backup download.');
+    $downloadValidation = $manager->validateBackupSet($downloadedCopy);
+    $assert($downloadValidation['valid'] === true, 'Separately downloaded/copied backup failed validation.');
+    $assert(
+        hash_file('sha256', $downloadedCopy) === hash_file('sha256', (string)$listedBackup['backup_set_path']),
+        'Downloaded/copied backup bytes differ from the validated server backup.'
+    );
 
     // Create an external backup and prove that a downloaded set can be imported.
     $external = $manager->createBackupSet($pdo, 'manual', $externalBackup, [
@@ -182,7 +231,7 @@ try {
     $tableNames = array_map(static fn(array $row): string => (string)$row[0], $tables);
     sort($tableNames);
     $assert(
-        $tableNames === ['baseline_data', 'related_data'],
+        $tableNames === ['baseline_data', 'baseline_view', 'related_data'],
         'Database exact restore did not remove experimental tables.'
     );
 
@@ -207,6 +256,12 @@ try {
 
     $relatedCount = (int)$pdo->query('SELECT COUNT(*) FROM related_data')->fetchColumn();
     $assert($relatedCount === 1, 'Deleted related row was not restored.');
+
+    $viewValue = $pdo->query('SELECT decorated FROM baseline_view WHERE id=1')->fetchColumn();
+    $assert(
+        $viewValue === "alpha;beta;quoted'value",
+        'Database view with semicolon and quoted literal was not restored correctly.'
+    );
 
     $emergency = $manager->findBackupSet((string)$restore['emergency_backup_id']);
     $assert($emergency !== null, 'Emergency pre-restore backup is not retained in the backup catalog.');
@@ -235,4 +290,5 @@ try {
     $removeDirectory($root);
     @unlink($externalBackup);
     @unlink($unsafeZip);
+    @unlink($downloadedCopy);
 }
