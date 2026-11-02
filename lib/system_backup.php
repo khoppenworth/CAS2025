@@ -233,6 +233,7 @@ final class SystemBackupManager
                 'completed_at' => (string)($manifest['created_at'] ?? ''),
                 'manifest_path' => $this->relativeToRoot($path) . '#manifest.json',
                 'backup_set_path' => $path,
+                'size' => (int)(filesize($path) ?: 0),
                 'format_version' => (int)($manifest['format_version'] ?? 0),
                 'label' => (string)($metadata['label'] ?? ''),
             ];
