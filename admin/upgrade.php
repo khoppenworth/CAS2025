@@ -783,7 +783,7 @@ $pageHelpKey = 'admin.dashboard';
                 <?php endforeach; ?>
               </select>
             </label>
-            <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Choose a snapshot to restore or download.')?></p>
+            <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Choose a verified restore point. Creating a download captures the current App + DB state as a new backup set.')?></p>
             <input type="hidden" name="restore_db" value="1">
             <p class="md-upgrade-meta">
               <strong>Full restore:</strong>
@@ -793,7 +793,7 @@ $pageHelpKey = 'admin.dashboard';
             <div class="md-upgrade-backup-toolbar">
               <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'restore_backup','Restore backup')?></button>
               <button type="submit" form="<?=htmlspecialchars($downloadBackupFormId, ENT_QUOTES, 'UTF-8')?>" class="md-button md-elev-1 md-upgrade-action-button">
-                <?=t($t,'download_backup','Download backup')?>
+                <?=t($t,'create_download_full_backup','Create & Download Full Backup')?>
               </button>
             </div>
           </form>
@@ -805,16 +805,28 @@ $pageHelpKey = 'admin.dashboard';
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="import_backup_set">
             <label class="md-upgrade-field">
-              <span class="md-upgrade-field-label">Import downloaded backup set</span>
+              <span class="md-upgrade-field-label"><?=t($t,'backup_import_label','Import downloaded backup set')?></span>
               <input type="file" name="backup_set" accept=".zip,application/zip" required class="md-upgrade-input">
             </label>
             <p class="md-upgrade-meta">
-              Imported ZIP files are checksum-validated before they become available for System Restore.
+              <?=t($t,'backup_import_hint','Imported ZIP files are checksum-validated before they become available for System Restore.')?>
             </p>
-            <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button">Import backup set</button>
+            <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'backup_import_action','Import backup set')?></button>
           </form>
         <?php else: ?>
-          <p class="md-upgrade-meta"><?=t($t,'no_backups_available','No upgrade backups are available yet.')?></p>
+          <p class="md-upgrade-meta"><?=t($t,'no_backups_available','No restore points are currently stored on this server.')?></p>
+          <form method="post" enctype="multipart/form-data" class="md-upgrade-form md-upgrade-import-form">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="action" value="import_backup_set">
+            <label class="md-upgrade-field">
+              <span class="md-upgrade-field-label"><?=t($t,'backup_import_label','Import downloaded backup set')?></span>
+              <input type="file" name="backup_set" accept=".zip,application/zip" required class="md-upgrade-input">
+            </label>
+            <p class="md-upgrade-meta">
+              <?=t($t,'backup_import_hint','Imported ZIP files are checksum-validated before they become available for System Restore.')?>
+            </p>
+            <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'backup_import_action','Import backup set')?></button>
+          </form>
         <?php endif; ?>
       </article>
     </div>
