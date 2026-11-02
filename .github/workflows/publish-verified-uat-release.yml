@@ -1,6 +1,6 @@
 # Reusable UAT release workflow.
-# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
-# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# One-time verified publication path for 0.5.98 backup/restore hardening.
+# It targets the already-green PR #832 merge commit exactly.
 # Later releases: use Actions -> Publish verified UAT release -> Run workflow.
 name: Publish verified UAT release
 
@@ -63,24 +63,22 @@ jobs:
           NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
 
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            # This automatic path is deliberately only for the recovery release.
-            VERSION="0.5.94"
-            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
-            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
-            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
-            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
-              echo "::error::Recovery release tree differs from original 0.5.92."
-              exit 1
-            fi
+            # One-time automatic path for the backup/restore hardening release.
+            VERSION="0.5.98"
+            TARGET_SHA="294a2227c09bd9b71512a2a12a64b441b1be94fa"
             cat > "$NOTES_FILE" <<'NOTES'
-          ## Emergency rollback to the last-known-good 0.5.92 source
+          ## Backup/restore hardening release
 
-          - Restores every tracked application file to the exact contents of release 0.5.92.
-          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
-          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
-          - No new application features, UI changes, or database migration are included.
-          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
-          - Recovery PR: #827.
+          - Includes the corrected MySQL SQL parser for backslash-escaped apostrophes and closing quotes.
+          - Splits full-backup creation from download delivery: create/validate first, then download the existing validated ZIP separately.
+          - Prevents retries of a download from generating duplicate backups.
+          - Confirms storage/upgrades is excluded from application snapshots so historical backup accumulation is not recursively copied.
+          - Adds stress coverage for apostrophes, backslashes, semicolons, multiline text, Unicode, SQL-looking text, quoted database views, separate-download validation, and emergency rollback backups.
+          - Release gating completed 12 successful destructive full backup/restore cycles: 6 on MySQL 8 and 6 on MariaDB 10.11 across PR and main CI.
+          - No database schema migration.
+          - Retains RESTORE_TEST_0.5.96.txt as the inert marker for the planned exact rollback test.
+          - Bootstrap note: a server still running 0.5.95 that hits the old "unterminated quoted value" pre-upgrade validator must first replace only lib/system_backup.php with the file from this release, then use the normal CAS upgrade flow.
+          - Hardening PR: #832.
           NOTES
           else
             VERSION="$INPUT_VERSION"
