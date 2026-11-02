@@ -8,6 +8,8 @@ const ADMIN_UPGRADE_RUN_DIR = 'storage/upgrades/runs';
 const ADMIN_UPGRADE_MANUAL_DIR = 'storage/upgrades/manual';
 const ADMIN_UPGRADE_INSTALLED_FILE = 'storage/upgrades/installed.json';
 
+require_once __DIR__ . '/system_backup.php';
+
 final class UpgradeEngine
 {
     private string $root;
@@ -1238,13 +1240,24 @@ function upgrade_fetch_latest_release(string $source, ?string $token = null): ?a
 
 function upgrade_list_backups(): array
 {
-    $runs = upgrade_engine()->listUpgradeRuns();
-    $result = [];
-    foreach ($runs as $run) {
+    $result = system_backup_manager()->listBackupSets(true);
+    $knownIds = [];
+    foreach ($result as $backup) {
+        $knownIds[(string)($backup['id'] ?? '')] = true;
+    }
+
+    // Keep pre-v2 upgrade snapshots visible for backward-compatible recovery.
+    foreach (upgrade_engine()->listUpgradeRuns() as $run) {
+        $id = (string)($run['id'] ?? ($run['timestamp'] ?? ''));
+        if ($id === '' || isset($knownIds[$id])) {
+            continue;
+        }
+
         $result[] = [
-            'id' => (string)($run['id'] ?? ($run['timestamp'] ?? '')),
-            'timestamp' => (string)($run['timestamp'] ?? ''),
+            'id' => $id,
+            'timestamp' => (string)($run['created_at'] ?? ($run['timestamp'] ?? '')),
             'status' => (string)($run['status'] ?? 'unknown'),
+            'kind' => 'legacy-upgrade',
             'ref' => (string)($run['ref'] ?? ''),
             'repo' => (string)($run['repo'] ?? ''),
             'version_label' => (string)($run['version_label'] ?? ''),
@@ -1252,8 +1265,15 @@ function upgrade_list_backups(): array
             'started_at' => isset($run['created_at']) ? (string)$run['created_at'] : null,
             'completed_at' => isset($run['completed_at']) ? (string)$run['completed_at'] : null,
             'manifest_path' => isset($run['manifest_path']) ? (string)$run['manifest_path'] : null,
+            'backup_set_path' => null,
+            'format_version' => 1,
+            'label' => 'Legacy upgrade snapshot',
         ];
     }
+
+    usort($result, static function (array $a, array $b): int {
+        return strcmp((string)($b['timestamp'] ?? ''), (string)($a['timestamp'] ?? ''));
+    });
 
     return $result;
 }
@@ -1354,7 +1374,17 @@ function upgrade_resolve_manual_backup_path(string $filename): ?string
 
 function upgrade_create_manual_backup(PDO $pdo): array
 {
-    return upgrade_engine()->createManualBackup($pdo);
+    return system_backup_manager()->createManualBackup($pdo);
+}
+
+function upgrade_import_backup_set(string $uploadedPath, string $originalName = ''): array
+{
+    return system_backup_manager()->importBackupSet($uploadedPath, $originalName);
+}
+
+function upgrade_find_backup_set(string $backupId): ?array
+{
+    return system_backup_manager()->findBackupSet($backupId);
 }
 
 function upgrade_stream_download(string $filePath, string $downloadName, ?int $size = null, string $contentType = 'application/zip'): void

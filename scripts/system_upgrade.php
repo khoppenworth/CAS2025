@@ -87,27 +87,32 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         'preserve' => $preservePaths,
     ]);
 
-    $applicationArchive = $run['dir'] . DIRECTORY_SEPARATOR . 'application.zip';
-    $databaseDump = $run['dir'] . DIRECTORY_SEPARATOR . 'database.sql';
+    $backupSet = null;
     $tempDir = null;
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
 
     try {
-        info('Creating application snapshot...');
-        $engine->createApplicationArchive($applicationArchive, $preservePaths);
+        info('Creating and validating full pre-upgrade backup set...');
+        $backupSet = system_backup_manager()->createUpgradeBackup(
+            $pdo,
+            $run['id'],
+            $run['dir'],
+            [
+                'label' => 'Pre-upgrade snapshot before ' . $targetLabel,
+                'target_repo' => $repo,
+                'target_ref' => $targetRef,
+                'target_label' => $targetLabel,
+                'target_release_url' => $releaseUrl,
+            ],
+            $preservePaths
+        );
         $engine->updateRun($run, [
-            'app_snapshot' => $engine->relativeToRoot($applicationArchive),
+            'backup_set' => $backupSet['relative_path'],
+            'backup_format_version' => SYSTEM_BACKUP_FORMAT_VERSION,
         ]);
-        info('Snapshot stored at ' . $engine->relativeToRoot($applicationArchive));
-
-        info('Exporting database...');
-        $engine->createDatabaseDumpFile($pdo, $databaseDump);
-        $engine->updateRun($run, [
-            'db_backup' => $engine->relativeToRoot($databaseDump),
-        ]);
-        info('Database dump stored at ' . $engine->relativeToRoot($databaseDump));
+        info('Verified backup set stored at ' . $backupSet['relative_path']);
 
         info('Fetching release package...');
         $download = $engine->downloadReleaseArchive($repo, $targetRef, $token !== '' ? $token : null);
@@ -139,10 +144,31 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
+        $rollbackMessage = null;
+        if (is_array($backupSet) && !empty($backupSet['absolute_path'])) {
+            try {
+                info('Upgrade failed. Automatically restoring the verified pre-upgrade backup set...');
+                $rollback = system_backup_manager()->restoreBackupSet(
+                    $pdo,
+                    (string)$backupSet['absolute_path'],
+                    $preservePaths
+                );
+                $rollbackMessage = 'Automatic rollback completed using backup ' . (string)($rollback['restored_id'] ?? $run['id']) . '.';
+                info($rollbackMessage);
+            } catch (Throwable $rollbackError) {
+                $rollbackMessage = 'Automatic rollback failed: ' . $rollbackError->getMessage();
+                fwrite(STDERR, $rollbackMessage . PHP_EOL);
+            }
+        }
+
+        $engine->updateRun($run, [
+            'rollback_status' => $rollbackMessage,
+        ]);
         $engine->completeRun($run, 'failed', $e->getMessage());
         fwrite(STDERR, 'Upgrade failed: ' . $e->getMessage() . PHP_EOL);
-        fwrite(STDERR, 'Application snapshot: ' . $engine->relativeToRoot($applicationArchive) . PHP_EOL);
-        fwrite(STDERR, 'Database backup: ' . $engine->relativeToRoot($databaseDump) . PHP_EOL);
+        if (is_array($backupSet)) {
+            fwrite(STDERR, 'Verified backup set: ' . (string)$backupSet['relative_path'] . PHP_EOL);
+        }
         exit(1);
     } finally {
         if ($tempDir !== null) {
@@ -153,91 +179,115 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
 function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
 {
-    $runs = $engine->listUpgradeRuns();
-    if ($runs === []) {
-        fwrite(STDERR, 'No upgrade backups are available to restore.' . PHP_EOL);
+    $backups = upgrade_list_backups();
+    if ($backups === []) {
+        fwrite(STDERR, 'No backups are available to restore.' . PHP_EOL);
         exit(1);
     }
 
     $backupId = trim((string)($options['backup-id'] ?? ''));
-    $restoreDb = isset($options['restore-db']);
+    if ($backupId === '') {
+        foreach ($backups as $backup) {
+            if (($backup['status'] ?? '') === 'ready' || ($backup['status'] ?? '') === 'success') {
+                $backupId = (string)($backup['id'] ?? '');
+                if ($backupId !== '') {
+                    break;
+                }
+            }
+        }
+    }
 
+    if ($backupId === '') {
+        fwrite(STDERR, 'No valid backup is available to restore.' . PHP_EOL);
+        exit(1);
+    }
+
+    $backupSet = upgrade_find_backup_set($backupId);
+    if ($backupSet !== null && !empty($backupSet['backup_set_path'])) {
+        info('Running backup-set integrity preflight for ' . $backupId . '...');
+        $result = system_backup_manager()->restoreBackupSet(
+            $pdo,
+            (string)$backupSet['backup_set_path'],
+            [
+                'config.php',
+                'assets/uploads',
+                'storage',
+                'storage/upgrades',
+            ]
+        );
+        info('Application and database restored and verified successfully.');
+        info('Emergency pre-restore backup retained as ' . (string)($result['emergency_backup_id'] ?? 'unknown') . '.');
+        return;
+    }
+
+    // Backward compatibility for snapshots created before backup-set format v2.
+    $runs = $engine->listUpgradeRuns();
     $target = null;
-    if ($backupId !== '') {
-        foreach ($runs as $run) {
-            $runId = (string)($run['id'] ?? ($run['timestamp'] ?? ''));
-            if ($runId === $backupId) {
-                $target = $run;
-                break;
-            }
+    foreach ($runs as $run) {
+        $runId = (string)($run['id'] ?? ($run['timestamp'] ?? ''));
+        if ($runId === $backupId) {
+            $target = $run;
+            break;
         }
-        if ($target === null) {
-            fwrite(STDERR, 'Backup ' . $backupId . ' was not found.' . PHP_EOL);
-            exit(1);
-        }
-    } else {
-        foreach ($runs as $run) {
-            if (($run['status'] ?? '') === 'success') {
-                $target = $run;
-                break;
-            }
-        }
-        if ($target === null) {
-            fwrite(STDERR, 'No successful upgrade runs are available to restore.' . PHP_EOL);
-            exit(1);
-        }
+    }
+
+    if ($target === null) {
+        fwrite(STDERR, 'Backup ' . $backupId . ' was not found.' . PHP_EOL);
+        exit(1);
     }
 
     $snapshotRelative = (string)($target['app_snapshot'] ?? '');
     if ($snapshotRelative === '') {
-        fwrite(STDERR, 'The selected backup does not include an application snapshot.' . PHP_EOL);
+        fwrite(STDERR, 'The selected legacy backup does not include an application snapshot.' . PHP_EOL);
         exit(1);
     }
 
+    $restoreDb = isset($options['restore-db']);
     $snapshotAbsolute = $engine->absoluteFromRoot($snapshotRelative);
-    info('Restoring application snapshot from ' . $snapshotRelative . '...');
+    info('Restoring legacy application snapshot from ' . $snapshotRelative . '...');
     $engine->restoreApplicationSnapshot($snapshotAbsolute, [
         'config.php',
         'assets/uploads',
         'storage',
         'storage/upgrades',
     ]);
-    info('Application files restored.');
+    info('Legacy application files restored.');
 
     if ($restoreDb) {
         $dbRelative = (string)($target['db_backup'] ?? '');
         if ($dbRelative === '') {
-            fwrite(STDERR, 'The selected backup does not include a database dump.' . PHP_EOL);
+            fwrite(STDERR, 'The selected legacy backup does not include a database dump.' . PHP_EOL);
             exit(1);
         }
-        $dbAbsolute = $engine->absoluteFromRoot($dbRelative);
-        info('Restoring database from ' . $dbRelative . '...');
-        $engine->restoreDatabaseFromDump($pdo, $dbAbsolute);
-        info('Database restored successfully.');
+        info('Restoring legacy database from ' . $dbRelative . '...');
+        $engine->restoreDatabaseFromDump($pdo, $engine->absoluteFromRoot($dbRelative));
+        info('Legacy database restored.');
     } else {
-        info('Database restore skipped. Use --restore-db to enable it.');
+        info('Legacy database restore skipped. Use --restore-db to enable it.');
     }
 
-    info('Restore operation completed.');
+    info('Legacy restore operation completed.');
 }
 
 function runList(UpgradeEngine $engine): void
 {
-    $runs = $engine->listUpgradeRuns();
-    if ($runs === []) {
-        echo 'No upgrade history found.' . PHP_EOL;
+    $backups = upgrade_list_backups();
+    if ($backups === []) {
+        echo 'No backup history found.' . PHP_EOL;
         return;
     }
 
-    printf("%-18s %-12s %-25s %-30s %s\n", 'Backup ID', 'Status', 'Reference', 'Created At', 'Manifest');
+    printf("%-24s %-16s %-12s %-25s %s\n", 'Backup ID', 'Kind', 'Status', 'Release', 'Created At');
     echo str_repeat('-', 110) . PHP_EOL;
-    foreach ($runs as $run) {
-        $id = (string)($run['id'] ?? ($run['timestamp'] ?? ''));
-        $status = (string)($run['status'] ?? 'unknown');
-        $ref = (string)($run['ref'] ?? '');
-        $created = (string)($run['created_at'] ?? '');
-        $manifest = (string)($run['manifest_path'] ?? '');
-        printf("%-18s %-12s %-25s %-30s %s\n", $id, $status, $ref, $created, $manifest);
+    foreach ($backups as $backup) {
+        printf(
+            "%-24s %-16s %-12s %-25s %s\n",
+            (string)($backup['id'] ?? ''),
+            (string)($backup['kind'] ?? 'backup'),
+            (string)($backup['status'] ?? 'unknown'),
+            (string)($backup['version_label'] ?? ($backup['ref'] ?? '')),
+            (string)($backup['timestamp'] ?? '')
+        );
     }
 }
 
@@ -256,8 +306,9 @@ Options:
   --ref              Branch, tag, or commit reference to deploy when --latest-release is not supplied.
   --latest-release   Resolve the newest GitHub release tag automatically.
   --preserve         Comma separated list of paths to keep untouched during deployment.
-  --backup-id        Identifier of the backup run to restore. Defaults to the most recent successful run.
-  --restore-db       Restore the database dump alongside application files.
+  --backup-id        Identifier of the backup set to restore. Defaults to the most recent ready backup.
+  --restore-db       Legacy snapshots only: restore the database dump alongside application files.
+                     Format-v2 backup sets always restore and verify both application and database.
 
 USAGE;
 }
