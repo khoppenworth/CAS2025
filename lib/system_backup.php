@@ -964,19 +964,28 @@ final class SystemBackupManager
                         $buffer .= $char;
 
                         if ($char === $quote) {
-                            if ($i + 1 < $length && $line[$i + 1] === $quote && $quote !== '`') {
+                            // MySQL can escape string delimiters either with a backslash
+                            // (for example: 'text\\'' when the value ends in an apostrophe)
+                            // or by doubling the delimiter. Check backslash escaping first;
+                            // otherwise the escaped apostrophe plus the real closing quote
+                            // can be misread as a doubled-quote pair.
+                            if ($quote !== '`') {
+                                $backslashes = 0;
+                                for ($j = strlen($buffer) - 2; $j >= 0 && $buffer[$j] === '\\'; $j--) {
+                                    $backslashes++;
+                                }
+                                if ($backslashes % 2 === 1) {
+                                    continue;
+                                }
+                            }
+
+                            if ($i + 1 < $length && $line[$i + 1] === $quote) {
                                 $buffer .= $line[$i + 1];
                                 $i++;
                                 continue;
                             }
 
-                            $backslashes = 0;
-                            for ($j = $i - 1; $j >= 0 && $line[$j] === '\\'; $j--) {
-                                $backslashes++;
-                            }
-                            if ($backslashes % 2 === 0) {
-                                $quote = null;
-                            }
+                            $quote = null;
                         }
                         continue;
                     }
