@@ -93,6 +93,18 @@ try {
     $insert = $pdo->prepare('INSERT INTO baseline_data (label, notes) VALUES (?, ?)');
     $insert->execute(["alpha;beta", "line one\nline two; still same value 'quoted' \\ slash"]);
     $insert->execute(['second row', null]);
+
+    $edgeValues = [
+        "ends with apostrophe '",
+        "ends with backslash \\",
+        "backslash then apostrophe \\'",
+        "line one\\\nline two ends with apostrophe '",
+        "doubled-looking apostrophes '' inside",
+    ];
+    foreach ($edgeValues as $index => $edgeValue) {
+        $insert->execute(['edge-' . $index, $edgeValue]);
+    }
+
     $pdo->exec("INSERT INTO related_data (baseline_id, value_text) VALUES (1, 'child value')");
 
     $manager = new SystemBackupManager($root);
@@ -183,6 +195,16 @@ try {
         ($row['notes'] ?? '') === "line one\nline two; still same value 'quoted' \\ slash",
         'SQL parser did not preserve complex multiline/semicolon data.'
     );
+    $edgeSelect = $pdo->prepare('SELECT notes FROM baseline_data WHERE label = ?');
+    foreach ($edgeValues as $index => $expectedEdgeValue) {
+        $edgeSelect->execute(['edge-' . $index]);
+        $actualEdgeValue = $edgeSelect->fetchColumn();
+        $assert(
+            $actualEdgeValue === $expectedEdgeValue,
+            'SQL parser did not preserve edge-case quoted value at index ' . $index . '.'
+        );
+    }
+
     $relatedCount = (int)$pdo->query('SELECT COUNT(*) FROM related_data')->fetchColumn();
     $assert($relatedCount === 1, 'Deleted related row was not restored.');
 
