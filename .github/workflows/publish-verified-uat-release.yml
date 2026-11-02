@@ -1,6 +1,6 @@
 # Reusable UAT release workflow.
-# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
-# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# One-time verified publication path for 0.5.95.
+# It targets the already-green PR #829 merge commit exactly.
 # Later releases: use Actions -> Publish verified UAT release -> Run workflow.
 name: Publish verified UAT release
 
@@ -63,24 +63,20 @@ jobs:
           NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
 
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            # This automatic path is deliberately only for the recovery release.
-            VERSION="0.5.94"
-            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
-            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
-            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
-            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
-              echo "::error::Recovery release tree differs from original 0.5.92."
-              exit 1
-            fi
+            # One-time automatic path for the verified System Restore release.
+            VERSION="0.5.95"
+            TARGET_SHA="4bd4cac94ee14b46438ec7d3a9f95684fe05f02e"
             cat > "$NOTES_FILE" <<'NOTES'
-          ## Emergency rollback to the last-known-good 0.5.92 source
+          ## Verified full App + DB System Restore
 
-          - Restores every tracked application file to the exact contents of release 0.5.92.
-          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
-          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
-          - No new application features, UI changes, or database migration are included.
-          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
-          - Recovery PR: #827.
+          - Introduces format-v2 full backup sets with application snapshot, database dump, manifest metadata and SHA-256 checksums.
+          - Validates backup integrity before upgrades and restores.
+          - Makes System Restore exact for application code and database schema/data while preserving server-local config, uploads and storage.
+          - Creates a verified emergency pre-restore backup and automatically attempts rollback if restoration fails.
+          - Allows downloaded full backup sets to be imported back into System Restore.
+          - Adds exact backup/restore round-trip regression coverage on MySQL 8 and MariaDB 10.11.
+          - Main-branch CI passed for the exact release commit.
+          - Recovery reliability PR: #829.
           NOTES
           else
             VERSION="$INPUT_VERSION"
