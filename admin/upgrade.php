@@ -236,21 +236,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
 
         case 'download_backups':
+        case 'create_backup':
             try {
+                if (function_exists('set_time_limit')) {
+                    @set_time_limit(0);
+                }
                 $backup = upgrade_create_manual_backup($pdo);
                 $upgradeState['backup_ready'] = true;
                 $upgradeState['last_backup_at'] = time();
                 $upgradeState['last_backup_path'] = $backup['relative_path'];
-
-                $_SESSION['admin_upgrade_state'] = $upgradeState;
-                $_SESSION['admin_dashboard_flash'] = t($t, 'backup_ready_message', 'System backup archive created successfully.');
-                $_SESSION['admin_dashboard_flash_type'] = 'success';
-
-                upgrade_stream_download($backup['absolute_path'], $backup['filename'], $backup['size']);
-                exit;
+                $flashMessage = sprintf(
+                    t(
+                        $t,
+                        'backup_ready_message',
+                        'Full backup %s was created and validated successfully. Use Download selected backup to save it locally.'
+                    ),
+                    (string)($backup['id'] ?? '')
+                );
+                $flashType = 'success';
             } catch (Throwable $backupError) {
                 error_log('Admin backup failed: ' . $backupError->getMessage());
-                $flashMessage = t($t, 'backup_failed', 'Unable to generate the backup archive.');
+                $flashMessage = t($t, 'backup_failed', 'Unable to generate the backup archive.') . ' ' . $backupError->getMessage();
+                $flashType = 'error';
+            }
+            break;
+
+        case 'download_backup_set':
+            $backupId = trim((string)($_POST['backup_id'] ?? ''));
+            if ($backupId === '') {
+                $flashMessage = t($t, 'download_backup_invalid', 'Select a full backup set before downloading.');
+                $flashType = 'error';
+                break;
+            }
+
+            try {
+                $backup = upgrade_find_backup_set($backupId);
+                if ($backup === null) {
+                    throw new RuntimeException('The selected full backup set was not found.');
+                }
+
+                $path = (string)($backup['backup_set_path'] ?? '');
+                if ($path === '' || !is_file($path)) {
+                    throw new RuntimeException('The selected backup does not have a downloadable full backup ZIP.');
+                }
+
+                if (function_exists('set_time_limit')) {
+                    @set_time_limit(0);
+                }
+
+                $size = isset($backup['size']) ? (int)$backup['size'] : null;
+                upgrade_stream_download($path, basename($path), $size);
+                exit;
+            } catch (Throwable $downloadError) {
+                error_log('Admin backup download failed: ' . $downloadError->getMessage());
+                $flashMessage = t($t, 'download_backup_failed', 'Unable to download the selected backup set.') . ' ' . $downloadError->getMessage();
                 $flashType = 'error';
             }
             break;
@@ -769,12 +808,10 @@ $pageHelpKey = 'admin.dashboard';
       <article class="md-card md-upgrade-card">
         <h3 class="md-upgrade-heading"><?=t($t,'upgrade_recent_backups','Upgrade backups')?></h3>
         <?php if ($formattedBackups): ?>
-          <?php $downloadBackupFormId = 'download-backup-form'; ?>
           <form method="post" class="md-upgrade-restore-form" id="restore-backup-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-            <input type="hidden" name="action" value="restore_backup">
             <label class="md-upgrade-field">
-              <span class="md-upgrade-field-label"><?=t($t,'select_backup_label','Backup to restore')?></span>
+              <span class="md-upgrade-field-label"><?=t($t,'select_backup_label','Backup to restore or download')?></span>
               <select name="backup_id" class="md-upgrade-select" data-upgrade-backup-select>
                 <?php foreach ($formattedBackups as $backupMeta): ?>
                   <option value="<?=htmlspecialchars($backupMeta['id'], ENT_QUOTES, 'UTF-8')?>" <?=$backupMeta['id'] === $selectedBackupId ? 'selected' : ''?>>
@@ -783,7 +820,7 @@ $pageHelpKey = 'admin.dashboard';
                 <?php endforeach; ?>
               </select>
             </label>
-            <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Choose a verified restore point. Creating a download captures the current App + DB state as a new backup set.')?></p>
+            <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Create and validate a backup first. Downloading an existing full backup is a separate request and does not create another backup.')?></p>
             <input type="hidden" name="restore_db" value="1">
             <p class="md-upgrade-meta">
               <strong>Full restore:</strong>
@@ -791,15 +828,14 @@ $pageHelpKey = 'admin.dashboard';
               CAS creates and validates an emergency pre-restore backup so it can automatically roll back if restoration fails.
             </p>
             <div class="md-upgrade-backup-toolbar">
-              <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'restore_backup','Restore backup')?></button>
-              <button type="submit" form="<?=htmlspecialchars($downloadBackupFormId, ENT_QUOTES, 'UTF-8')?>" class="md-button md-elev-1 md-upgrade-action-button">
-                <?=t($t,'create_download_full_backup','Create & Download Full Backup')?>
+              <button type="submit" name="action" value="restore_backup" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'restore_backup','Restore backup')?></button>
+              <button type="submit" name="action" value="download_backup_set" class="md-button md-outline md-elev-1 md-upgrade-action-button">
+                <?=t($t,'download_selected_backup','Download selected backup')?>
+              </button>
+              <button type="submit" name="action" value="create_backup" class="md-button md-elev-1 md-upgrade-action-button">
+                <?=t($t,'create_full_backup','Create Full Backup')?>
               </button>
             </div>
-          </form>
-          <form method="post" id="<?=htmlspecialchars($downloadBackupFormId, ENT_QUOTES, 'UTF-8')?>" class="md-upgrade-hidden-form">
-            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
-            <input type="hidden" name="action" value="download_backups">
           </form>
           <form method="post" enctype="multipart/form-data" class="md-upgrade-form md-upgrade-import-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
@@ -815,6 +851,11 @@ $pageHelpKey = 'admin.dashboard';
           </form>
         <?php else: ?>
           <p class="md-upgrade-meta"><?=t($t,'no_backups_available','No restore points are currently stored on this server.')?></p>
+          <form method="post" class="md-upgrade-form">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="action" value="create_backup">
+            <button type="submit" class="md-button md-elev-1 md-upgrade-action-button"><?=t($t,'create_full_backup','Create Full Backup')?></button>
+          </form>
           <form method="post" enctype="multipart/form-data" class="md-upgrade-form md-upgrade-import-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="import_backup_set">
