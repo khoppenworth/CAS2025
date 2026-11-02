@@ -1,6 +1,6 @@
 # Reusable UAT release workflow.
-# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
-# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# One-time verified publication path for 0.5.96 restore validation.
+# It targets the already-green PR #830 merge commit exactly.
 # Later releases: use Actions -> Publish verified UAT release -> Run workflow.
 name: Publish verified UAT release
 
@@ -63,24 +63,17 @@ jobs:
           NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
 
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            # This automatic path is deliberately only for the recovery release.
-            VERSION="0.5.94"
-            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
-            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
-            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
-            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
-              echo "::error::Recovery release tree differs from original 0.5.92."
-              exit 1
-            fi
+            # One-time automatic path for the restore-validation release.
+            VERSION="0.5.96"
+            TARGET_SHA="5f31094f275895dc67364304017433be0f3fb631"
             cat > "$NOTES_FILE" <<'NOTES'
-          ## Emergency rollback to the last-known-good 0.5.92 source
+          ## Restore validation release
 
-          - Restores every tracked application file to the exact contents of release 0.5.92.
-          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
-          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
-          - No new application features, UI changes, or database migration are included.
-          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
-          - Recovery PR: #827.
+          - Adds only RESTORE_TEST_0.5.96.txt as an inert tracked marker.
+          - No PHP, database schema, configuration, or functional application changes.
+          - Purpose: upgrade from 0.5.95 to 0.5.96, then restore the validated 0.5.95 full backup and confirm the marker is removed.
+          - Main-branch CI passed for the exact release commit, including MySQL 8 and MariaDB 10.11 backup/restore round trips.
+          - Validation PR: #830.
           NOTES
           else
             VERSION="$INPUT_VERSION"
