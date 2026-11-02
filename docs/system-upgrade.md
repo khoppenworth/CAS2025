@@ -44,9 +44,13 @@ If the upgrade fails after the verified backup exists, the utility automatically
 
 ## Manual backup
 
-The System Upgrade page can create and download a manual full backup set. Manual backup sets are also retained under `storage/upgrades/manual` and immediately become available in System Restore.
+The System Upgrade page deliberately separates backup creation from download delivery:
 
-A downloaded format-v2 backup ZIP can later be uploaded through **Import downloaded backup set**. CAS validates the archive and checksums before adding it to the restore catalog.
+1. **Create Full Backup** builds the App + DB backup set on the server and validates it completely.
+2. The validated backup appears in the restore catalog under `storage/upgrades/manual`.
+3. **Download selected backup** streams that already-created ZIP in a separate HTTP request. Retrying a download never creates another backup.
+
+This avoids tying a potentially long-running backup operation to a large file download in the same web request. A downloaded format-v2 backup ZIP can later be uploaded through **Import downloaded backup set**. CAS validates the archive and checksums before adding it to the restore catalog.
 
 ## Restore flow
 
@@ -96,15 +100,17 @@ php scripts/system_upgrade.php --action=downgrade --backup-id=20260909_120000 --
 
 `tests/system_backup_restore_test.php` performs a complete round trip against both MySQL and MariaDB in CI:
 
-1. Creates baseline application files and relational database data.
-2. Creates and validates a full backup set.
-3. Tests import of a downloaded backup set.
-4. Confirms ZIP path traversal is rejected.
-5. Changes/deletes/adds application files.
-6. Changes database rows, adds a column, and adds a new table.
-7. Runs System Restore.
-8. Confirms the application and database match the backup point exactly.
-9. Confirms preserved paths remain untouched.
-10. Confirms the emergency pre-restore backup exists and validates.
+1. Creates baseline application files, relational data, and a database view.
+2. Exercises a stress corpus of apostrophes, backslashes, semicolons, multiline text, Unicode, and SQL-looking strings.
+3. Creates and validates a full backup set.
+4. Creates a second backup and proves prior files under `storage/upgrades` are not recursively included.
+5. Simulates a separate download and verifies the copied ZIP byte-for-byte and by full backup validation.
+6. Tests import of a downloaded backup set.
+7. Confirms ZIP path traversal is rejected.
+8. Changes/deletes/adds application files.
+9. Changes database rows, adds a column, and adds a new table.
+10. Runs System Restore and confirms the application, tables/views, row counts, and complex values match the backup point exactly.
+11. Confirms preserved paths remain untouched.
+12. Confirms the emergency pre-restore backup exists and validates.
 
 This test is the release gate for changes to the backup/restore implementation.
