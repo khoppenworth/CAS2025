@@ -339,9 +339,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
 
+        case 'import_backup_set':
+            try {
+                if (!isset($_FILES['backup_set']) || !is_array($_FILES['backup_set'])) {
+                    throw new RuntimeException('Select a backup set ZIP file to import.');
+                }
+
+                $upload = $_FILES['backup_set'];
+                $uploadError = (int)($upload['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($uploadError !== UPLOAD_ERR_OK) {
+                    throw new RuntimeException('Backup set upload failed with error code ' . $uploadError . '.');
+                }
+
+                $tmpName = (string)($upload['tmp_name'] ?? '');
+                $originalName = (string)($upload['name'] ?? 'backup-set.zip');
+                $imported = upgrade_import_backup_set($tmpName, $originalName);
+
+                $flashMessage = sprintf(
+                    t($t, 'backup_import_success', 'Backup set %s was imported and validated successfully.'),
+                    (string)($imported['id'] ?? '')
+                );
+                $flashType = 'success';
+            } catch (Throwable $importError) {
+                error_log('Admin backup import failed: ' . $importError->getMessage());
+                $flashMessage = t(
+                    $t,
+                    'backup_import_failed',
+                    'Unable to import the backup set. Verify that it is a valid CAS full backup ZIP.'
+                ) . ' ' . $importError->getMessage();
+                $flashType = 'error';
+            }
+            break;
+
         case 'restore_backup':
             $backupId = trim((string)($_POST['backup_id'] ?? ''));
-            $restoreDb = isset($_POST['restore_db']);
+            $restoreDb = true;
             if ($backupId === '') {
                 $flashMessage = t($t, 'restore_backup_invalid', 'Select a backup before attempting a restore.');
                 $flashType = 'error';
@@ -510,12 +542,23 @@ foreach ($upgradeBackups as $index => $backupMeta) {
 
     $status = (string)($backupMeta['status'] ?? '');
     $statusLabel = $status !== '' ? ucfirst(strtolower($status)) : '';
-    $statusClass = $status !== '' && strtolower($status) === 'success' ? 'success' : ($status !== '' ? 'warning' : '');
+    $normalizedStatus = strtolower($status);
+    $statusClass = in_array($normalizedStatus, ['success', 'ready'], true) ? 'success' : ($status !== '' ? 'warning' : '');
     $versionLabel = (string)($backupMeta['version_label'] ?? '');
     $ref = (string)($backupMeta['ref'] ?? '');
     $releaseLabel = $versionLabel !== '' ? $versionLabel : $ref;
+    $backupKind = (string)($backupMeta['kind'] ?? 'backup');
+    $backupKindLabel = match ($backupKind) {
+        'manual' => 'Manual full backup',
+        'upgrade' => 'Pre-upgrade backup',
+        'emergency' => 'Emergency pre-restore backup',
+        'imported' => 'Imported backup',
+        'legacy-upgrade' => 'Legacy upgrade snapshot',
+        default => ucfirst(str_replace('-', ' ', $backupKind)),
+    };
 
     $optionParts = array_filter([
+        $backupKindLabel,
         $displayTime,
         $releaseLabel,
         $statusLabel,
@@ -530,6 +573,9 @@ foreach ($upgradeBackups as $index => $backupMeta) {
         'status' => $status,
         'status_label' => $statusLabel,
         'status_class' => $statusClass,
+        'kind' => $backupKind,
+        'kind_label' => $backupKindLabel,
+        'format_version' => (int)($backupMeta['format_version'] ?? 1),
         'ref' => $ref,
         'version_label' => $versionLabel,
         'release_label' => $releaseLabel,
@@ -675,7 +721,7 @@ $pageHelpKey = 'admin.dashboard';
             <button type="submit" class="md-button md-primary md-elev-2 md-upgrade-action-button" <?=($upgradeRepoDisplay === '' ? 'disabled' : '')?>><?=t($t,'install_upgrade','Install Upgrade')?></button>
           </form>
         </div>
-        <p class="md-upgrade-meta"><?=t($t,'upgrade_hint_script','The upgrade script automatically creates backups before applying changes. Download manual backups whenever you need an extra copy.')?></p>
+        <p class="md-upgrade-meta"><?=t($t,'upgrade_hint_script','Every upgrade now creates and validates a full App + DB backup set before applying changes. Create a manual backup whenever you need an additional restore point.')?></p>
       </article>
       <article class="md-card md-upgrade-card">
         <h3 class="md-upgrade-heading"><?=t($t,'upgrade_log_heading','Recent upgrade activity')?></h3>
@@ -738,11 +784,12 @@ $pageHelpKey = 'admin.dashboard';
               </select>
             </label>
             <p class="md-upgrade-meta"><?=t($t,'select_backup_hint','Choose a snapshot to restore or download.')?></p>
-            <label class="md-upgrade-checkbox">
-              <input type="checkbox" name="restore_db" value="1">
-              <span><?=t($t,'restore_database','Restore database')?></span>
-            </label>
-            <p class="md-upgrade-meta"><?=t($t,'restore_database_hint','Also restore the database from the selected backup.')?></p>
+            <input type="hidden" name="restore_db" value="1">
+            <p class="md-upgrade-meta">
+              <strong>Full restore:</strong>
+              application files and the database are restored together. Before any changes are applied,
+              CAS creates and validates an emergency pre-restore backup so it can automatically roll back if restoration fails.
+            </p>
             <div class="md-upgrade-backup-toolbar">
               <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'restore_backup','Restore backup')?></button>
               <button type="submit" form="<?=htmlspecialchars($downloadBackupFormId, ENT_QUOTES, 'UTF-8')?>" class="md-button md-elev-1 md-upgrade-action-button">
@@ -753,6 +800,18 @@ $pageHelpKey = 'admin.dashboard';
           <form method="post" id="<?=htmlspecialchars($downloadBackupFormId, ENT_QUOTES, 'UTF-8')?>" class="md-upgrade-hidden-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="download_backups">
+          </form>
+          <form method="post" enctype="multipart/form-data" class="md-upgrade-form md-upgrade-import-form">
+            <input type="hidden" name="csrf" value="<?=csrf_token()?>">
+            <input type="hidden" name="action" value="import_backup_set">
+            <label class="md-upgrade-field">
+              <span class="md-upgrade-field-label">Import downloaded backup set</span>
+              <input type="file" name="backup_set" accept=".zip,application/zip" required class="md-upgrade-input">
+            </label>
+            <p class="md-upgrade-meta">
+              Imported ZIP files are checksum-validated before they become available for System Restore.
+            </p>
+            <button type="submit" class="md-button md-outline md-elev-1 md-upgrade-action-button">Import backup set</button>
           </form>
         <?php else: ?>
           <p class="md-upgrade-meta"><?=t($t,'no_backups_available','No upgrade backups are available yet.')?></p>
