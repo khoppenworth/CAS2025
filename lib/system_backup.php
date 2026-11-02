@@ -868,7 +868,14 @@ final class SystemBackupManager
             $objects[] = $entry;
         }
 
-        usort($objects, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
+        usort($objects, static function (array $a, array $b): int {
+            $aType = (string)($a['type'] ?? 'BASE TABLE');
+            $bType = (string)($b['type'] ?? 'BASE TABLE');
+            if ($aType !== $bType) {
+                return $aType === 'BASE TABLE' ? -1 : 1;
+            }
+            return strcmp((string)$a['name'], (string)$b['name']);
+        });
         return $objects;
     }
 
@@ -929,7 +936,7 @@ final class SystemBackupManager
         }
     }
 
-    private function executeSqlFile(PDO $pdo, string $path, bool $validateOnly = false): int
+    private function executeSqlFile(?PDO $pdo, string $path, bool $validateOnly = false): int
     {
         $handle = fopen($path, 'rb');
         if ($handle === false) {
@@ -988,6 +995,9 @@ final class SystemBackupManager
                         }
 
                         if (!$validateOnly) {
+                            if (!$pdo instanceof PDO) {
+                                throw new RuntimeException('Database connection is required to execute SQL.');
+                            }
                             $pdo->exec($statement);
                         }
                         $count++;
@@ -1005,6 +1015,9 @@ final class SystemBackupManager
             $statement = trim($buffer);
             if ($statement !== '') {
                 if (!$validateOnly) {
+                    if (!$pdo instanceof PDO) {
+                        throw new RuntimeException('Database connection is required to execute SQL.');
+                    }
                     $pdo->exec($statement);
                 }
                 $count++;
@@ -1018,12 +1031,7 @@ final class SystemBackupManager
 
     private function validateSqlDumpStructure(string $path): void
     {
-        $dummy = new class extends PDO {
-            public function __construct() {}
-            public function exec(string $statement): int|false { return 0; }
-        };
-
-        $count = $this->executeSqlFile($dummy, $path, true);
+        $count = $this->executeSqlFile(null, $path, true);
         if ($count < 1) {
             throw new RuntimeException('Database SQL snapshot contains no executable statements.');
         }
