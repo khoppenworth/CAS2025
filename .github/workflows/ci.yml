@@ -36,13 +36,17 @@ jobs:
           DEMO_DB_USER: root
           DEMO_DB_PASS: root
         run: php tests/demo_dataset_sql_test.php --mysql
-      - name: Verified backup/restore round-trip (MySQL)
+      - name: Verified backup/restore stress x3 (MySQL)
         env:
           BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
-          BACKUP_DB_NAME: cas_system_backup_test
-        run: php tests/system_backup_restore_test.php --mysql
+        run: |
+          set -e
+          for i in 1 2 3; do
+            echo "MySQL backup/restore stress pass $i/3"
+            BACKUP_DB_NAME="cas_system_backup_test_$i" php tests/system_backup_restore_test.php --mysql
+          done
       - name: MySQL smoke test
         run: mysql -h 127.0.0.1 -uroot -proot -e "SHOW DATABASES;"
 
@@ -72,10 +76,14 @@ jobs:
           DEMO_DB_USER: root
           DEMO_DB_PASS: root
         run: php tests/demo_dataset_sql_test.php --mysql
-      - name: Verified backup/restore round-trip (MariaDB 10.11)
+      - name: Verified backup/restore stress x3 (MariaDB 10.11)
         env:
           BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
-          BACKUP_DB_NAME: cas_system_backup_test
-        run: php tests/system_backup_restore_test.php --mysql
+        run: |
+          set -e
+          for i in 1 2 3; do
+            echo "MariaDB backup/restore stress pass $i/3"
+            BACKUP_DB_NAME="cas_system_backup_test_$i" php tests/system_backup_restore_test.php --mysql
+          done
