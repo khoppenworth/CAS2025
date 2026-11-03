@@ -170,8 +170,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $maintenanceActive = true;
 
         info('Deploying previously validated application package...');
-        $engine->deployRelease($download['extract_root'], $preservePaths);
         $applicationChanged = true;
+        $engine->deployRelease($download['extract_root'], $preservePaths);
         applyConfigMigrations($engine);
 
         info('Atomically activating verified candidate database...');
