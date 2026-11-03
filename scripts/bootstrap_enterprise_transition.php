@@ -533,7 +533,7 @@ function verifyRuntimeLoads(string $root): void
     $code = 'define("APP_BOOTSTRAPPED", true);'
         . 'require ' . var_export($root . '/config.php', true) . ';'
         . 'require ' . var_export($root . '/lib/upgrade.php', true) . ';'
-        . 'if (!function_exists("upgrade_start_background_job")) exit(11);'
+        . 'if (!function_exists("upgrade_start_cli_job")) exit(11);'
         . 'if (!class_exists("SystemBackupManager")) exit(12);'
         . 'echo "enterprise-updater-ok\\n";';
 
