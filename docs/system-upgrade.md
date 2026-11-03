@@ -16,6 +16,35 @@ CAS uses verified full backup sets plus isolated candidate databases for recover
 
 The normal CAS application account remains configured through `DB_USER` / `DB_PASS`. For staging operations, configure `DB_ADMIN_USER` / `DB_ADMIN_PASS`. If the admin variables are omitted, CAS falls back to the normal DB account and fails safely if that account lacks the required privileges.
 
+## One-time transition from 0.5.95-0.5.98
+
+Servers still running the legacy synchronous updater must not use that updater to install the enterprise recovery release. The legacy updater validates its own PHP-generated SQL dump before it can download the newer code, so a real database value can block the transition.
+
+Use the standalone bridge script shipped with the current release:
+
+```bash
+# Check only. This changes no live application files or live database data.
+php scripts/bootstrap_enterprise_transition.php --root=/path/to/CAS --check
+
+# Apply only after CHECK PASSED.
+php scripts/bootstrap_enterprise_transition.php --root=/path/to/CAS --apply
+```
+
+The bridge is deliberately fail-closed. Before any updater file is replaced it:
+
+1. Refuses to run while a maintenance flag, active database pointer, background job, or pending upgrade run exists.
+2. Accepts only known Git blob hashes from 0.5.95-0.5.98 (or the already-installed enterprise target); unknown/local modifications stop the bridge without changing files.
+3. Requires native MySQL/MariaDB dump and restore tools.
+4. Proves staging privileges with a randomly named throwaway database; the live application database is only read to identify the active account and is never modified.
+5. Downloads the updater core from the immutable 0.5.99 merge commit and verifies every target file against its expected Git blob hash.
+6. Lints every target PHP file before installation.
+7. Creates a rollback snapshot under `storage/upgrades/bootstrap`.
+8. Replaces updater files atomically while preserving each live file's owner, group, and mode. The new worker script inherits metadata from the existing system-upgrade script.
+9. Verifies installed hashes, permissions, PHP syntax, and runtime loading.
+10. Rolls all updater files back exactly if any post-install check fails.
+
+The bridge does **not** change `storage/upgrades/installed.json`, does not switch databases, and does not run an upgrade. After it succeeds, the application still reports its prior release (for example 0.5.95), but its System Upgrade page uses the enterprise-safe background/staging implementation. The normal upgrade can then install the latest release.
+
 ## Full backup set
 
 A verified full backup ZIP contains:
