@@ -1,116 +1,159 @@
 # System upgrade, backup, and restore
 
-The CAS upgrade utility uses verified **full backup sets** as the recovery point for upgrades and manual system backups.
+CAS uses verified full backup sets plus isolated candidate databases for recovery and upgrades. Long-running backup, upgrade, and restore operations run outside the Apache request so the web application remains responsive except during the short controlled cutover window.
 
-A format-v2 backup set contains:
+## Required server components
 
-* `manifest.json` – backup metadata, release metadata, preserved paths, object counts, and SHA-256 checksums.
-* `application.zip` – application files excluding environment/runtime paths that must remain local to the server.
-* `database/backup.sql` – a complete database schema and data snapshot.
-* `meta/summary.json` – a small human-readable summary.
+- PHP 8.1+
+- PHP zip extension
+- PDO MySQL driver
+- MySQL or MariaDB
+- Native database client tools:
+  - `mysqldump` + `mysql`, or
+  - `mariadb-dump` + `mariadb`
+- Network access to the GitHub release source
+- Database credentials capable of creating/dropping staging databases and granting the normal CAS database account access to them.
 
-## Prerequisites
+The normal CAS application account remains configured through `DB_USER` / `DB_PASS`. For staging operations, configure `DB_ADMIN_USER` / `DB_ADMIN_PASS`. If the admin variables are omitted, CAS falls back to the normal DB account and fails safely if that account lacks the required privileges.
 
-* PHP 8.1+
-* PHP `zip` extension (`ext-zip`)
-* PDO MySQL driver
-* MySQL or MariaDB
-* Network access to the GitHub repository that hosts releases
+## Full backup set
 
-## Preserved server-local paths
+A verified full backup ZIP contains:
 
-Full application restore is exact for application code, but the following server-local paths are intentionally preserved:
+- `manifest.json`
+- `application.zip`
+- `database/backup.sql`
+- `meta/summary.json`
 
-* `.git`
-* `.env`
-* `config.php`
-* `assets/uploads`
-* `storage`
+Application snapshots exclude server-local paths that must survive deployments and restores:
 
-Additional preserve paths may be supplied to the CLI upgrade command.
+- `.git`
+- `.env`
+- `config.php`
+- `assets/uploads`
+- `storage`
+
+## Native database backup verification
+
+CAS no longer accepts its own PHP SQL parser as proof that a database dump is restorable.
+
+For every new backup:
+
+1. The native MySQL/MariaDB dump utility creates the SQL snapshot.
+2. CAS records the expected database objects and row counts.
+3. CAS creates a temporary verification database.
+4. The native MySQL/MariaDB client restores the dump into that isolated database.
+5. CAS verifies the object list and row counts.
+6. CAS verifies that the critical `users` table exists.
+7. Only after all checks pass is the backup marked ready.
+8. The temporary verification database is removed.
+
+If any step fails, the live database is untouched and the backup is rejected.
+
+## Background jobs
+
+The System Upgrade page does not wait for long-running work inside the browser request.
+
+Backup, upgrade, and restore actions:
+
+1. Create a job record under `storage/upgrades/jobs`.
+2. Launch the CLI worker detached from Apache.
+3. Return the admin page immediately.
+4. Show the current job state and automatically refresh while it is active.
+
+Only one system operation can be active at a time. A job still marked queued/running after six hours is treated as stale and may be superseded by a new operation.
+
+## Manual backup flow
+
+1. Click **Create Full Backup**.
+2. CAS starts a background backup job.
+3. Native dump + staging restore verification run outside the web request.
+4. When complete, the backup appears in the restore list.
+5. Use **Download selected backup** to download the existing validated ZIP. Downloading does not generate another backup.
 
 ## Upgrade flow
 
-Before CAS applies an upgrade it now:
+Before changing the running application, CAS:
 
-1. Creates a full App + DB backup set in `storage/upgrades/runs/<run-id>/backup-set.zip`.
-2. Generates SHA-256 checksums for the application and database components.
-3. Reopens and validates the completed backup set.
-4. Only then downloads and deploys the requested release.
-5. Applies database migrations.
-6. Records the installed release.
+1. Creates and fully verifies a pre-upgrade App + DB backup.
+2. Restores that database dump into an isolated candidate database.
+3. Verifies the normal CAS DB account can connect to the candidate.
+4. Downloads the target application release.
+5. Enters a short maintenance window.
+6. Deploys the release files.
+7. Runs database migrations against the candidate database, not the active database.
+8. Switches the active database pointer atomically to the verified candidate.
+9. Records the installed release.
+10. Leaves maintenance mode.
 
-If the upgrade fails after the verified backup exists, the utility automatically attempts to restore that pre-upgrade backup set.
-
-## Manual backup
-
-The System Upgrade page deliberately separates backup creation from download delivery:
-
-1. **Create Full Backup** builds the App + DB backup set on the server and validates it completely.
-2. The validated backup appears in the restore catalog under `storage/upgrades/manual`.
-3. **Download selected backup** streams that already-created ZIP in a separate HTTP request. Retrying a download never creates another backup.
-
-This avoids tying a potentially long-running backup operation to a large file download in the same web request. A downloaded format-v2 backup ZIP can later be uploaded through **Import downloaded backup set**. CAS validates the archive and checksums before adding it to the restore catalog.
+If deployment or candidate migration fails before cutover, the previous live database remains unchanged. The verified pre-upgrade backup remains available for application rollback.
 
 ## Restore flow
 
-Format-v2 System Restore always restores **application + database together**. It does not offer a database-only or files-only mode because that can create mixed-version states.
+Format-v2 full restore no longer drops tables from the active database.
 
-Before modifying the live system CAS:
+Instead CAS:
 
-1. Validates the selected backup ZIP and required components.
-2. Verifies component SHA-256 checksums.
-3. Rejects unsafe ZIP paths before extraction.
-4. Validates the SQL statement stream.
-5. Creates and validates a fresh **emergency pre-restore backup**.
+1. Validates the backup ZIP and checksums.
+2. Creates and verifies an emergency pre-restore backup.
+3. Restores the selected database dump into a new isolated candidate database.
+4. Verifies objects, row counts, critical tables, and application DB-account access.
+5. Verifies the application snapshot before live cutover.
+6. Enters maintenance mode.
+7. Restores and verifies the application tree.
+8. Atomically switches the preserved active-database pointer to the verified candidate.
+9. Restores installed-release metadata.
+10. Leaves maintenance mode.
 
-The restore then:
+The previous database is retained. Rollback therefore means switching back to the previous database pointer rather than reconstructing the old database from a dump.
 
-1. Removes database tables/views that are not part of the selected snapshot.
-2. Recreates the database from the selected dump.
-3. Verifies the exact database object list and row counts.
-4. Removes application files that are not part of the selected snapshot, except preserved paths.
-5. Restores the application snapshot.
-6. Verifies the application tree SHA-256 hash.
-7. Restores installed-release metadata.
+The active database pointer is stored under:
 
-If any restore step fails, CAS automatically attempts to restore the emergency pre-restore backup. Emergency backups are retained under `storage/upgrades/emergency` so administrators have an additional recovery point.
+`storage/upgrades/active_database.json`
 
-## CLI usage
+This file is preserved across application restores and upgrades.
+
+## Retention
+
+CAS performs conservative cleanup after successful operations:
+
+- retain the newest 5 upgrade run directories;
+- retain the newest 3 emergency backup ZIPs;
+- retain the newest 3 inactive candidate databases;
+- manual downloaded backups are not automatically deleted.
+
+Cleanup failures are warnings and do not turn an otherwise successful backup/upgrade into a failure.
+
+## CLI
 
 ```bash
-# Deploy a specific tag or branch
-php scripts/system_upgrade.php --action=upgrade --repo=owner/repository --ref=v0.6.0
+# Create and verify a full manual backup
+php scripts/system_upgrade.php --action=backup
 
-# Deploy the latest GitHub release
+# Upgrade to latest GitHub release
 php scripts/system_upgrade.php --action=upgrade --repo=owner/repository --latest-release
 
-# List all format-v2 and legacy backups
+# Restore a verified full backup
+php scripts/system_upgrade.php --action=downgrade --backup-id=manual_20261103_120000
+
+# List backups
 php scripts/system_upgrade.php --action=list-backups
-
-# Restore a format-v2 backup set (always App + DB)
-php scripts/system_upgrade.php --action=downgrade --backup-id=manual_20261102_090000
-
-# Legacy snapshots created before format v2 can still be restored.
-# Use --restore-db to include the legacy database dump.
-php scripts/system_upgrade.php --action=downgrade --backup-id=20260909_120000 --restore-db
 ```
 
 ## Automated regression testing
 
-`tests/system_backup_restore_test.php` performs a complete round trip against both MySQL and MariaDB in CI:
+The destructive backup/restore test runs repeatedly against both MySQL 8 and MariaDB 10.11. It verifies:
 
-1. Creates baseline application files, relational data, and a database view.
-2. Exercises a stress corpus of apostrophes, backslashes, semicolons, multiline text, Unicode, and SQL-looking strings.
-3. Creates and validates a full backup set.
-4. Creates a second backup and proves prior files under `storage/upgrades` are not recursively included.
-5. Simulates a separate download and verifies the copied ZIP byte-for-byte and by full backup validation.
-6. Tests import of a downloaded backup set.
-7. Confirms ZIP path traversal is rejected.
-8. Changes/deletes/adds application files.
-9. Changes database rows, adds a column, and adds a new table.
-10. Runs System Restore and confirms the application, tables/views, row counts, and complex values match the backup point exactly.
-11. Confirms preserved paths remain untouched.
-12. Confirms the emergency pre-restore backup exists and validates.
+- native dump creation;
+- actual staging restore of every generated backup;
+- application DB-account access to candidate databases;
+- complex strings, quotes, backslashes, Unicode, semicolons and multiline content;
+- relational tables and database views;
+- separate backup download/copy validation;
+- repeated backup exclusion of `storage/upgrades`;
+- exact application rollback;
+- preserved `config.php`, uploads and runtime storage;
+- candidate DB cutover without overwriting the original database;
+- emergency backup creation and validation.
 
-This test is the release gate for changes to the backup/restore implementation.
+The release process must not publish a new UAT release unless the PR and the exact merged main commit are both green.

@@ -1278,6 +1278,121 @@ function upgrade_list_backups(): array
     return $result;
 }
 
+function upgrade_job_directory(): string
+{
+    $directory = base_path('storage/upgrades/jobs');
+    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+        throw new RuntimeException('Unable to create system job directory.');
+    }
+    return $directory;
+}
+
+function upgrade_job_path(string $jobId): string
+{
+    if (!preg_match('/^[A-Za-z0-9._-]+$/', $jobId)) {
+        throw new RuntimeException('Invalid system job identifier.');
+    }
+    return upgrade_job_directory() . DIRECTORY_SEPARATOR . $jobId . '.json';
+}
+
+function upgrade_write_job(array $job): void
+{
+    $jobId = (string)($job['id'] ?? '');
+    $path = upgrade_job_path($jobId);
+    $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+    $json = json_encode($job, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if (!is_string($json) || file_put_contents($tmp, $json . "\n") === false) {
+        throw new RuntimeException('Unable to write system job status.');
+    }
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('Unable to atomically update system job status.');
+    }
+}
+
+function upgrade_read_job(string $jobId): ?array
+{
+    $path = upgrade_job_path($jobId);
+    if (!is_file($path)) return null;
+    $raw = file_get_contents($path);
+    $data = is_string($raw) ? json_decode($raw, true) : null;
+    return is_array($data) ? $data : null;
+}
+
+function upgrade_latest_job(): ?array
+{
+    $files = glob(upgrade_job_directory() . DIRECTORY_SEPARATOR . '*.json') ?: [];
+    usort($files, static fn(string $a, string $b): int => filemtime($b) <=> filemtime($a));
+    foreach ($files as $file) {
+        $raw = file_get_contents($file);
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+        if (is_array($data)) return $data;
+    }
+    return null;
+}
+
+function upgrade_start_cli_job(array $arguments, string $type): array
+{
+    $running = upgrade_latest_job();
+    if (is_array($running) && in_array((string)($running['status'] ?? ''), ['queued', 'running'], true)) {
+        $started = strtotime((string)($running['started_at'] ?? $running['created_at'] ?? ''));
+        $stale = $started !== false && (time() - $started) > 21600;
+        if (!$stale) {
+            throw new RuntimeException('A system backup/upgrade/restore job is already running.');
+        }
+
+        $running['status'] = 'failed';
+        $running['completed_at'] = date(DATE_ATOM);
+        $running['message'] = 'Marked failed because the job exceeded the 6-hour stale-job safety window.';
+        upgrade_write_job($running);
+    }
+
+    $jobId = date('Ymd_His') . '_' . bin2hex(random_bytes(4));
+    $job = [
+        'id' => $jobId,
+        'type' => $type,
+        'status' => 'queued',
+        'created_at' => date(DATE_ATOM),
+        'started_at' => null,
+        'completed_at' => null,
+        'exit_code' => null,
+        'message' => 'Queued',
+        'stdout' => '',
+        'stderr' => '',
+        'arguments' => array_values(array_map('strval', $arguments)),
+    ];
+    upgrade_write_job($job);
+
+    $php = PHP_BINARY ?: 'php';
+    $runner = base_path('scripts/system_job.php');
+    if (!is_file($runner)) {
+        throw new RuntimeException('System job runner is missing.');
+    }
+
+    $command = array_merge([$php, $runner, '--job-id=' . $jobId, '--type=' . $type, '--'], $arguments);
+    $escaped = implode(' ', array_map('escapeshellarg', $command));
+    $shell = 'nohup ' . $escaped . ' >/dev/null 2>&1 < /dev/null &';
+
+    $process = proc_open(['/bin/sh', '-c', $shell], [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes, base_path(''));
+
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start detached system job.');
+    }
+    foreach ($pipes as $pipe) {
+        if (is_resource($pipe)) fclose($pipe);
+    }
+    $exit = proc_close($process);
+    if ($exit !== 0) {
+        throw new RuntimeException('Unable to detach system job process.');
+    }
+
+    return $job;
+}
+
 function upgrade_run_cli(array $arguments): array
 {
     $php = PHP_BINARY ?: 'php';
