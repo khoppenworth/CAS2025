@@ -190,6 +190,20 @@ if ($isBootstrapRequested) {
 
     $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
     $dbName = getenv('DB_NAME') ?: 'epss_v300';
+
+    // Recovery hardening: an atomic, server-local database pointer can temporarily
+    // override DB_NAME after a verified staging restore/cutover. This file lives
+    // under storage/upgrades, which is preserved across application releases.
+    $activeDbPointer = __DIR__ . '/storage/upgrades/active_database.json';
+    if (is_readable($activeDbPointer)) {
+        $activeDbRaw = file_get_contents($activeDbPointer);
+        $activeDbData = is_string($activeDbRaw) ? json_decode($activeDbRaw, true) : null;
+        $activeDbName = is_array($activeDbData) ? trim((string)($activeDbData['db_name'] ?? '')) : '';
+        if ($activeDbName !== '' && preg_match('/^[A-Za-z0-9_]+$/', $activeDbName)) {
+            $dbName = $activeDbName;
+        }
+    }
+
     $dbUser = getenv('DB_USER') ?: 'epss_user';
     $dbPass = getenv('DB_PASS') ?: 'StrongPassword123!';
     $dbPortRaw = getenv('DB_PORT');
