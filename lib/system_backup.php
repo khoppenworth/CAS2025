@@ -539,6 +539,7 @@ final class SystemBackupManager
 
         try {
             $this->restoreNativeDump($dumpPath, $dbName);
+            $this->grantApplicationUserAccess($admin, $dbName);
             $candidatePdo = $this->connectToDatabase($dbName);
             $this->verifyDatabaseState($candidatePdo, $expectedObjects);
 
@@ -662,7 +663,7 @@ final class SystemBackupManager
             throw new RuntimeException('Native MySQL/MariaDB client is required (mysql or mariadb).');
         }
 
-        $connection = $this->databaseConnectionSettings();
+        $connection = $this->databaseConnectionSettings(true);
         $args = [
             $binary,
             '--host=' . $connection['host'],
@@ -672,6 +673,29 @@ final class SystemBackupManager
             $dbName,
         ];
         $this->runNativeCommand($args, ['MYSQL_PWD' => $connection['pass']], $dumpPath);
+    }
+
+    private function grantApplicationUserAccess(PDO $admin, string $dbName): void
+    {
+        $app = $this->databaseConnectionSettings(false);
+        $probe = new PDO(
+            sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $app['host'], $app['port']),
+            $app['user'],
+            $app['pass'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        $identity = (string)$probe->query('SELECT CURRENT_USER()')->fetchColumn();
+        if (!preg_match('/^([^@]+)@(.+)$/', $identity, $m)) {
+            throw new RuntimeException('Unable to determine application database account identity for candidate access.');
+        }
+
+        $quoteLiteral = static function (string $value): string {
+            return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
+        };
+        $admin->exec(
+            'GRANT ALL PRIVILEGES ON ' . $this->quoteIdentifier($dbName) . '.* TO '
+            . $quoteLiteral($m[1]) . '@' . $quoteLiteral($m[2])
+        );
     }
 
     private function databaseConnectionSettings(bool $admin = false): array
