@@ -18,6 +18,7 @@ final class EnterpriseRecovery
     private string $storage;
     private string $tmp;
     private string $activeDatabaseFile;
+    private string $databaseGenerationsFile;
     private string $maintenanceFile;
 
     public function __construct(?string $root = null)
@@ -27,6 +28,7 @@ final class EnterpriseRecovery
         $this->storage = $this->root . '/storage/upgrades';
         $this->tmp = $this->storage . '/tmp';
         $this->activeDatabaseFile = $this->storage . '/active_database.json';
+        $this->databaseGenerationsFile = $this->storage . '/database_generations.json';
         $this->maintenanceFile = $this->storage . '/maintenance.json';
 
         foreach ([$this->storage, $this->tmp] as $directory) {
@@ -245,6 +247,67 @@ final class EnterpriseRecovery
         ], $metadata);
 
         $this->atomicJsonWrite($this->activeDatabaseFile, $payload);
+        $this->recordDatabaseGeneration($database, $payload);
+    }
+
+    public function cleanupDatabaseGenerations(PDO $livePdo, int $keep = 3): array
+    {
+        $keep = max(2, $keep);
+        $active = $this->readActiveDatabasePointer();
+        $activeName = (string)($active['database'] ?? $this->activeDatabaseName($livePdo));
+
+        $registry = $this->readDatabaseGenerations();
+        usort($registry, static function (array $a, array $b): int {
+            return strcmp((string)($b['activated_at'] ?? ''), (string)($a['activated_at'] ?? ''));
+        });
+
+        $keepNames = [$activeName => true];
+        foreach ($registry as $entry) {
+            $name = (string)($entry['database'] ?? '');
+            if ($name === '' || isset($keepNames[$name])) {
+                continue;
+            }
+            if (count($keepNames) >= $keep) {
+                break;
+            }
+            $keepNames[$name] = true;
+        }
+
+        $maintenance = $this->maintenanceDatabaseConfig($livePdo);
+        $admin = $this->serverConnection($maintenance);
+        $existing = $admin->query("SHOW DATABASES LIKE 'cas_stage_%'")->fetchAll(PDO::FETCH_COLUMN);
+        $existingSet = [];
+        foreach ($existing as $name) {
+            $existingSet[(string)$name] = true;
+        }
+
+        $removed = [];
+        $remainingRegistry = [];
+        foreach ($registry as $entry) {
+            $name = (string)($entry['database'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+
+            // Never drop the baseline/original DB, the active DB, an unregistered
+            // database, or anything outside our generated staging namespace.
+            if (!isset($existingSet[$name])
+                || isset($keepNames[$name])
+                || preg_match('/^cas_stage_[A-Za-z0-9_]+$/', $name) !== 1) {
+                $remainingRegistry[] = $entry;
+                continue;
+            }
+
+            $this->dropDatabase($admin, $name);
+            $removed[] = $name;
+        }
+
+        $this->atomicJsonWrite($this->databaseGenerationsFile, [
+            'updated_at' => date(DATE_ATOM),
+            'generations' => array_values($remainingRegistry),
+        ]);
+
+        return $removed;
     }
 
     public function clearActiveDatabasePointer(): void
@@ -505,6 +568,54 @@ final class EnterpriseRecovery
         }
         $port = (int)$value;
         return $port > 0 && $port <= 65535 ? $port : null;
+    }
+
+    private function readActiveDatabasePointer(): array
+    {
+        if (!is_file($this->activeDatabaseFile)) {
+            return [];
+        }
+        $decoded = json_decode((string)file_get_contents($this->activeDatabaseFile), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function readDatabaseGenerations(): array
+    {
+        if (!is_file($this->databaseGenerationsFile)) {
+            return [];
+        }
+        $decoded = json_decode((string)file_get_contents($this->databaseGenerationsFile), true);
+        if (!is_array($decoded) || !is_array($decoded['generations'] ?? null)) {
+            return [];
+        }
+        return array_values(array_filter($decoded['generations'], 'is_array'));
+    }
+
+    private function recordDatabaseGeneration(string $database, array $metadata): void
+    {
+        // Only generated candidates participate in automatic DB retention.
+        // Baseline DB names are deliberately never registered for deletion.
+        if (preg_match('/^cas_stage_[A-Za-z0-9_]+$/', $database) !== 1) {
+            return;
+        }
+
+        $registry = $this->readDatabaseGenerations();
+        $registry = array_values(array_filter(
+            $registry,
+            static fn(array $entry): bool => (string)($entry['database'] ?? '') !== $database
+        ));
+        array_unshift($registry, [
+            'database' => $database,
+            'activated_at' => (string)($metadata['activated_at'] ?? date(DATE_ATOM)),
+            'operation' => (string)($metadata['operation'] ?? ''),
+            'previous_database' => (string)($metadata['previous_database'] ?? ''),
+            'release' => (string)($metadata['release'] ?? ''),
+        ]);
+
+        $this->atomicJsonWrite($this->databaseGenerationsFile, [
+            'updated_at' => date(DATE_ATOM),
+            'generations' => $registry,
+        ]);
     }
 
     private function atomicJsonWrite(string $path, array $payload): void
