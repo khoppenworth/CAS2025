@@ -32,6 +32,8 @@ jobs:
         run: php tests/bootstrap_enterprise_recovery_test.php
       - name: Detached operation/concurrency
         run: php tests/upgrade_job_test.php
+      - name: Exact metadata-preserving release deployment
+        run: php tests/deploy_release_test.php
       - name: Demo dataset SQL contract
         run: php tests/demo_dataset_sql_test.php
       - name: MySQL demo number generator regression
