@@ -167,6 +167,15 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             info('Applied ' . $appliedMigrations . ' candidate database migration statement' . ($appliedMigrations === 1 ? '' : 's') . '.');
         }
 
+        $criticalUsers = $candidate['pdo']->query(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'"
+        );
+        if (!$criticalUsers || (int)$criticalUsers->fetchColumn() !== 1) {
+            throw new RuntimeException('Candidate database failed post-migration validation: users table is missing.');
+        }
+        $candidate['pdo']->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        info('Candidate database passed post-migration critical-table validation.');
+
         info('Switching CAS to the verified candidate database...');
         system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
 
