@@ -96,7 +96,9 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
     $runtime = new EnterpriseRecovery(base_path(''));
     $sourceDatabase = $runtime->activeDatabaseName($pdo);
+    $originalPointer = $runtime->activeDatabasePointer();
     $backupSet = null;
+    $preflightCandidate = null;
     $candidate = null;
     $tempDir = null;
     $maintenanceActive = false;
@@ -138,19 +140,63 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         ]);
         info('Release staging passed PHP lint and required-file validation.');
 
-        info('Restoring current database backup into isolated upgrade candidate...');
-        $candidate = system_backup_manager()->stageDatabaseFromBackupSet(
+        info('Running candidate/migration preflight while the live system remains available...');
+        $preflightCandidate = system_backup_manager()->stageDatabaseFromBackupSet(
             $pdo,
             (string)$backupSet['absolute_path']
         );
+        /** @var PDO $preflightPdo */
+        $preflightPdo = $preflightCandidate['pdo'];
+
+        $preflightMigrations = applyDatabaseMigrationsFromRoot(
+            (string)$download['extract_root'],
+            $pdo,
+            (string)$preflightCandidate['database']
+        );
+        verifyUpgradeCandidate($preflightPdo);
+        $engine->updateRun($run, [
+            'preflight_candidate_database' => (string)$preflightCandidate['database'],
+            'preflight_candidate_migrations' => $preflightMigrations,
+            'preflight_verified_at' => date(DATE_ATOM),
+        ]);
+        info('Preflight candidate migrations and critical-table checks passed.');
+
+        $runtime->discardStagedDatabase($pdo, (string)$preflightCandidate['database']);
+        $preflightCandidate = null;
+
+        info('Entering maintenance mode for final zero-write-loss cutover snapshot...');
+        $runtime->enterMaintenance('Verified application/database upgrade cutover', [
+            'run_id' => $run['id'],
+            'target_ref' => $targetRef,
+        ]);
+        $maintenanceActive = true;
+
+        // New requests are blocked by the maintenance gate. A short drain allows
+        // already-running web requests to finish; the native dump then acquires a
+        // global read lock, so the cutover snapshot cannot miss a committed write.
+        usleep(2000000);
+
+        $cutoverDumpPath = rtrim((string)$run['dir'], DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR . 'cutover-database.sql';
+        info('Creating final native database snapshot under read lock...');
+        $cutoverDatabase = $runtime->dumpDatabaseForCutover($pdo, $cutoverDumpPath);
+        $engine->updateRun($run, [
+            'cutover_database_dump' => $engine->relativeToRoot($cutoverDumpPath),
+            'cutover_database_sha256' => (string)($cutoverDatabase['sha256'] ?? ''),
+            'cutover_read_lock' => (bool)($cutoverDatabase['cutover_read_lock'] ?? false),
+        ]);
+
+        info('Restoring final cutover snapshot into a fresh isolated candidate...');
+        $candidate = $runtime->stageDatabase(
+            $pdo,
+            $cutoverDumpPath,
+            is_array($cutoverDatabase['objects'] ?? null) ? $cutoverDatabase['objects'] : [],
+            true
+        );
         /** @var PDO $candidatePdo */
         $candidatePdo = $candidate['pdo'];
-        $engine->updateRun($run, [
-            'candidate_database' => (string)$candidate['database'],
-        ]);
-        info('Candidate database restored and verified: ' . (string)$candidate['database']);
 
-        info('Applying database migrations to candidate only...');
+        info('Applying migrations to final candidate only...');
         $appliedMigrations = applyDatabaseMigrationsFromRoot(
             (string)$download['extract_root'],
             $pdo,
@@ -158,17 +204,11 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         );
         verifyUpgradeCandidate($candidatePdo);
         $engine->updateRun($run, [
+            'candidate_database' => (string)$candidate['database'],
             'candidate_migrations' => $appliedMigrations,
             'candidate_verified_at' => date(DATE_ATOM),
         ]);
-        info('Candidate database migrations and critical-table checks passed.');
-
-        info('Entering maintenance mode for controlled application/database cutover...');
-        $runtime->enterMaintenance('Verified application/database upgrade cutover', [
-            'run_id' => $run['id'],
-            'target_ref' => $targetRef,
-        ]);
-        $maintenanceActive = true;
+        info('Final candidate is current through the maintenance boundary and fully verified.');
 
         info('Deploying previously validated application package...');
         $applicationChanged = true;
@@ -207,12 +247,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         // untouched DB and restores only application files from the proven backup.
         if ($maintenanceActive || $applicationChanged) {
             try {
-                info('Upgrade failed during cutover. Reverting to untouched previous database...');
-                $runtime->switchActiveDatabase($sourceDatabase, [
-                    'operation' => 'upgrade_rollback',
-                    'run_id' => $run['id'],
-                    'failed_target' => $targetRef,
-                ]);
+                info('Upgrade failed during cutover. Restoring the exact previous database pointer...');
+                $runtime->restoreActiveDatabasePointer($originalPointer);
 
                 if ($applicationChanged && is_array($backupSet) && !empty($backupSet['absolute_path'])) {
                     info('Restoring previous application snapshot...');
@@ -234,6 +270,16 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
                     'Automatic rollback could not be proven. Maintenance mode remains active: '
                     . $rollbackFailure->getMessage() . PHP_EOL
                 );
+            }
+        }
+
+        if ($preflightCandidate !== null && !$maintenanceActive) {
+            try {
+                if ((string)($preflightCandidate['database'] ?? '') !== '') {
+                    $runtime->discardStagedDatabase($pdo, (string)$preflightCandidate['database']);
+                }
+            } catch (Throwable $cleanupError) {
+                error_log('Preflight candidate cleanup warning: ' . $cleanupError->getMessage());
             }
         }
 
