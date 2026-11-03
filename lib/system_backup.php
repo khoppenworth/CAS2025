@@ -468,8 +468,8 @@ final class SystemBackupManager
             );
             $maintenanceActive = true;
 
-            $this->restoreApplicationExact((string)$prepared['application_path'], $preservePaths);
             $applicationChanged = true;
+            $this->restoreApplicationExact((string)$prepared['application_path'], $preservePaths);
 
             $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
             if ($expectedTreeHash !== '') {
