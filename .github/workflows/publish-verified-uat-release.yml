@@ -1,6 +1,6 @@
 # Reusable UAT release workflow.
-# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
-# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# One-time verified publication path for 0.5.101 documented transition release.
+# It targets the already-green PR #836 merge commit exactly.
 # Later releases: use Actions -> Publish verified UAT release -> Run workflow.
 name: Publish verified UAT release
 
@@ -63,24 +63,158 @@ jobs:
           NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
 
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            # This automatic path is deliberately only for the recovery release.
-            VERSION="0.5.94"
-            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
-            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
-            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
-            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
-              echo "::error::Recovery release tree differs from original 0.5.92."
-              exit 1
-            fi
+            VERSION="0.5.101"
+            TARGET_SHA="cccfb8568e49fd41af0446bc520ea4ad080e53e8"
             cat > "$NOTES_FILE" <<'NOTES'
-          ## Emergency rollback to the last-known-good 0.5.92 source
+          ## 0.5.101 — Enterprise transition release
 
-          - Restores every tracked application file to the exact contents of release 0.5.92.
-          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
-          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
-          - No new application features, UI changes, or database migration are included.
-          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
-          - Recovery PR: #827.
+          This release is for servers still running **0.5.95 through 0.5.98**. It contains the enterprise updater introduced in 0.5.99/0.5.100 plus a complete one-time transition runbook.
+
+          **Do not use the legacy CAS Upgrade button until the bridge below is completed.**
+          Do not manually replace individual PHP files.
+
+          ### 1. Go to the CAS application root
+
+          Replace the example path with the actual CAS root:
+
+          ```bash
+          cd /path/to/CAS
+          ```
+
+          Confirm the directory:
+
+          ```bash
+          test -f admin/upgrade.php \
+            && test -f lib/system_backup.php \
+            && test -f scripts/system_upgrade.php \
+            && echo "CAS ROOT CONFIRMED" \
+            || echo "STOP - WRONG DIRECTORY"
+          ```
+
+          Continue only if the output is:
+
+          ```text
+          CAS ROOT CONFIRMED
+          ```
+
+          ### 2. Download the complete official 0.5.101 release archive
+
+          ```bash
+          VERSION="0.5.101"
+          TMP="$(mktemp -d)"
+
+          curl -fL \
+            "https://github.com/khoppenworth/CAS2025/archive/refs/tags/${VERSION}.tar.gz" \
+            -o "$TMP/cas-${VERSION}.tar.gz"
+
+          tar -xzf "$TMP/cas-${VERSION}.tar.gz" -C "$TMP"
+
+          SRC="$(find "$TMP" -mindepth 1 -maxdepth 1 -type d -name 'CAS2025-*' | head -1)"
+
+          test -n "$SRC" \
+            && test -f "$SRC/scripts/bootstrap_enterprise_transition.php" \
+            && echo "RELEASE PACKAGE READY" \
+            || echo "STOP - RELEASE PACKAGE INVALID"
+          ```
+
+          Continue only if the output is:
+
+          ```text
+          RELEASE PACKAGE READY
+          ```
+
+          ### 3. Run the non-destructive preflight
+
+          ```bash
+          php "$SRC/scripts/bootstrap_enterprise_transition.php" \
+            --root="$PWD" \
+            --source-root="$SRC" \
+            --check
+          ```
+
+          The check verifies the existing updater files, native MySQL/MariaDB tools, staging database privileges using only a throwaway database, target Git hashes, PHP syntax, and the absence of conflicting maintenance/jobs.
+
+          The required final message is:
+
+          ```text
+          CHECK PASSED. No live application files were changed.
+          ```
+
+          If the check does not finish with that exact message, **stop**. Do not run `--apply`.
+
+          ### 4. Apply the one-time bridge
+
+          Only after the check passes:
+
+          ```bash
+          php "$SRC/scripts/bootstrap_enterprise_transition.php" \
+            --root="$PWD" \
+            --source-root="$SRC" \
+            --apply
+          ```
+
+          The bridge creates a rollback snapshot, atomically installs only the updater/runtime files, preserves owner/group/mode, verifies installed hashes and PHP syntax, leaves the active database unchanged, leaves installed-release metadata unchanged, and restores all original updater files automatically if a post-install verification fails.
+
+          The required final message is:
+
+          ```text
+          BRIDGE INSTALLATION PASSED.
+          ```
+
+          If it reports an error, stop. Do not retry or manually replace files.
+
+          ### 5. Verify CAS before the normal upgrade
+
+          Open CAS and confirm:
+
+          - login works;
+          - dashboard loads normally;
+          - images/assets load normally;
+          - **Admin > System Upgrade** opens;
+          - CAS still reports the old installed version, for example **0.5.95**.
+
+          That is expected. The bridge upgrades only the updater/recovery runtime.
+
+          ### 6. Upgrade normally through CAS
+
+          In the web interface:
+
+          1. Open **Admin > System Upgrade**.
+          2. Click **Check for Updates**.
+          3. Confirm **0.5.101** is offered.
+          4. Start the upgrade.
+          5. Do not launch another backup/upgrade/restore while the system job is active.
+
+          From this point, long-running work executes as a background job. The live database is not dropped in place. CAS creates a native verified backup, restores it to an isolated candidate database, validates the candidate, stages/migrates the new release, enters a short maintenance window for cutover, and retains the previous database for rollback.
+
+          ### 7. Post-upgrade verification
+
+          Confirm:
+
+          ```text
+          [ ] CAS reports 0.5.101
+          [ ] login works
+          [ ] dashboard loads
+          [ ] images/assets load
+          [ ] users are present
+          [ ] assessments load
+          [ ] analytics loads
+          [ ] Admin > System Upgrade loads
+          [ ] no maintenance message remains
+          ```
+
+          Then create a **new Full Backup** in System Upgrade. It should run as a background job. After completion, download the already-created validated backup separately.
+
+          ### If anything fails
+
+          Do not immediately retry a failed system operation. Read the job/bridge error first. The bridge is fail-closed and restores the original updater files on failed post-install verification. Failures before enterprise cutover leave the active database untouched.
+
+          Keep your independent application-folder copy and database dump until this transition, upgrade, backup, and restore path has been successfully exercised on the test server.
+
+          The same instructions are included in the release archive as **ENTERPRISE_TRANSITION.md**.
+
+          Transition hardening PR: #835  
+          Runbook PR: #836
           NOTES
           else
             VERSION="$INPUT_VERSION"
