@@ -385,6 +385,21 @@ final class EnterpriseRecovery
         return $this->readActiveDatabasePointer();
     }
 
+    public function restoreActiveDatabasePointer(array $pointer): void
+    {
+        if ($pointer === []) {
+            $this->clearActiveDatabasePointer();
+            return;
+        }
+
+        $database = trim((string)($pointer['database'] ?? ''));
+        if (preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
+            throw new RuntimeException('Refusing to restore an unsafe active database pointer.');
+        }
+
+        $this->atomicJsonWrite($this->activeDatabaseFile, $pointer);
+    }
+
     public function clearActiveDatabasePointer(): void
     {
         if (is_file($this->activeDatabaseFile) && !@unlink($this->activeDatabaseFile)) {
