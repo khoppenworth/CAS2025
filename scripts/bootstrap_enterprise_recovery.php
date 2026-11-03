@@ -247,6 +247,7 @@ $sourceDir = null;
 $records = [];
 $maintenanceFile = $storageRoot . '/maintenance.json';
 $maintenanceCreatedByBootstrap = false;
+$preserveRecoverySubsystem = false;
 
 try {
     if ($sourceDirOption !== '') {
@@ -458,47 +459,37 @@ try {
     ];
 
     fwrite(STDOUT, "Starting staged enterprise upgrade to " . $targetRef . "...\n");
+    $stdoutPath = $tempRoot . '/upgrade.stdout.log';
+    $stderrPath = $tempRoot . '/upgrade.stderr.log';
     $descriptors = [
         0 => ['file', '/dev/null', 'rb'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
+        1 => ['file', $stdoutPath, 'wb'],
+        2 => ['file', $stderrPath, 'wb'],
     ];
     $process = proc_open($upgradeCommand, $descriptors, $pipes, $root);
     if (!is_resource($process)) {
         throw new RuntimeException('Unable to start the staged enterprise updater.');
     }
 
-    // Stream output so an operator sees progress, but this is a CLI process and
-    // therefore cannot tie up Apache/PHP-FPM or a reverse-proxy request.
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
-    while (true) {
-        $status = proc_get_status($process);
-        foreach ([1 => STDOUT, 2 => STDERR] as $index => $destination) {
-            $chunk = stream_get_contents($pipes[$index]);
-            if ($chunk !== false && $chunk !== '') {
-                fwrite($destination, $chunk);
-            }
-        }
-        if (!$status['running']) {
-            break;
-        }
-        usleep(200000);
-    }
-    foreach ([1 => STDOUT, 2 => STDERR] as $index => $destination) {
-        $chunk = stream_get_contents($pipes[$index]);
-        if ($chunk !== false && $chunk !== '') {
-            fwrite($destination, $chunk);
-        }
-        fclose($pipes[$index]);
-    }
+    // The bootstrap itself runs from the CLI, so waiting here cannot consume a
+    // web worker or cause reverse-proxy timeouts. File-backed logs also avoid
+    // stdout/stderr pipe deadlocks during a long native backup/restore.
     $exitCode = proc_close($process);
+    $upgradeStdout = is_file($stdoutPath) ? (string)file_get_contents($stdoutPath) : '';
+    $upgradeStderr = is_file($stderrPath) ? (string)file_get_contents($stderrPath) : '';
+    if ($upgradeStdout !== '') {
+        fwrite(STDOUT, $upgradeStdout);
+    }
+    if ($upgradeStderr !== '') {
+        fwrite(STDERR, $upgradeStderr);
+    }
 
     if ($exitCode !== 0) {
         if (is_file($maintenanceFile)) {
+            $preserveRecoverySubsystem = true;
             throw new RuntimeException(
                 'The staged updater failed and deliberately left maintenance mode active because rollback could not be proven. '
-                . 'The bootstrap will not hide that state by restoring old recovery files.'
+                . 'The bootstrap will preserve the recovery subsystem and maintenance gate for diagnosis.'
             );
         }
 
@@ -515,7 +506,7 @@ try {
         $maintenanceCreatedByBootstrap = false;
     }
 
-    if ($records !== []) {
+    if ($records !== [] && !$preserveRecoverySubsystem) {
         try {
             $restoreBootstrapFiles($records);
         } catch (Throwable $rollbackError) {
