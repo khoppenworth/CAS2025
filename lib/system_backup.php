@@ -689,12 +689,14 @@ final class SystemBackupManager
             throw new RuntimeException('Unable to determine application database account identity for candidate access.');
         }
 
-        $quoteLiteral = static function (string $value): string {
-            return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
-        };
+        $quotedUser = $admin->quote($m[1]);
+        $quotedHost = $admin->quote($m[2]);
+        if (!is_string($quotedUser) || !is_string($quotedHost)) {
+            throw new RuntimeException('Unable to quote application database account identity safely.');
+        }
         $admin->exec(
             'GRANT ALL PRIVILEGES ON ' . $this->quoteIdentifier($dbName) . '.* TO '
-            . $quoteLiteral($m[1]) . '@' . $quoteLiteral($m[2])
+            . $quotedUser . '@' . $quotedHost
         );
     }
 
