@@ -1335,7 +1335,16 @@ function upgrade_start_cli_job(array $arguments, string $type): array
 {
     $running = upgrade_latest_job();
     if (is_array($running) && in_array((string)($running['status'] ?? ''), ['queued', 'running'], true)) {
-        throw new RuntimeException('A system backup/upgrade/restore job is already running.');
+        $started = strtotime((string)($running['started_at'] ?? $running['created_at'] ?? ''));
+        $stale = $started !== false && (time() - $started) > 21600;
+        if (!$stale) {
+            throw new RuntimeException('A system backup/upgrade/restore job is already running.');
+        }
+
+        $running['status'] = 'failed';
+        $running['completed_at'] = date(DATE_ATOM);
+        $running['message'] = 'Marked failed because the job exceeded the 6-hour stale-job safety window.';
+        upgrade_write_job($running);
     }
 
     $jobId = date('Ymd_His') . '_' . bin2hex(random_bytes(4));
