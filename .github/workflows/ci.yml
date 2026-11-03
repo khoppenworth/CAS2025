@@ -26,6 +26,14 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+      - name: Ensure native MySQL client tools
+        run: |
+          if ! command -v mysqldump >/dev/null 2>&1 || ! command -v mysql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y default-mysql-client
+          fi
+          mysqldump --version
+          mysql --version
       - name: PHP lint
         run: make lint
       - name: Demo dataset SQL contract
@@ -70,6 +78,14 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+      - name: Ensure native MariaDB client tools
+        run: |
+          if ! command -v mariadb-dump >/dev/null 2>&1 || ! command -v mariadb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y mariadb-client
+          fi
+          mariadb-dump --version
+          mariadb --version
       - name: MariaDB 10.11 demo number generator regression
         env:
           DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
