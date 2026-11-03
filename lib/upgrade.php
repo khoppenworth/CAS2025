@@ -1393,9 +1393,9 @@ function upgrade_create_manual_backup(PDO $pdo): array
     return system_backup_manager()->createManualBackup($pdo);
 }
 
-function upgrade_import_backup_set(string $uploadedPath, string $originalName = ''): array
+function upgrade_import_backup_set(PDO $pdo, string $uploadedPath, string $originalName = ''): array
 {
-    return system_backup_manager()->importBackupSet($uploadedPath, $originalName);
+    return system_backup_manager()->importBackupSet($pdo, $uploadedPath, $originalName);
 }
 
 function upgrade_find_backup_set(string $backupId): ?array
