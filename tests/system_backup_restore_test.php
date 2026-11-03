@@ -14,6 +14,24 @@ $user = getenv('BACKUP_DB_USER') ?: 'root';
 $pass = getenv('BACKUP_DB_PASS') ?: 'root';
 $dbName = getenv('BACKUP_DB_NAME') ?: 'cas_system_backup_test';
 
+// Enterprise recovery intentionally uses the same environment contract as the app.
+$parsedDsn = [];
+foreach (explode(';', str_replace('mysql:', '', $dsn)) as $part) {
+    if (strpos($part, '=') !== false) {
+        [$key, $value] = explode('=', $part, 2);
+        $parsedDsn[$key] = $value;
+    }
+}
+putenv('DB_HOST=' . ($parsedDsn['host'] ?? '127.0.0.1'));
+putenv('DB_PORT=' . ($parsedDsn['port'] ?? '3306'));
+putenv('DB_NAME=' . $dbName);
+putenv('DB_USER=' . $user);
+putenv('DB_PASS=' . $pass);
+putenv('DB_MAINT_HOST=' . ($parsedDsn['host'] ?? '127.0.0.1'));
+putenv('DB_MAINT_PORT=' . ($parsedDsn['port'] ?? '3306'));
+putenv('DB_MAINT_USER=' . $user);
+putenv('DB_MAINT_PASS=' . $pass);
+
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
         throw new RuntimeException($message);
@@ -173,7 +191,7 @@ try {
         'id' => 'import_test',
         'label' => 'External import test',
     ]);
-    $imported = $manager->importBackupSet($external['absolute_path'], 'downloaded-full-backup.zip');
+    $imported = $manager->importBackupSet($pdo, $external['absolute_path'], 'downloaded-full-backup.zip');
     $assert(($imported['id'] ?? '') === 'import_test', 'Imported backup set lost its identifier.');
     $assert($manager->findBackupSet('import_test') !== null, 'Imported backup set is not listed as restorable.');
 
@@ -209,6 +227,23 @@ try {
 
     $assert(($restore['restored_id'] ?? '') === 'roundtrip_test', 'Restore returned the wrong backup identifier.');
     $assert(!empty($restore['emergency_backup_id']), 'Restore did not create an emergency pre-restore backup.');
+    $assert(!empty($restore['active_database']), 'Restore did not activate a verified candidate database.');
+    $assert(($restore['previous_database'] ?? '') === $safeDb, 'Restore did not retain the original live database identity.');
+    $assert(!is_file($root . '/storage/upgrades/maintenance.json'), 'Maintenance mode was not cleared after successful restore.');
+
+    // Critical enterprise invariant: the original live database was NEVER restored over.
+    // It must still contain the deliberate mutations made before the restore.
+    $pdo->exec('USE `' . $safeDb . '`');
+    $oldTables = $pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);
+    $oldNames = array_map(static fn(array $row): string => (string)$row[0], $oldTables);
+    $assert(in_array('experimental_table', $oldNames, true), 'Original live database was destructively modified during restore.');
+    $oldColumns = $pdo->query('SHOW COLUMNS FROM baseline_data')->fetchAll(PDO::FETCH_COLUMN);
+    $assert(in_array('experimental_flag', $oldColumns, true), 'Original live schema was modified during restore.');
+    $oldLabel = $pdo->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn();
+    $assert($oldLabel === 'mutated', 'Original live data was modified during restore.');
+
+    $runtime = new EnterpriseRecovery($root);
+    $restoredPdo = $runtime->connectApplicationDatabase($pdo, (string)$restore['active_database']);
 
     $assert(file_get_contents($root . '/index.php') === "<?php echo 'baseline';\n", 'Changed application file was not restored.');
     $assert(is_file($root . '/lib/baseline.php'), 'Deleted baseline application file was not restored.');
@@ -227,7 +262,7 @@ try {
         'Storage runtime data should be preserved across restore.'
     );
 
-    $tables = $pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);
+    $tables = $restoredPdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);
     $tableNames = array_map(static fn(array $row): string => (string)$row[0], $tables);
     sort($tableNames);
     $assert(
@@ -235,16 +270,16 @@ try {
         'Database exact restore did not remove experimental tables.'
     );
 
-    $columns = $pdo->query('SHOW COLUMNS FROM baseline_data')->fetchAll(PDO::FETCH_COLUMN);
+    $columns = $restoredPdo->query('SHOW COLUMNS FROM baseline_data')->fetchAll(PDO::FETCH_COLUMN);
     $assert(!in_array('experimental_flag', $columns, true), 'Experimental database column survived restore.');
 
-    $row = $pdo->query('SELECT label, notes FROM baseline_data WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+    $row = $restoredPdo->query('SELECT label, notes FROM baseline_data WHERE id=1')->fetch(PDO::FETCH_ASSOC);
     $assert(($row['label'] ?? '') === 'alpha;beta', 'Baseline database value was not restored.');
     $assert(
         ($row['notes'] ?? '') === "line one\nline two; still same value 'quoted' \\ slash",
         'SQL parser did not preserve complex multiline/semicolon data.'
     );
-    $edgeSelect = $pdo->prepare('SELECT notes FROM baseline_data WHERE label = ?');
+    $edgeSelect = $restoredPdo->prepare('SELECT notes FROM baseline_data WHERE label = ?');
     foreach ($edgeValues as $index => $expectedEdgeValue) {
         $edgeSelect->execute(['edge-' . $index]);
         $actualEdgeValue = $edgeSelect->fetchColumn();
@@ -254,10 +289,10 @@ try {
         );
     }
 
-    $relatedCount = (int)$pdo->query('SELECT COUNT(*) FROM related_data')->fetchColumn();
+    $relatedCount = (int)$restoredPdo->query('SELECT COUNT(*) FROM related_data')->fetchColumn();
     $assert($relatedCount === 1, 'Deleted related row was not restored.');
 
-    $viewValue = $pdo->query('SELECT decorated FROM baseline_view WHERE id=1')->fetchColumn();
+    $viewValue = $restoredPdo->query('SELECT decorated FROM baseline_view WHERE id=1')->fetchColumn();
     $assert(
         $viewValue === "alpha;beta;quoted'value",
         'Database view with semicolon and quoted literal was not restored correctly.'
@@ -271,7 +306,7 @@ try {
     fwrite(
         STDOUT,
         "Verified full backup/restore round-trip passed against "
-        . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION)
+        . $restoredPdo->getAttribute(PDO::ATTR_SERVER_VERSION)
         . ".\n"
     );
 } catch (Throwable $e) {
@@ -281,6 +316,12 @@ try {
     try {
         if (isset($server, $safeDb) && $server instanceof PDO) {
             $server->exec('USE information_schema');
+            if (isset($restore) && is_array($restore) && !empty($restore['active_database'])) {
+                $activeTestDb = preg_replace('/[^A-Za-z0-9_]/', '', (string)$restore['active_database']);
+                if (str_starts_with($activeTestDb, 'cas_stage_')) {
+                    $server->exec('DROP DATABASE IF EXISTS `' . $activeTestDb . '`');
+                }
+            }
             $server->exec('DROP DATABASE IF EXISTS `' . $safeDb . '`');
         }
     } catch (Throwable $cleanupError) {

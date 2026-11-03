@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-const SYSTEM_BACKUP_FORMAT_VERSION = 2;
+require_once __DIR__ . '/enterprise_recovery.php';
+
+const SYSTEM_BACKUP_FORMAT_VERSION = 3;
+const SYSTEM_BACKUP_SUPPORTED_FORMAT_VERSIONS = [2, 3];
 
 final class SystemBackupManager
 {
@@ -257,7 +260,7 @@ final class SystemBackupManager
         return null;
     }
 
-    public function importBackupSet(string $uploadedPath, string $originalName = ''): array
+    public function importBackupSet(PDO $pdo, string $uploadedPath, string $originalName = ''): array
     {
         if (!is_file($uploadedPath)) {
             throw new RuntimeException('Uploaded backup set was not found.');
@@ -297,6 +300,17 @@ final class SystemBackupManager
         if (!$storedValidation['valid']) {
             @unlink($target);
             throw new RuntimeException('Stored backup set failed validation.');
+        }
+
+        try {
+            $this->verifyDatabaseFromBackupSet($pdo, $target);
+        } catch (Throwable $e) {
+            @unlink($target);
+            throw new RuntimeException(
+                'Imported backup failed isolated database restore verification: ' . $e->getMessage(),
+                0,
+                $e
+            );
         }
 
         return [
@@ -350,7 +364,7 @@ final class SystemBackupManager
                 if (($manifest['format'] ?? '') !== 'cas-full-backup-set') {
                     $errors[] = 'Unsupported backup set format.';
                 }
-                if ((int)($manifest['format_version'] ?? 0) !== SYSTEM_BACKUP_FORMAT_VERSION) {
+                if (!in_array((int)($manifest['format_version'] ?? 0), SYSTEM_BACKUP_SUPPORTED_FORMAT_VERSIONS, true)) {
                     $errors[] = 'Unsupported backup set format version.';
                 }
                 if (trim((string)($manifest['id'] ?? '')) === '') {
@@ -392,13 +406,10 @@ final class SystemBackupManager
 
                     if (!is_file($dbPath) || (filesize($dbPath) ?: 0) <= 0) {
                         $errors[] = 'Database snapshot is empty.';
-                    } else {
-                        try {
-                            $this->validateSqlDumpStructure($dbPath);
-                        } catch (Throwable $e) {
-                            $errors[] = $e->getMessage();
-                        }
                     }
+                    // SQL syntax is intentionally not interpreted in PHP. New v3 backups
+                    // are proven by a real native-client restore into an isolated database
+                    // during creation, and every restore stages the dump again before cutover.
                 }
             }
         } catch (Throwable $e) {
@@ -422,7 +433,12 @@ final class SystemBackupManager
         $preservePaths = $this->normalizePreservePaths($preserve);
         $prepared = $this->prepareBackupSet($archivePath);
         $targetManifest = $prepared['manifest'];
+        $runtime = new EnterpriseRecovery($this->root);
+        $sourceDatabase = $runtime->activeDatabaseName($pdo);
+        $originalPointer = $runtime->activeDatabasePointer();
 
+        // Manual restore always creates a fresh, independently verified recovery point
+        // before any live application file is changed.
         $emergencyId = 'pre_restore_' . date('Ymd_His');
         $emergencyPath = $this->emergencyDirectory . DIRECTORY_SEPARATOR . $emergencyId . '.zip';
         $emergency = $this->createBackupSet($pdo, 'emergency', $emergencyPath, [
@@ -431,35 +447,158 @@ final class SystemBackupManager
             'restore_target' => (string)($targetManifest['id'] ?? ''),
         ], $preservePaths);
 
+        $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
+            ? $targetManifest['database']['objects']
+            : [];
+
+        // The target database is fully restored and verified in isolation while the
+        // current production database remains online and untouched.
+        $candidate = $runtime->stageDatabase(
+            $pdo,
+            (string)$prepared['database_path'],
+            $expectedObjects,
+            true
+        );
+
+        $maintenanceActive = false;
+        $applicationChanged = false;
         try {
-            $this->restorePreparedBackupSet($pdo, $prepared, $preservePaths);
+            $runtime->enterMaintenance(
+                'Verified system restore cutover',
+                ['restore_target' => (string)($targetManifest['id'] ?? '')]
+            );
+            $maintenanceActive = true;
+
+            $applicationChanged = true;
+            $this->restoreApplicationExact((string)$prepared['application_path'], $preservePaths);
+
+            $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
+            if ($expectedTreeHash !== '') {
+                $current = $this->applicationTreeMetadata($preservePaths);
+                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
+                    throw new RuntimeException('Application verification failed after restore.');
+                }
+            }
+
+            $runtime->switchActiveDatabase((string)$candidate['database'], [
+                'operation' => 'restore',
+                'previous_database' => $sourceDatabase,
+                'backup_id' => (string)($targetManifest['id'] ?? ''),
+            ]);
+
+            /** @var PDO $candidatePdo */
+            $candidatePdo = $candidate['pdo'];
+            $this->verifyDatabaseState($candidatePdo, $expectedObjects);
+
+            $installed = $targetManifest['installed_release'] ?? null;
+            if (is_array($installed) && $installed !== []) {
+                $this->writeInstalledRelease($installed);
+            }
+
+            $runtime->exitMaintenance();
+            $maintenanceActive = false;
+            $runtime->cleanupRetention();
+            $runtime->cleanupDatabaseGenerations($candidatePdo, 3);
 
             return [
                 'restored_id' => (string)($targetManifest['id'] ?? ''),
                 'emergency_backup_id' => $emergency['id'],
                 'emergency_backup_path' => $emergency['relative_path'],
+                'previous_database' => $sourceDatabase,
+                'active_database' => (string)$candidate['database'],
             ];
         } catch (Throwable $restoreError) {
             $rollbackError = null;
             try {
-                $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
-                try {
-                    $this->restorePreparedBackupSet($pdo, $rollbackPrepared, $preservePaths);
-                } finally {
-                    $this->cleanupPreparedBackupSet($rollbackPrepared);
+                // The original database was never dropped or migrated. Rollback is an
+                // atomic pointer switch plus an application-only restore from the
+                // emergency backup; no destructive database replay is required.
+                $runtime->restoreActiveDatabasePointer($originalPointer);
+                if ($applicationChanged) {
+                    $this->restoreApplicationFromBackupSet(
+                        (string)$emergency['absolute_path'],
+                        $preservePaths
+                    );
+                }
+                if ($maintenanceActive) {
+                    $runtime->exitMaintenance();
+                    $maintenanceActive = false;
+                }
+                if (!empty($candidate['database'])) {
+                    $runtime->discardStagedDatabase($pdo, (string)$candidate['database']);
                 }
             } catch (Throwable $rollbackFailure) {
                 $rollbackError = $rollbackFailure;
+                // Deliberately leave maintenance mode active if rollback cannot be
+                // proven. Serving an uncertain mixed state is worse than downtime.
             }
 
-            $message = 'Restore failed: ' . $restoreError->getMessage();
+            $message = 'Restore failed before a verified cutover could complete: ' . $restoreError->getMessage();
             if ($rollbackError === null) {
-                $message .= ' The pre-restore emergency backup was restored automatically.';
+                $message .= ' The original database remained intact and the previous application state was restored.';
             } else {
-                $message .= ' Automatic rollback also failed: ' . $rollbackError->getMessage();
+                $message .= ' Automatic application rollback also failed; maintenance mode remains active: '
+                    . $rollbackError->getMessage();
             }
-
             throw new RuntimeException($message, 0, $restoreError);
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
+    public function restoreApplicationFromBackupSet(string $archivePath, array $preserve = []): void
+    {
+        $preservePaths = $this->normalizePreservePaths($preserve);
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $this->restoreApplicationExact((string)$prepared['application_path'], $preservePaths);
+            $expectedTreeHash = (string)($prepared['manifest']['application']['tree_hash'] ?? '');
+            if ($expectedTreeHash !== '') {
+                $current = $this->applicationTreeMetadata($preservePaths);
+                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
+                    throw new RuntimeException('Application verification failed after application-only rollback.');
+                }
+            }
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
+    public function stageDatabaseFromBackupSet(PDO $pdo, string $archivePath): array
+    {
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $expectedObjects = is_array($manifest['database']['objects'] ?? null)
+                ? $manifest['database']['objects']
+                : [];
+            $runtime = new EnterpriseRecovery($this->root);
+            return $runtime->stageDatabase(
+                $pdo,
+                (string)$prepared['database_path'],
+                $expectedObjects,
+                true
+            );
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
+    public function verifyDatabaseFromBackupSet(PDO $pdo, string $archivePath): void
+    {
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $expectedObjects = is_array($manifest['database']['objects'] ?? null)
+                ? $manifest['database']['objects']
+                : [];
+            $runtime = new EnterpriseRecovery($this->root);
+            $runtime->stageDatabase(
+                $pdo,
+                (string)$prepared['database_path'],
+                $expectedObjects,
+                false
+            );
         } finally {
             $this->cleanupPreparedBackupSet($prepared);
         }
@@ -473,33 +612,6 @@ final class SystemBackupManager
         }
 
         return $path;
-    }
-
-    private function restorePreparedBackupSet(PDO $pdo, array $prepared, array $preservePaths): void
-    {
-        $manifest = $prepared['manifest'];
-        $dbPath = $prepared['database_path'];
-        $appPath = $prepared['application_path'];
-
-        $this->restoreDatabaseExact($pdo, $dbPath);
-        $this->verifyDatabaseState($pdo, is_array($manifest['database']['objects'] ?? null)
-            ? $manifest['database']['objects']
-            : []);
-
-        $this->restoreApplicationExact($appPath, $preservePaths);
-
-        $expectedTreeHash = (string)($manifest['application']['tree_hash'] ?? '');
-        if ($expectedTreeHash !== '') {
-            $current = $this->applicationTreeMetadata($preservePaths);
-            if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
-                throw new RuntimeException('Application verification failed after restore.');
-            }
-        }
-
-        $installed = $manifest['installed_release'] ?? null;
-        if (is_array($installed) && $installed !== []) {
-            $this->writeInstalledRelease($installed);
-        }
     }
 
     private function prepareBackupSet(string $archivePath): array
@@ -743,97 +855,8 @@ final class SystemBackupManager
 
     private function createDatabaseSnapshot(PDO $pdo, string $destination): array
     {
-        $objects = $this->databaseObjects($pdo, true);
-        $dump = fopen($destination, 'wb');
-        if ($dump === false) {
-            throw new RuntimeException('Unable to create database snapshot.');
-        }
-
-        try {
-            fwrite($dump, '-- CAS database backup generated ' . date(DATE_ATOM) . "\n");
-            fwrite($dump, "SET FOREIGN_KEY_CHECKS=0;\n");
-
-            foreach ($objects as $object) {
-                $name = (string)$object['name'];
-                $type = (string)$object['type'];
-                $quoted = $this->quoteIdentifier($name);
-
-                if ($type === 'VIEW') {
-                    fwrite($dump, 'DROP VIEW IF EXISTS ' . $quoted . ";\n");
-                    $statement = $pdo->query('SHOW CREATE VIEW ' . $quoted);
-                } else {
-                    fwrite($dump, 'DROP TABLE IF EXISTS ' . $quoted . ";\n");
-                    $statement = $pdo->query('SHOW CREATE TABLE ' . $quoted);
-                }
-
-                if (!$statement) {
-                    throw new RuntimeException('Unable to read definition for database object ' . $name);
-                }
-
-                $definition = $statement->fetch(PDO::FETCH_ASSOC);
-                if (!is_array($definition)) {
-                    throw new RuntimeException('Database definition is missing for ' . $name);
-                }
-
-                $create = $definition['Create Table']
-                    ?? $definition['Create View']
-                    ?? null;
-                if (!is_string($create) || $create === '') {
-                    throw new RuntimeException('Unable to identify CREATE statement for ' . $name);
-                }
-                fwrite($dump, $create . ";\n");
-
-                if ($type === 'VIEW') {
-                    continue;
-                }
-
-                $data = $pdo->query('SELECT * FROM ' . $quoted);
-                if (!$data) {
-                    throw new RuntimeException('Unable to read data from table ' . $name);
-                }
-
-                while ($row = $data->fetch(PDO::FETCH_ASSOC)) {
-                    $columns = [];
-                    $values = [];
-                    foreach ($row as $column => $value) {
-                        $columns[] = $this->quoteIdentifier((string)$column);
-                        if ($value === null) {
-                            $values[] = 'NULL';
-                            continue;
-                        }
-
-                        $quotedValue = $pdo->quote((string)$value);
-                        if ($quotedValue === false) {
-                            throw new RuntimeException('Unable to quote data from table ' . $name);
-                        }
-                        $values[] = $quotedValue;
-                    }
-
-                    fwrite(
-                        $dump,
-                        'INSERT INTO ' . $quoted
-                        . ' (' . implode(', ', $columns) . ') VALUES ('
-                        . implode(', ', $values) . ");\n"
-                    );
-                }
-            }
-
-            fwrite($dump, "SET FOREIGN_KEY_CHECKS=1;\n");
-        } catch (Throwable $e) {
-            fclose($dump);
-            @unlink($destination);
-            throw $e;
-        }
-
-        if (!fclose($dump)) {
-            @unlink($destination);
-            throw new RuntimeException('Unable to finalise database snapshot.');
-        }
-
-        return [
-            'objects' => $objects,
-            'object_count' => count($objects),
-        ];
+        $runtime = new EnterpriseRecovery($this->root);
+        return $runtime->dumpDatabase($pdo, $destination);
     }
 
     private function databaseObjects(PDO $pdo, bool $includeRowCounts): array
@@ -880,36 +903,6 @@ final class SystemBackupManager
         return $objects;
     }
 
-    private function restoreDatabaseExact(PDO $pdo, string $dumpPath): void
-    {
-        if (!is_file($dumpPath)) {
-            throw new RuntimeException('Database snapshot is missing.');
-        }
-
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        try {
-            $objects = $this->databaseObjects($pdo, false);
-
-            foreach ($objects as $object) {
-                if (($object['type'] ?? '') !== 'VIEW') {
-                    continue;
-                }
-                $pdo->exec('DROP VIEW IF EXISTS ' . $this->quoteIdentifier((string)$object['name']));
-            }
-
-            foreach ($objects as $object) {
-                if (($object['type'] ?? '') === 'VIEW') {
-                    continue;
-                }
-                $pdo->exec('DROP TABLE IF EXISTS ' . $this->quoteIdentifier((string)$object['name']));
-            }
-
-            $this->executeSqlFile($pdo, $dumpPath);
-        } finally {
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-        }
-    }
-
     private function verifyDatabaseState(PDO $pdo, array $expectedObjects): void
     {
         $actual = $this->databaseObjects($pdo, true);
@@ -934,116 +927,6 @@ final class SystemBackupManager
 
         if ($normalize($expectedObjects) !== $normalize($actual)) {
             throw new RuntimeException('Database verification failed after restore: schema or row counts do not match the backup.');
-        }
-    }
-
-    private function executeSqlFile(?PDO $pdo, string $path, bool $validateOnly = false): int
-    {
-        $handle = fopen($path, 'rb');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to open database SQL snapshot.');
-        }
-
-        $buffer = '';
-        $quote = null;
-        $count = 0;
-
-        try {
-            while (($line = fgets($handle)) !== false) {
-                if ($quote === null && trim($buffer) === '') {
-                    $trimmed = ltrim($line);
-                    if (str_starts_with($trimmed, '-- ') || str_starts_with($trimmed, '#')) {
-                        continue;
-                    }
-                }
-
-                $length = strlen($line);
-                for ($i = 0; $i < $length; $i++) {
-                    $char = $line[$i];
-
-                    if ($quote !== null) {
-                        $buffer .= $char;
-
-                        if ($char === $quote) {
-                            // MySQL can escape string delimiters either with a backslash
-                            // (for example: 'text\\'' when the value ends in an apostrophe)
-                            // or by doubling the delimiter. Check backslash escaping first;
-                            // otherwise the escaped apostrophe plus the real closing quote
-                            // can be misread as a doubled-quote pair.
-                            if ($quote !== '`') {
-                                $backslashes = 0;
-                                for ($j = strlen($buffer) - 2; $j >= 0 && $buffer[$j] === '\\'; $j--) {
-                                    $backslashes++;
-                                }
-                                if ($backslashes % 2 === 1) {
-                                    continue;
-                                }
-                            }
-
-                            if ($i + 1 < $length && $line[$i + 1] === $quote) {
-                                $buffer .= $line[$i + 1];
-                                $i++;
-                                continue;
-                            }
-
-                            $quote = null;
-                        }
-                        continue;
-                    }
-
-                    if ($char === "'" || $char === '"' || $char === '`') {
-                        $quote = $char;
-                        $buffer .= $char;
-                        continue;
-                    }
-
-                    if ($char === ';') {
-                        $statement = trim($buffer);
-                        $buffer = '';
-                        if ($statement === '') {
-                            continue;
-                        }
-
-                        if (!$validateOnly) {
-                            if (!$pdo instanceof PDO) {
-                                throw new RuntimeException('Database connection is required to execute SQL.');
-                            }
-                            $pdo->exec($statement);
-                        }
-                        $count++;
-                        continue;
-                    }
-
-                    $buffer .= $char;
-                }
-            }
-
-            if ($quote !== null) {
-                throw new RuntimeException('Database SQL snapshot contains an unterminated quoted value.');
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                if (!$validateOnly) {
-                    if (!$pdo instanceof PDO) {
-                        throw new RuntimeException('Database connection is required to execute SQL.');
-                    }
-                    $pdo->exec($statement);
-                }
-                $count++;
-            }
-        } finally {
-            fclose($handle);
-        }
-
-        return $count;
-    }
-
-    private function validateSqlDumpStructure(string $path): void
-    {
-        $count = $this->executeSqlFile(null, $path, true);
-        if ($count < 1) {
-            throw new RuntimeException('Database SQL snapshot contains no executable statements.');
         }
     }
 

@@ -1,5 +1,26 @@
 <?php
 declare(strict_types=1);
+
+/* CAS_ENTERPRISE_MAINTENANCE_GATE_BEGIN */
+// Maintenance gate is intentionally evaluated before application libraries are loaded.
+// During the brief cutover window this prevents requests from executing against a
+// partially replaced application tree.
+if (PHP_SAPI !== 'cli') {
+    $maintenancePath = __DIR__ . '/storage/upgrades/maintenance.json';
+    if (is_file($maintenancePath)) {
+        http_response_code(503);
+        header('Retry-After: 30');
+        header('Cache-Control: no-store, max-age=0');
+        echo '<!doctype html><html><head><meta charset="utf-8"><title>Maintenance</title></head><body>';
+        echo '<main style="max-width:720px;margin:10vh auto;font-family:system-ui,sans-serif;padding:2rem">';
+        echo '<h1>System maintenance in progress</h1>';
+        echo '<p>The competency assessment system is completing a verified upgrade or recovery operation. Please retry shortly.</p>';
+        echo '</main></body></html>';
+        exit;
+    }
+}
+/* CAS_ENTERPRISE_MAINTENANCE_GATE_END */
+
 require_once __DIR__ . '/lib/profile_completion.php';
 
 $isBootstrapRequested = !defined('APP_BOOTSTRAPPED');
@@ -190,6 +211,23 @@ if ($isBootstrapRequested) {
 
     $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
     $dbName = getenv('DB_NAME') ?: 'epss_v300';
+
+    /* CAS_ENTERPRISE_ACTIVE_DATABASE_POINTER_BEGIN */
+    // Enterprise recovery uses an atomic database pointer. The environment DB_NAME
+    // remains the stable baseline; a verified staged database can become active by
+    // atomically updating storage/upgrades/active_database.json.
+    $activeDatabasePath = __DIR__ . '/storage/upgrades/active_database.json';
+    if (is_readable($activeDatabasePath)) {
+        $activeDatabase = json_decode((string)file_get_contents($activeDatabasePath), true);
+        $candidateName = is_array($activeDatabase) ? trim((string)($activeDatabase['database'] ?? '')) : '';
+        if ($candidateName !== '' && preg_match('/^[A-Za-z0-9_]+$/', $candidateName) === 1) {
+            $dbName = $candidateName;
+        } elseif ($candidateName !== '') {
+            error_log('Ignoring unsafe active database pointer value.');
+        }
+    }
+    /* CAS_ENTERPRISE_ACTIVE_DATABASE_POINTER_END */
+
     $dbUser = getenv('DB_USER') ?: 'epss_user';
     $dbPass = getenv('DB_PASS') ?: 'StrongPassword123!';
     $dbPortRaw = getenv('DB_PORT');
