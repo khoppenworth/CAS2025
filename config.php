@@ -170,6 +170,20 @@ $baseUrlEnv = getenv('BASE_URL') ?: '/';
 $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
 define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
 
+if ($isBootstrapRequested && PHP_SAPI !== 'cli') {
+    $maintenanceFlag = __DIR__ . '/storage/upgrades/maintenance.flag';
+    $scriptName = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $maintenanceExempt = str_ends_with($scriptName, '/admin/upgrade.php');
+    if (is_file($maintenanceFlag) && !$maintenanceExempt) {
+        http_response_code(503);
+        header('Retry-After: 30');
+        echo '<!doctype html><html><head><meta charset="utf-8"><title>Maintenance</title></head><body>';
+        echo '<h1>System maintenance</h1><p>CAS is completing a verified system operation. Please try again shortly.</p>';
+        echo '</body></html>';
+        exit;
+    }
+}
+
 if ($isBootstrapRequested) {
     $scriptPath = trim((string)($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     $isAuthRoute = in_array($scriptPath, ['login.php', 'admin/login.php', 'oauth.php'], true);
