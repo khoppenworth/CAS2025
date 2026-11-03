@@ -236,6 +236,16 @@ try {
     $assert(($pointer['db_name'] ?? '') === ($restore['active_database'] ?? ''), 'Active database pointer was not switched atomically.');
     $assert(!empty($restore['emergency_backup_id']), 'Restore did not create an emergency pre-restore backup.');
 
+    // Enterprise invariant: successful restore cutover must not rewrite or drop the
+    // previously active database. It remains available exactly as it was at cutover.
+    $server->exec('USE `' . $safeDb . '`');
+    $oldLabel = (string)$server->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn();
+    $assert($oldLabel === 'mutated', 'Original live database was modified during candidate restore.');
+    $oldExperimental = (int)$server->query(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'experimental_table'"
+    )->fetchColumn();
+    $assert($oldExperimental === 1, 'Original live database lost post-backup schema changes during restore.');
+
     $activeDb = (string)$restore['active_database'];
     $pdo = new PDO(
         preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $activeDb,
