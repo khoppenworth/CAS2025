@@ -497,6 +497,7 @@ final class SystemBackupManager
             $runtime->exitMaintenance();
             $maintenanceActive = false;
             $runtime->cleanupRetention();
+            $runtime->cleanupDatabaseGenerations($candidatePdo, 3);
 
             return [
                 'restored_id' => (string)($targetManifest['id'] ?? ''),
