@@ -14,6 +14,18 @@ $user = getenv('BACKUP_DB_USER') ?: 'root';
 $pass = getenv('BACKUP_DB_PASS') ?: 'root';
 $dbName = getenv('BACKUP_DB_NAME') ?: 'cas_system_backup_test';
 
+// Native backup/restore utilities intentionally use the same environment contract
+// as production. Adapt the CI/test connection values to that contract.
+$dsnParts = [];
+if (preg_match('/host=([^;]+)/', $dsn, $m)) $dsnParts['host'] = $m[1];
+if (preg_match('/port=([0-9]+)/', $dsn, $m)) $dsnParts['port'] = $m[1];
+putenv('DB_HOST=' . ($dsnParts['host'] ?? '127.0.0.1'));
+putenv('DB_PORT=' . ($dsnParts['port'] ?? '3306'));
+putenv('DB_USER=' . $user);
+putenv('DB_PASS=' . $pass);
+putenv('DB_ADMIN_USER=' . $user);
+putenv('DB_ADMIN_PASS=' . $pass);
+
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
         throw new RuntimeException($message);
@@ -82,6 +94,15 @@ try {
         . 'notes TEXT NULL'
         . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
+    $pdo->exec(
+        'CREATE TABLE users ('
+        . 'id INT PRIMARY KEY AUTO_INCREMENT, '
+        . 'email VARCHAR(255) NOT NULL UNIQUE, '
+        . 'role VARCHAR(50) NOT NULL DEFAULT "staff"'
+        . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    $pdo->exec("INSERT INTO users (email, role) VALUES ('restore-test@example.invalid', 'admin')");
+
     $pdo->exec(
         'CREATE TABLE related_data ('
         . 'id INT PRIMARY KEY AUTO_INCREMENT, '
@@ -205,10 +226,23 @@ try {
     $pdo->exec("INSERT INTO experimental_table (id, payload) VALUES (1, 'remove me')");
     $pdo->exec('DELETE FROM related_data');
 
+    $originalDbName = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
     $restore = $manager->restoreBackupSet($pdo, $backup['absolute_path']);
 
     $assert(($restore['restored_id'] ?? '') === 'roundtrip_test', 'Restore returned the wrong backup identifier.');
+    $assert(($restore['previous_database'] ?? '') === $originalDbName, 'Restore did not retain the original database identity.');
+    $assert(($restore['active_database'] ?? '') !== $originalDbName, 'Restore should cut over to a verified candidate database, not overwrite the live database.');
+    $pointer = json_decode((string)file_get_contents($root . '/storage/upgrades/active_database.json'), true);
+    $assert(($pointer['db_name'] ?? '') === ($restore['active_database'] ?? ''), 'Active database pointer was not switched atomically.');
     $assert(!empty($restore['emergency_backup_id']), 'Restore did not create an emergency pre-restore backup.');
+
+    $activeDb = (string)$restore['active_database'];
+    $pdo = new PDO(
+        preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $activeDb,
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
 
     $assert(file_get_contents($root . '/index.php') === "<?php echo 'baseline';\n", 'Changed application file was not restored.');
     $assert(is_file($root . '/lib/baseline.php'), 'Deleted baseline application file was not restored.');
@@ -231,7 +265,7 @@ try {
     $tableNames = array_map(static fn(array $row): string => (string)$row[0], $tables);
     sort($tableNames);
     $assert(
-        $tableNames === ['baseline_data', 'baseline_view', 'related_data'],
+        $tableNames === ['baseline_data', 'baseline_view', 'related_data', 'users'],
         'Database exact restore did not remove experimental tables.'
     );
 
@@ -282,6 +316,12 @@ try {
         if (isset($server, $safeDb) && $server instanceof PDO) {
             $server->exec('USE information_schema');
             $server->exec('DROP DATABASE IF EXISTS `' . $safeDb . '`');
+            $leftovers = $server->query("SHOW DATABASES LIKE 'cas_%'")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($leftovers ?: [] as $leftover) {
+                if (preg_match('/^cas_(restore|verify|upgrade)_/', (string)$leftover)) {
+                    $server->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', (string)$leftover) . '`');
+                }
+            }
         }
     } catch (Throwable $cleanupError) {
         fwrite(STDERR, 'Cleanup warning: ' . $cleanupError->getMessage() . "\n");
