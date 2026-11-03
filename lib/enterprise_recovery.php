@@ -453,19 +453,17 @@ final class EnterpriseRecovery
         ?string $stdoutPath = null,
         bool $captureOutput = true
     ): string {
+        $stderrPath = $this->tmp . '/command-stderr-' . bin2hex(random_bytes(6)) . '.log';
         $descriptors = [
-            0 => $stdinPath !== null ? ['file', $stdinPath, 'rb'] : ['pipe', 'r'],
+            0 => $stdinPath !== null ? ['file', $stdinPath, 'rb'] : ['file', '/dev/null', 'rb'],
             1 => $stdoutPath !== null ? ['file', $stdoutPath, 'wb'] : ['pipe', 'w'],
-            2 => ['pipe', 'w'],
+            2 => ['file', $stderrPath, 'wb'],
         ];
 
         $process = proc_open($command, $descriptors, $pipes, $this->root);
         if (!is_resource($process)) {
+            @unlink($stderrPath);
             throw new RuntimeException('Unable to start native database command.');
-        }
-
-        if ($stdinPath === null && isset($pipes[0]) && is_resource($pipes[0])) {
-            fclose($pipes[0]);
         }
 
         $stdout = '';
@@ -473,12 +471,11 @@ final class EnterpriseRecovery
             $stdout = stream_get_contents($pipes[1]) ?: '';
             fclose($pipes[1]);
         }
-        $stderr = isset($pipes[2]) && is_resource($pipes[2]) ? (stream_get_contents($pipes[2]) ?: '') : '';
-        if (isset($pipes[2]) && is_resource($pipes[2])) {
-            fclose($pipes[2]);
-        }
 
         $exit = proc_close($process);
+        $stderr = is_file($stderrPath) ? ((string)file_get_contents($stderrPath)) : '';
+        @unlink($stderrPath);
+
         if ($exit !== 0) {
             throw new RuntimeException(
                 'Native database command failed with exit code ' . $exit . ($stderr !== '' ? ': ' . trim($stderr) : '')
