@@ -73,7 +73,9 @@ final class EnterpriseRecovery
 
     public function dumpDatabase(PDO $pdo, string $destination): array
     {
-        $config = $this->appDatabaseConfig($pdo);
+        $app = $this->appDatabaseConfig($pdo);
+        $config = $this->maintenanceDatabaseConfig($pdo);
+        $config['database'] = $app['database'];
         $tool = $this->findExecutable(['mysqldump', 'mariadb-dump']);
         $defaults = $this->createDefaultsFile($config);
 
@@ -144,7 +146,12 @@ final class EnterpriseRecovery
         }
 
         try {
-            $admin->exec('CREATE DATABASE ' . $this->quoteIdentifier($candidate) . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            $defaults = $this->sourceDatabaseDefaults($livePdo);
+            $admin->exec(
+                'CREATE DATABASE ' . $this->quoteIdentifier($candidate)
+                . ' CHARACTER SET ' . $defaults['charset']
+                . ' COLLATE ' . $defaults['collation']
+            );
         } catch (Throwable $e) {
             throw new RuntimeException(
                 'Unable to create isolated staging database. Configure DB_MAINT_USER/DB_MAINT_PASS with CREATE/DROP/GRANT privileges. '
@@ -475,6 +482,24 @@ final class EnterpriseRecovery
                 throw new RuntimeException('Unable to grant the application account access to the candidate database: ' . $e->getMessage(), 0, $e);
             }
         }
+    }
+
+    private function sourceDatabaseDefaults(PDO $pdo): array
+    {
+        $statement = $pdo->query(
+            'SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME '
+            . 'FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()'
+        );
+        $row = $statement ? $statement->fetch(PDO::FETCH_ASSOC) : false;
+        $charset = is_array($row) ? (string)($row['DEFAULT_CHARACTER_SET_NAME'] ?? '') : '';
+        $collation = is_array($row) ? (string)($row['DEFAULT_COLLATION_NAME'] ?? '') : '';
+
+        if (preg_match('/^[A-Za-z0-9_]+$/', $charset) !== 1
+            || preg_match('/^[A-Za-z0-9_]+$/', $collation) !== 1) {
+            throw new RuntimeException('Unable to determine safe source database character set/collation.');
+        }
+
+        return ['charset' => $charset, 'collation' => $collation];
     }
 
     private function serverConnection(array $config): PDO
