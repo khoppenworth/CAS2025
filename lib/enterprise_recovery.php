@@ -73,6 +73,27 @@ final class EnterpriseRecovery
 
     public function dumpDatabase(PDO $pdo, string $destination): array
     {
+        return $this->createNativeDump($pdo, $destination, false, true);
+    }
+
+    /**
+     * Final cutover snapshot. New web requests are already blocked by maintenance
+     * mode, and mysqldump/mariadb-dump holds a global read lock while producing
+     * the snapshot. The resulting dump is immediately restored/verified as the
+     * cutover candidate, so an extra verification restore here would only double
+     * maintenance-window duration.
+     */
+    public function dumpDatabaseForCutover(PDO $pdo, string $destination): array
+    {
+        return $this->createNativeDump($pdo, $destination, true, false);
+    }
+
+    private function createNativeDump(
+        PDO $pdo,
+        string $destination,
+        bool $cutoverLock,
+        bool $proveByRestore
+    ): array {
         $app = $this->appDatabaseConfig($pdo);
         $config = $this->maintenanceDatabaseConfig($pdo);
         $config['database'] = $app['database'];
@@ -85,7 +106,6 @@ final class EnterpriseRecovery
                 '--defaults-extra-file=' . $defaults,
                 '--host=' . $config['host'],
                 '--user=' . $config['user'],
-                '--single-transaction',
                 '--quick',
                 '--routines',
                 '--events',
@@ -94,6 +114,7 @@ final class EnterpriseRecovery
                 '--skip-comments',
                 '--default-character-set=utf8mb4',
             ];
+            $command[] = $cutoverLock ? '--lock-all-tables' : '--single-transaction';
             if ($config['port'] !== null) {
                 $command[] = '--port=' . (string)$config['port'];
             }
@@ -111,16 +132,25 @@ final class EnterpriseRecovery
                 throw new RuntimeException('Native database dump did not produce a usable SQL file.');
             }
 
-            // A backup is not trusted until the native client has restored it successfully.
-            $verified = $this->verifyDumpByStaging($pdo, $destination);
+            if ($proveByRestore) {
+                $verified = $this->verifyDumpByStaging($pdo, $destination);
+                $objects = $verified['objects'];
+            } else {
+                // Maintenance mode plus --lock-all-tables prevents application
+                // writes during the final cutover dump. The dump is staged and
+                // fully verified immediately by the caller before activation.
+                $objects = $this->databaseObjects($pdo, true);
+            }
 
             return [
                 'engine' => 'native-mysql-client',
                 'tool' => basename($tool),
                 'server_version' => $serverVersion,
-                'objects' => $verified['objects'],
-                'object_count' => count($verified['objects']),
-                'verified_restore' => true,
+                'objects' => $objects,
+                'object_count' => count($objects),
+                'verified_restore' => $proveByRestore,
+                'cutover_read_lock' => $cutoverLock,
+                'sha256' => hash_file('sha256', $destination),
             ];
         } finally {
             @unlink($defaults);
@@ -348,6 +378,11 @@ final class EnterpriseRecovery
         ]);
 
         return $removed;
+    }
+
+    public function activeDatabasePointer(): array
+    {
+        return $this->readActiveDatabasePointer();
     }
 
     public function clearActiveDatabasePointer(): void
