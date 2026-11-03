@@ -551,6 +551,26 @@ final class SystemBackupManager
         }
     }
 
+    public function stageDatabaseFromBackupSet(PDO $pdo, string $archivePath): array
+    {
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $expectedObjects = is_array($manifest['database']['objects'] ?? null)
+                ? $manifest['database']['objects']
+                : [];
+            $runtime = new EnterpriseRecovery($this->root);
+            return $runtime->stageDatabase(
+                $pdo,
+                (string)$prepared['database_path'],
+                $expectedObjects,
+                true
+            );
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
     public function relativeToRoot(string $path): string
     {
         $root = $this->root . DIRECTORY_SEPARATOR;
