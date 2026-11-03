@@ -784,9 +784,14 @@ final class UpgradeEngine
             return ['uid' => getmyuid(), 'gid' => getmygid(), 'mode' => 0755];
         }
 
+        $fallback = $this->root . DIRECTORY_SEPARATOR . 'index.php';
+        if (is_file($fallback)) {
+            return $this->pathMetadata($fallback);
+        }
+
         if (is_dir($directory)) {
             foreach (scandir($directory) ?: [] as $entry) {
-                if ($entry === '.' || $entry === '..') {
+                if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
                     continue;
                 }
                 $candidate = $directory . DIRECTORY_SEPARATOR . $entry;
@@ -796,11 +801,6 @@ final class UpgradeEngine
             }
             $dirMeta = $this->pathMetadata($directory);
             return ['uid' => $dirMeta['uid'], 'gid' => $dirMeta['gid'], 'mode' => 0644];
-        }
-
-        $fallback = $this->root . DIRECTORY_SEPARATOR . 'index.php';
-        if (is_file($fallback)) {
-            return $this->pathMetadata($fallback);
         }
 
         return ['uid' => getmyuid(), 'gid' => getmygid(), 'mode' => 0644];
