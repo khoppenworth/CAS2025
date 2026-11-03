@@ -260,7 +260,7 @@ final class SystemBackupManager
         return null;
     }
 
-    public function importBackupSet(string $uploadedPath, string $originalName = ''): array
+    public function importBackupSet(PDO $pdo, string $uploadedPath, string $originalName = ''): array
     {
         if (!is_file($uploadedPath)) {
             throw new RuntimeException('Uploaded backup set was not found.');
@@ -300,6 +300,17 @@ final class SystemBackupManager
         if (!$storedValidation['valid']) {
             @unlink($target);
             throw new RuntimeException('Stored backup set failed validation.');
+        }
+
+        try {
+            $this->verifyDatabaseFromBackupSet($pdo, $target);
+        } catch (Throwable $e) {
+            @unlink($target);
+            throw new RuntimeException(
+                'Imported backup failed isolated database restore verification: ' . $e->getMessage(),
+                0,
+                $e
+            );
         }
 
         return [
@@ -565,6 +576,26 @@ final class SystemBackupManager
                 (string)$prepared['database_path'],
                 $expectedObjects,
                 true
+            );
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
+    public function verifyDatabaseFromBackupSet(PDO $pdo, string $archivePath): void
+    {
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $expectedObjects = is_array($manifest['database']['objects'] ?? null)
+                ? $manifest['database']['objects']
+                : [];
+            $runtime = new EnterpriseRecovery($this->root);
+            $runtime->stageDatabase(
+                $pdo,
+                (string)$prepared['database_path'],
+                $expectedObjects,
+                false
             );
         } finally {
             $this->cleanupPreparedBackupSet($prepared);
