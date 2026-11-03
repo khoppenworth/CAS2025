@@ -435,6 +435,7 @@ final class SystemBackupManager
         $targetManifest = $prepared['manifest'];
         $runtime = new EnterpriseRecovery($this->root);
         $sourceDatabase = $runtime->activeDatabaseName($pdo);
+        $originalPointer = $runtime->activeDatabasePointer();
 
         // Manual restore always creates a fresh, independently verified recovery point
         // before any live application file is changed.
@@ -512,10 +513,7 @@ final class SystemBackupManager
                 // The original database was never dropped or migrated. Rollback is an
                 // atomic pointer switch plus an application-only restore from the
                 // emergency backup; no destructive database replay is required.
-                $runtime->switchActiveDatabase($sourceDatabase, [
-                    'operation' => 'restore_rollback',
-                    'failed_restore_target' => (string)($targetManifest['id'] ?? ''),
-                ]);
+                $runtime->restoreActiveDatabasePointer($originalPointer);
                 if ($applicationChanged) {
                     $this->restoreApplicationFromBackupSet(
                         (string)$emergency['absolute_path'],
