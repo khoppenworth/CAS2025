@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+/* CAS_ENTERPRISE_MAINTENANCE_GATE_BEGIN */
 // Maintenance gate is intentionally evaluated before application libraries are loaded.
 // During the brief cutover window this prevents requests from executing against a
 // partially replaced application tree.
@@ -18,6 +19,7 @@ if (PHP_SAPI !== 'cli') {
         exit;
     }
 }
+/* CAS_ENTERPRISE_MAINTENANCE_GATE_END */
 
 require_once __DIR__ . '/lib/profile_completion.php';
 
@@ -210,6 +212,7 @@ if ($isBootstrapRequested) {
     $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
     $dbName = getenv('DB_NAME') ?: 'epss_v300';
 
+    /* CAS_ENTERPRISE_ACTIVE_DATABASE_POINTER_BEGIN */
     // Enterprise recovery uses an atomic database pointer. The environment DB_NAME
     // remains the stable baseline; a verified staged database can become active by
     // atomically updating storage/upgrades/active_database.json.
@@ -223,6 +226,7 @@ if ($isBootstrapRequested) {
             error_log('Ignoring unsafe active database pointer value.');
         }
     }
+    /* CAS_ENTERPRISE_ACTIVE_DATABASE_POINTER_END */
 
     $dbUser = getenv('DB_USER') ?: 'epss_user';
     $dbPass = getenv('DB_PASS') ?: 'StrongPassword123!';
