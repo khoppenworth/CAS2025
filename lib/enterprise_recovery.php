@@ -230,6 +230,39 @@ final class EnterpriseRecovery
         $this->dropDatabase($admin, $database);
     }
 
+    public function executeSqlFileOnDatabase(PDO $livePdo, string $database, string $sqlPath): void
+    {
+        if (preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
+            throw new RuntimeException('Unsafe database name for native migration execution.');
+        }
+        if (!is_file($sqlPath) || (filesize($sqlPath) ?: 0) <= 0) {
+            throw new RuntimeException('Migration SQL file is missing or empty: ' . $sqlPath);
+        }
+
+        $maintenance = $this->maintenanceDatabaseConfig($livePdo);
+        $config = $maintenance;
+        $config['database'] = $database;
+        $defaults = $this->createDefaultsFile($config);
+        $tool = $this->findExecutable(['mysql', 'mariadb']);
+
+        try {
+            $command = [
+                $tool,
+                '--defaults-extra-file=' . $defaults,
+                '--host=' . $config['host'],
+                '--user=' . $config['user'],
+                '--default-character-set=utf8mb4',
+            ];
+            if ($config['port'] !== null) {
+                $command[] = '--port=' . (string)$config['port'];
+            }
+            $command[] = $database;
+            $this->runCommand($command, $sqlPath, null);
+        } finally {
+            @unlink($defaults);
+        }
+    }
+
     public function connectApplicationDatabase(PDO $livePdo, string $database): PDO
     {
         return $this->databaseConnection($this->appDatabaseConfig($livePdo), $database);
