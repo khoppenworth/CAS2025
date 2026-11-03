@@ -525,6 +525,9 @@ final class SystemBackupManager
                     $runtime->exitMaintenance();
                     $maintenanceActive = false;
                 }
+                if (!empty($candidate['database'])) {
+                    $runtime->discardStagedDatabase($pdo, (string)$candidate['database']);
+                }
             } catch (Throwable $rollbackFailure) {
                 $rollbackError = $rollbackFailure;
                 // Deliberately leave maintenance mode active if rollback cannot be
