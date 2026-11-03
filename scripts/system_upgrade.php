@@ -195,6 +195,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $runtime->exitMaintenance();
         $maintenanceActive = false;
         $runtime->cleanupRetention();
+        $runtime->cleanupDatabaseGenerations($candidatePdo, 3);
 
         info('Upgrade completed successfully. Previous database remains retained as rollback generation: ' . $sourceDatabase);
     } catch (Throwable $e) {
