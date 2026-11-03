@@ -615,33 +615,6 @@ final class SystemBackupManager
         return $path;
     }
 
-    private function restorePreparedBackupSet(PDO $pdo, array $prepared, array $preservePaths): void
-    {
-        $manifest = $prepared['manifest'];
-        $dbPath = $prepared['database_path'];
-        $appPath = $prepared['application_path'];
-
-        $this->restoreDatabaseExact($pdo, $dbPath);
-        $this->verifyDatabaseState($pdo, is_array($manifest['database']['objects'] ?? null)
-            ? $manifest['database']['objects']
-            : []);
-
-        $this->restoreApplicationExact($appPath, $preservePaths);
-
-        $expectedTreeHash = (string)($manifest['application']['tree_hash'] ?? '');
-        if ($expectedTreeHash !== '') {
-            $current = $this->applicationTreeMetadata($preservePaths);
-            if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
-                throw new RuntimeException('Application verification failed after restore.');
-            }
-        }
-
-        $installed = $manifest['installed_release'] ?? null;
-        if (is_array($installed) && $installed !== []) {
-            $this->writeInstalledRelease($installed);
-        }
-    }
-
     private function prepareBackupSet(string $archivePath): array
     {
         $validation = $this->validateBackupSet($archivePath);
@@ -931,36 +904,6 @@ final class SystemBackupManager
         return $objects;
     }
 
-    private function restoreDatabaseExact(PDO $pdo, string $dumpPath): void
-    {
-        if (!is_file($dumpPath)) {
-            throw new RuntimeException('Database snapshot is missing.');
-        }
-
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        try {
-            $objects = $this->databaseObjects($pdo, false);
-
-            foreach ($objects as $object) {
-                if (($object['type'] ?? '') !== 'VIEW') {
-                    continue;
-                }
-                $pdo->exec('DROP VIEW IF EXISTS ' . $this->quoteIdentifier((string)$object['name']));
-            }
-
-            foreach ($objects as $object) {
-                if (($object['type'] ?? '') === 'VIEW') {
-                    continue;
-                }
-                $pdo->exec('DROP TABLE IF EXISTS ' . $this->quoteIdentifier((string)$object['name']));
-            }
-
-            $this->executeSqlFile($pdo, $dumpPath);
-        } finally {
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-        }
-    }
-
     private function verifyDatabaseState(PDO $pdo, array $expectedObjects): void
     {
         $actual = $this->databaseObjects($pdo, true);
@@ -985,116 +928,6 @@ final class SystemBackupManager
 
         if ($normalize($expectedObjects) !== $normalize($actual)) {
             throw new RuntimeException('Database verification failed after restore: schema or row counts do not match the backup.');
-        }
-    }
-
-    private function executeSqlFile(?PDO $pdo, string $path, bool $validateOnly = false): int
-    {
-        $handle = fopen($path, 'rb');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to open database SQL snapshot.');
-        }
-
-        $buffer = '';
-        $quote = null;
-        $count = 0;
-
-        try {
-            while (($line = fgets($handle)) !== false) {
-                if ($quote === null && trim($buffer) === '') {
-                    $trimmed = ltrim($line);
-                    if (str_starts_with($trimmed, '-- ') || str_starts_with($trimmed, '#')) {
-                        continue;
-                    }
-                }
-
-                $length = strlen($line);
-                for ($i = 0; $i < $length; $i++) {
-                    $char = $line[$i];
-
-                    if ($quote !== null) {
-                        $buffer .= $char;
-
-                        if ($char === $quote) {
-                            // MySQL can escape string delimiters either with a backslash
-                            // (for example: 'text\\'' when the value ends in an apostrophe)
-                            // or by doubling the delimiter. Check backslash escaping first;
-                            // otherwise the escaped apostrophe plus the real closing quote
-                            // can be misread as a doubled-quote pair.
-                            if ($quote !== '`') {
-                                $backslashes = 0;
-                                for ($j = strlen($buffer) - 2; $j >= 0 && $buffer[$j] === '\\'; $j--) {
-                                    $backslashes++;
-                                }
-                                if ($backslashes % 2 === 1) {
-                                    continue;
-                                }
-                            }
-
-                            if ($i + 1 < $length && $line[$i + 1] === $quote) {
-                                $buffer .= $line[$i + 1];
-                                $i++;
-                                continue;
-                            }
-
-                            $quote = null;
-                        }
-                        continue;
-                    }
-
-                    if ($char === "'" || $char === '"' || $char === '`') {
-                        $quote = $char;
-                        $buffer .= $char;
-                        continue;
-                    }
-
-                    if ($char === ';') {
-                        $statement = trim($buffer);
-                        $buffer = '';
-                        if ($statement === '') {
-                            continue;
-                        }
-
-                        if (!$validateOnly) {
-                            if (!$pdo instanceof PDO) {
-                                throw new RuntimeException('Database connection is required to execute SQL.');
-                            }
-                            $pdo->exec($statement);
-                        }
-                        $count++;
-                        continue;
-                    }
-
-                    $buffer .= $char;
-                }
-            }
-
-            if ($quote !== null) {
-                throw new RuntimeException('Database SQL snapshot contains an unterminated quoted value.');
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                if (!$validateOnly) {
-                    if (!$pdo instanceof PDO) {
-                        throw new RuntimeException('Database connection is required to execute SQL.');
-                    }
-                    $pdo->exec($statement);
-                }
-                $count++;
-            }
-        } finally {
-            fclose($handle);
-        }
-
-        return $count;
-    }
-
-    private function validateSqlDumpStructure(string $path): void
-    {
-        $count = $this->executeSqlFile(null, $path, true);
-        if ($count < 1) {
-            throw new RuntimeException('Database SQL snapshot contains no executable statements.');
         }
     }
 
