@@ -46,9 +46,13 @@ function runBackup(PDO $pdo): void
     info('Creating and verifying full manual backup...');
     $backup = system_backup_manager()->createManualBackup($pdo);
     info('Verified full backup created: ' . (string)$backup['relative_path']);
-    $removed = system_backup_manager()->cleanupRetention();
-    if ($removed !== []) {
-        info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+    try {
+        $removed = system_backup_manager()->cleanupRetention();
+        if ($removed !== []) {
+            info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+        }
+    } catch (Throwable $cleanupError) {
+        info('Retention cleanup warning: ' . $cleanupError->getMessage());
     }
 }
 
@@ -177,9 +181,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
-        $removed = system_backup_manager()->cleanupRetention();
-        if ($removed !== []) {
-            info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+        try {
+            $removed = system_backup_manager()->cleanupRetention();
+            if ($removed !== []) {
+                info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+            }
+        } catch (Throwable $cleanupError) {
+            info('Retention cleanup warning: ' . $cleanupError->getMessage());
         }
 
         info('Upgrade completed successfully.');
