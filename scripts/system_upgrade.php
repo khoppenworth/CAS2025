@@ -23,6 +23,9 @@ $options = getopt('', [
 $action = isset($options['action']) ? strtolower((string)$options['action']) : '';
 
 switch ($action) {
+    case 'backup':
+        runBackup($pdo);
+        break;
     case 'upgrade':
         runUpgrade(upgrade_engine(), $pdo, $options);
         break;
@@ -36,6 +39,17 @@ switch ($action) {
     default:
         printUsage();
         exit($action === '' ? 0 : 1);
+}
+
+function runBackup(PDO $pdo): void
+{
+    info('Creating and verifying full manual backup...');
+    $backup = system_backup_manager()->createManualBackup($pdo);
+    info('Verified full backup created: ' . (string)$backup['relative_path']);
+    $removed = system_backup_manager()->cleanupRetention();
+    if ($removed !== []) {
+        info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+    }
 }
 
 function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
@@ -88,7 +102,9 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     ]);
 
     $backupSet = null;
+    $candidate = null;
     $tempDir = null;
+    $maintenanceEnabled = false;
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -114,24 +130,41 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         ]);
         info('Verified backup set stored at ' . $backupSet['relative_path']);
 
+        info('Restoring pre-upgrade database into an isolated candidate database...');
+        $candidate = system_backup_manager()->stageCandidateFromBackupSet(
+            (string)$backupSet['absolute_path'],
+            'upgrade'
+        );
+        info('Verified candidate database: ' . (string)$candidate['db_name']);
+
         info('Fetching release package...');
         $download = $engine->downloadReleaseArchive($repo, $targetRef, $token !== '' ? $token : null);
         $tempDir = $download['tmp_dir'];
         $engine->updateRun($run, [
             'package_path' => $engine->relativeToRoot($download['archive']),
         ]);
-        info('Package downloaded. Applying files...');
+        info('Package downloaded. Entering controlled maintenance mode...');
+        system_backup_manager()->setMaintenanceMode(true, 'upgrade');
+        $maintenanceEnabled = true;
+
+        info('Applying release files...');
         $engine->deployRelease($download['extract_root'], $preservePaths);
         info('Release deployed successfully.');
         applyConfigMigrations($engine);
 
-        info('Checking for database migrations...');
-        $appliedMigrations = applyDatabaseMigrations($engine, $pdo);
+        info('Checking for database migrations against the isolated candidate database...');
+        if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
+            throw new RuntimeException('Verified candidate database connection is unavailable.');
+        }
+        $appliedMigrations = applyDatabaseMigrations($engine, $candidate['pdo']);
         if ($appliedMigrations === 0) {
             info('No migration scripts were executed.');
         } else {
-            info('Applied ' . $appliedMigrations . ' database migration statement' . ($appliedMigrations === 1 ? '' : 's') . '.');
+            info('Applied ' . $appliedMigrations . ' candidate database migration statement' . ($appliedMigrations === 1 ? '' : 's') . '.');
         }
+
+        info('Switching CAS to the verified candidate database...');
+        system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
 
         $engine->completeRun($run, 'success');
         upgrade_store_installed_release([
@@ -141,6 +174,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'url' => $releaseUrl,
             'installed_at' => date(DATE_ATOM),
         ]);
+
+        system_backup_manager()->setMaintenanceMode(false);
+        $maintenanceEnabled = false;
+        $removed = system_backup_manager()->cleanupRetention();
+        if ($removed !== []) {
+            info('Retention cleanup removed ' . count($removed) . ' stale item(s).');
+        }
 
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
@@ -171,6 +211,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         }
         exit(1);
     } finally {
+        if ($maintenanceEnabled) {
+            try {
+                system_backup_manager()->setMaintenanceMode(false);
+            } catch (Throwable $maintenanceError) {
+                fwrite(STDERR, 'Unable to disable maintenance mode: ' . $maintenanceError->getMessage() . PHP_EOL);
+            }
+        }
         if ($tempDir !== null) {
             $engine->removeDirectory($tempDir);
         }
@@ -297,6 +344,7 @@ function printUsage(): void
     echo <<<USAGE
 System upgrade utility
 Usage:
+  php scripts/{$script} --action=backup
   php scripts/{$script} --action=upgrade [--repo=<repository>] [--ref=<branch|tag>] [--latest-release] [--preserve=<paths>]
   php scripts/{$script} --action=downgrade [--backup-id=<id>] [--restore-db]
   php scripts/{$script} --action=list-backups
