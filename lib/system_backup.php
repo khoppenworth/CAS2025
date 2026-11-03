@@ -561,6 +561,24 @@ final class SystemBackupManager
         }
     }
 
+    public function stageCandidateFromBackupSet(string $archivePath, string $purpose = 'upgrade'): array
+    {
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $expectedObjects = is_array($manifest['database']['objects'] ?? null)
+                ? $manifest['database']['objects']
+                : [];
+            return $this->createVerifiedCandidateDatabase(
+                $prepared['database_path'],
+                $expectedObjects,
+                $purpose
+            );
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
     public function switchActiveDatabase(string $dbName): void
     {
         if ($dbName === '' || !preg_match('/^[A-Za-z0-9_]+$/', $dbName)) {
