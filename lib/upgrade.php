@@ -658,6 +658,10 @@ final class UpgradeEngine
 
     public function deployRelease(string $sourcePath, array $preserve = []): void
     {
+        if (!is_dir($sourcePath)) {
+            throw new RuntimeException('Staged release directory does not exist: ' . $sourcePath);
+        }
+
         $exclusions = ['storage/upgrades'];
         foreach ($preserve as $item) {
             $normalized = trim((string)$item, '/');
@@ -667,44 +671,159 @@ final class UpgradeEngine
             $exclusions[] = $normalized;
         }
 
-        $directoryIterator = new RecursiveDirectoryIterator(
-            $sourcePath,
-            FilesystemIterator::SKIP_DOTS
-        );
-        $iterator = new RecursiveIteratorIterator(
-            $directoryIterator,
+        // Build the exact staged release inventory first.
+        $sourceFiles = [];
+        $sourceDirectories = [];
+        $sourceIterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($sourcePath, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::SELF_FIRST
         );
-
-        foreach ($iterator as $fileInfo) {
-            /** @var SplFileInfo $fileInfo */
+        foreach ($sourceIterator as $fileInfo) {
             $relative = substr($fileInfo->getPathname(), strlen($sourcePath) + 1);
             if ($relative === false || $relative === '') {
                 continue;
             }
+            $relative = str_replace('\\', '/', $relative);
+            if ($this->shouldSkip($relative, $exclusions)) {
+                continue;
+            }
+            if ($fileInfo->isDir()) {
+                $sourceDirectories[$relative] = true;
+            } else {
+                $sourceFiles[$relative] = $fileInfo->getPathname();
+            }
+        }
 
+        // Exact cutover: remove stale application paths that are absent from the
+        // validated release. Preserved runtime/environment paths are never touched.
+        $liveIterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($liveIterator as $fileInfo) {
+            $relative = substr($fileInfo->getPathname(), strlen($this->root) + 1);
+            if ($relative === false || $relative === '') {
+                continue;
+            }
             $relative = str_replace('\\', '/', $relative);
             if ($this->shouldSkip($relative, $exclusions)) {
                 continue;
             }
 
-            $target = $this->root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
-
-            if ($fileInfo->isDir()) {
-                if (!is_dir($target) && !mkdir($target, 0755, true) && !is_dir($target)) {
-                    throw new RuntimeException('Unable to create directory ' . $target);
+            if ($fileInfo->isDir() && !$fileInfo->isLink()) {
+                if (!isset($sourceDirectories[$relative])) {
+                    if (!@rmdir($fileInfo->getPathname()) && is_dir($fileInfo->getPathname())) {
+                        throw new RuntimeException('Unable to remove stale application directory: ' . $relative);
+                    }
                 }
                 continue;
             }
 
+            if (!isset($sourceFiles[$relative])) {
+                if (!@unlink($fileInfo->getPathname()) && file_exists($fileInfo->getPathname())) {
+                    throw new RuntimeException('Unable to remove stale application file: ' . $relative);
+                }
+            }
+        }
+
+        uksort($sourceDirectories, static fn(string $a, string $b): int => substr_count($a, '/') <=> substr_count($b, '/'));
+        foreach (array_keys($sourceDirectories) as $relative) {
+            $target = $this->root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+            if (is_dir($target)) {
+                continue;
+            }
+            $parent = dirname($target);
+            $metadata = $this->deploymentMetadataReference($parent, true);
+            if (!mkdir($target, $metadata['mode'], true) && !is_dir($target)) {
+                throw new RuntimeException('Unable to create release directory: ' . $relative);
+            }
+            $this->applyDeploymentMetadata($target, $metadata);
+        }
+
+        ksort($sourceFiles, SORT_STRING);
+        foreach ($sourceFiles as $relative => $sourceFile) {
+            $target = $this->root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
             $directory = dirname($target);
-            if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-                throw new RuntimeException('Unable to create directory ' . $directory);
+            if (!is_dir($directory)) {
+                throw new RuntimeException('Release target directory was not created: ' . dirname($relative));
             }
 
-            if (!copy($fileInfo->getPathname(), $target)) {
-                throw new RuntimeException('Failed to copy ' . $fileInfo->getPathname() . ' to ' . $target);
+            $existingMetadata = is_file($target) ? $this->pathMetadata($target) : null;
+            $newMetadata = $existingMetadata ?? $this->deploymentMetadataReference($directory, false);
+
+            if (!copy($sourceFile, $target)) {
+                throw new RuntimeException('Failed to copy staged release file: ' . $relative);
             }
+            $this->applyDeploymentMetadata($target, $newMetadata);
+        }
+    }
+
+    private function pathMetadata(string $path): array
+    {
+        clearstatcache(true, $path);
+        $uid = fileowner($path);
+        $gid = filegroup($path);
+        $mode = fileperms($path);
+        if ($uid === false || $gid === false || $mode === false) {
+            throw new RuntimeException('Unable to inspect deployment metadata for ' . $path);
+        }
+
+        return [
+            'uid' => (int)$uid,
+            'gid' => (int)$gid,
+            'mode' => (int)$mode & 0777,
+        ];
+    }
+
+    private function deploymentMetadataReference(string $directory, bool $forDirectory): array
+    {
+        if ($forDirectory) {
+            if (is_dir($directory)) {
+                return $this->pathMetadata($directory);
+            }
+            return ['uid' => getmyuid(), 'gid' => getmygid(), 'mode' => 0755];
+        }
+
+        if (is_dir($directory)) {
+            foreach (scandir($directory) ?: [] as $entry) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+                $candidate = $directory . DIRECTORY_SEPARATOR . $entry;
+                if (is_file($candidate) && !is_link($candidate)) {
+                    return $this->pathMetadata($candidate);
+                }
+            }
+            $dirMeta = $this->pathMetadata($directory);
+            return ['uid' => $dirMeta['uid'], 'gid' => $dirMeta['gid'], 'mode' => 0644];
+        }
+
+        $fallback = $this->root . DIRECTORY_SEPARATOR . 'index.php';
+        if (is_file($fallback)) {
+            return $this->pathMetadata($fallback);
+        }
+
+        return ['uid' => getmyuid(), 'gid' => getmygid(), 'mode' => 0644];
+    }
+
+    private function applyDeploymentMetadata(string $path, array $metadata): void
+    {
+        clearstatcache(true, $path);
+        if (fileowner($path) !== (int)$metadata['uid'] && !@chown($path, (int)$metadata['uid'])) {
+            throw new RuntimeException('Unable to preserve deployment owner for ' . $path);
+        }
+        if (filegroup($path) !== (int)$metadata['gid'] && !@chgrp($path, (int)$metadata['gid'])) {
+            throw new RuntimeException('Unable to preserve deployment group for ' . $path);
+        }
+        if (!@chmod($path, (int)$metadata['mode'])) {
+            throw new RuntimeException('Unable to preserve deployment mode for ' . $path);
+        }
+
+        clearstatcache(true, $path);
+        if (fileowner($path) !== (int)$metadata['uid']
+            || filegroup($path) !== (int)$metadata['gid']
+            || (fileperms($path) & 0777) !== (int)$metadata['mode']) {
+            throw new RuntimeException('Deployment metadata verification failed for ' . $path);
         }
     }
 
