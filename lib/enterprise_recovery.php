@@ -221,6 +221,18 @@ final class EnterpriseRecovery
         return $this->stageDatabase($livePdo, $dumpPath, null, false);
     }
 
+    public function discardStagedDatabase(PDO $livePdo, string $database): void
+    {
+        $maintenance = $this->maintenanceDatabaseConfig($livePdo);
+        $admin = $this->serverConnection($maintenance);
+        $this->dropDatabase($admin, $database);
+    }
+
+    public function connectApplicationDatabase(PDO $livePdo, string $database): PDO
+    {
+        return $this->databaseConnection($this->appDatabaseConfig($livePdo), $database);
+    }
+
     public function switchActiveDatabase(string $database, array $metadata = []): void
     {
         if (preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
