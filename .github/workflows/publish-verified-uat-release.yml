@@ -1,6 +1,6 @@
 # Reusable UAT release workflow.
-# Bootstrap: automatically publish 0.5.94 only after green CI on the merge
-# that installs this workflow. Tag the earlier, exact-0.5.92 rollback commit.
+# One-time verified publication path for 0.5.100 enterprise transition.
+# It targets the already-green PR #835 merge commit exactly.
 # Later releases: use Actions -> Publish verified UAT release -> Run workflow.
 name: Publish verified UAT release
 
@@ -63,24 +63,23 @@ jobs:
           NOTES_FILE="$RUNNER_TEMP/verified-uat-release-notes.md"
 
           if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
-            # This automatic path is deliberately only for the recovery release.
-            VERSION="0.5.94"
-            TARGET_SHA="764949d6b0b9f108642c726e699569dd3c4c00b9"
-            EXPECTED_TREE="c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05"
-            ACTUAL_TREE="$(git rev-parse "${TARGET_SHA}^{tree}")"
-            if [[ "$ACTUAL_TREE" != "$EXPECTED_TREE" ]]; then
-              echo "::error::Recovery release tree differs from original 0.5.92."
-              exit 1
-            fi
+            # One-time automatic path for the legacy-to-enterprise transition release.
+            VERSION="0.5.100"
+            TARGET_SHA="cc2c9a475c7c8dd3ede5d323fe31862e82546f08"
             cat > "$NOTES_FILE" <<'NOTES'
-          ## Emergency rollback to the last-known-good 0.5.92 source
+          ## Enterprise transition release
 
-          - Restores every tracked application file to the exact contents of release 0.5.92.
-          - Original 0.5.92 Git tree: c0fdeadd48b2b4ad56c73f4a2fcd3923f659ad05.
-          - This release is pinned to the tested rollback commit 764949d6b0b9f108642c726e699569dd3c4c00b9.
-          - No new application features, UI changes, or database migration are included.
-          - IMPORTANT: The CAS Backup/Restore feature remains unsafe. Do not use it.
-          - Recovery PR: #827.
+          - Adds a fail-closed one-time bridge for servers still running 0.5.95-0.5.98.
+          - The bridge defaults to check-only and never modifies the live application database.
+          - It refuses unknown/local updater modifications, active maintenance state, active jobs, and pending upgrade runs.
+          - It proves native MySQL/MariaDB tooling and staging privileges using only an isolated throwaway database.
+          - It verifies the exact 0.5.99 enterprise updater files by immutable commit and Git blob SHA before installation.
+          - It creates a local rollback snapshot and atomically preserves owner, group, and file mode for every replaced updater file.
+          - Any failed post-install assertion rolls all updater files back exactly.
+          - It leaves installed-release metadata unchanged so the subsequent normal upgrade remains explicit.
+          - CI tests the transition from a real 0.5.95 tag tree on both MySQL 8 and MariaDB 10.11, including check-only, successful apply, idempotency, modified-file refusal, permissions, and injected rollback.
+          - The full enterprise backup/restore stress suite and detached-job test also passed on both the PR and exact merged main commit.
+          - Transition PR: #835.
           NOTES
           else
             VERSION="$INPUT_VERSION"
