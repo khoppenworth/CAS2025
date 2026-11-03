@@ -332,7 +332,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $tmpName = (string)($upload['tmp_name'] ?? '');
                 $originalName = (string)($upload['name'] ?? 'backup-set.zip');
-                $imported = upgrade_import_backup_set($tmpName, $originalName);
+                $imported = upgrade_import_backup_set($pdo, $tmpName, $originalName);
 
                 $flashMessage = sprintf(
                     t($t, 'backup_import_success', 'Backup set %s was imported and validated successfully.'),
