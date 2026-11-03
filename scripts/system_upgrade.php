@@ -153,7 +153,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         info('Applying database migrations to candidate only...');
         $appliedMigrations = applyDatabaseMigrationsFromRoot(
             (string)$download['extract_root'],
-            $candidatePdo
+            $pdo,
+            (string)$candidate['database']
         );
         verifyUpgradeCandidate($candidatePdo);
         $engine->updateRun($run, [
@@ -451,133 +452,30 @@ function applyConfigMigrations(UpgradeEngine $engine): void
 
 function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
 {
-    return applyDatabaseMigrationsFromRoot(base_path(''), $pdo);
+    throw new RuntimeException(
+        'Direct live-database migration is disabled. Migrations must run against a staged candidate database.'
+    );
 }
 
-function applyDatabaseMigrationsFromRoot(string $root, PDO $pdo): int
+function applyDatabaseMigrationsFromRoot(string $root, PDO $livePdo, string $candidateDatabase): int
 {
-    $totalStatements = 0;
     $root = rtrim($root, DIRECTORY_SEPARATOR);
-    $candidates = [
+    $runtime = new EnterpriseRecovery(base_path(''));
+    $appliedFiles = 0;
+
+    foreach ([
         $root . DIRECTORY_SEPARATOR . 'upgrade_to_v3.sql',
         $root . DIRECTORY_SEPARATOR . 'migration.sql',
-    ];
-
-    foreach ($candidates as $path) {
-        if (!is_file($path)) {
+    ] as $path) {
+        if (!is_file($path) || (filesize($path) ?: 0) <= 0) {
             continue;
         }
 
-        $statements = readSqlStatements($path);
-        if ($statements === []) {
-            continue;
-        }
-
-        $label = basename($path);
-        info('Running ' . count($statements) . ' migration statement' . (count($statements) === 1 ? '' : 's')
-            . ' from staged ' . $label . '...');
-        $totalStatements += executeSqlStatements($pdo, $statements, $label);
+        info('Executing staged migration file with native database client: ' . basename($path));
+        $runtime->executeSqlFileOnDatabase($livePdo, $candidateDatabase, $path);
+        $appliedFiles++;
     }
 
-    return $totalStatements;
+    return $appliedFiles;
 }
 
-function readSqlStatements(string $filePath): array
-{
-    $contents = file_get_contents($filePath);
-    if ($contents === false) {
-        throw new RuntimeException('Unable to read SQL file at ' . $filePath);
-    }
-
-    $withoutBlockComments = preg_replace('~/\*.*?\*/~s', '', $contents);
-    if ($withoutBlockComments === null) {
-        $withoutBlockComments = $contents;
-    }
-
-    $lines = [];
-    foreach (preg_split('/\R/', $withoutBlockComments) as $line) {
-        if (preg_match('/^\s*(--|#)/', $line)) {
-            continue;
-        }
-        $lines[] = $line;
-    }
-
-    $sanitized = implode("\n", $lines);
-    return splitSqlStatements($sanitized);
-}
-
-function splitSqlStatements(string $sql): array
-{
-    $statements = [];
-    $buffer = '';
-    $inString = false;
-    $stringChar = '';
-    $length = strlen($sql);
-
-    for ($i = 0; $i < $length; $i++) {
-        $char = $sql[$i];
-
-        if ($inString) {
-            if ($char === $stringChar) {
-                $backslashes = 0;
-                for ($j = $i - 1; $j >= 0 && $sql[$j] === '\\'; $j--) {
-                    $backslashes++;
-                }
-                if ($backslashes % 2 === 0) {
-                    $inString = false;
-                    $stringChar = '';
-                }
-            }
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === '\'' || $char === '"') {
-            $inString = true;
-            $stringChar = $char;
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === ';') {
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $statements[] = $statement;
-            }
-            $buffer = '';
-            continue;
-        }
-
-        $buffer .= $char;
-    }
-
-    $statement = trim($buffer);
-    if ($statement !== '') {
-        $statements[] = $statement;
-    }
-
-    return $statements;
-}
-
-function executeSqlStatements(PDO $pdo, array $statements, string $context): int
-{
-    $count = 0;
-    foreach ($statements as $statement) {
-        try {
-            $pdo->exec($statement);
-            $count++;
-        } catch (PDOException $e) {
-            if (upgrade_should_ignore_sql_error($e, $statement)) {
-                $preview = trim(preg_replace('/\s+/', ' ', $statement));
-                if (strlen($preview) > 120) {
-                    $preview = substr($preview, 0, 117) . '...';
-                }
-                error_log('Ignored SQL warning from ' . $context . ' while running "' . $preview . '": ' . $e->getMessage());
-                continue;
-            }
-            throw new RuntimeException('Failed to execute statement from ' . $context . ': ' . $e->getMessage(), 0, $e);
-        }
-    }
-
-    return $count;
-}
