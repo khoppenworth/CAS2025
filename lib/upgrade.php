@@ -9,6 +9,7 @@ const ADMIN_UPGRADE_MANUAL_DIR = 'storage/upgrades/manual';
 const ADMIN_UPGRADE_INSTALLED_FILE = 'storage/upgrades/installed.json';
 
 require_once __DIR__ . '/system_backup.php';
+require_once __DIR__ . '/upgrade_jobs.php';
 
 final class UpgradeEngine
 {
@@ -1276,6 +1277,21 @@ function upgrade_list_backups(): array
     });
 
     return $result;
+}
+
+function upgrade_start_background_job(string $type, array $arguments, array $context = []): array
+{
+    return upgrade_job_manager()->start($type, $arguments, $context);
+}
+
+function upgrade_latest_background_job(): ?array
+{
+    return upgrade_job_manager()->latest();
+}
+
+function upgrade_background_job_tail(string $jobId, int $lines = 40): string
+{
+    return upgrade_job_manager()->tail($jobId, $lines);
 }
 
 function upgrade_run_cli(array $arguments): array
