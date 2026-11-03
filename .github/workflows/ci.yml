@@ -62,6 +62,13 @@ jobs:
             echo "MySQL failure-injection pass $i/2"
             BACKUP_DB_NAME="cas_recovery_failure_test_$i" php tests/system_backup_failure_test.php --mysql
           done
+      - name: Native candidate migration and DB retention (MySQL)
+        env:
+          BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          BACKUP_DB_USER: root
+          BACKUP_DB_PASS: root
+          BACKUP_DB_NAME: cas_candidate_migration_test
+        run: php tests/candidate_migration_test.php --mysql
       - name: MySQL smoke test
         run: mysql -h 127.0.0.1 -uroot -proot -e "SHOW DATABASES;"
 
@@ -113,3 +120,10 @@ jobs:
             echo "MariaDB failure-injection pass $i/2"
             BACKUP_DB_NAME="cas_recovery_failure_test_$i" php tests/system_backup_failure_test.php --mysql
           done
+      - name: Native candidate migration and DB retention (MariaDB 10.11)
+        env:
+          BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
+          BACKUP_DB_USER: root
+          BACKUP_DB_PASS: root
+          BACKUP_DB_NAME: cas_candidate_migration_test
+        run: php tests/candidate_migration_test.php --mysql
