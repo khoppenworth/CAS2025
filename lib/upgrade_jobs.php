@@ -23,9 +23,15 @@ final class UpgradeJobManager
             throw new RuntimeException('Background upgrade jobs require the Linux deployment environment.');
         }
 
-        $this->assertNoActiveJob();
+        $startLock = fopen($this->jobsDirectory . '/start.lock', 'c+');
+        if ($startLock === false || !flock($startLock, LOCK_EX)) {
+            throw new RuntimeException('Unable to acquire background job start lock.');
+        }
 
-        $id = gmdate('Ymd_His') . '_' . bin2hex(random_bytes(4));
+        try {
+            $this->assertNoActiveJob();
+
+            $id = gmdate('Ymd_His') . '_' . bin2hex(random_bytes(4));
         $jobDir = $this->jobsDirectory . '/' . $id;
         if (!mkdir($jobDir, 0750, true) && !is_dir($jobDir)) {
             throw new RuntimeException('Unable to create upgrade job directory.');
@@ -78,7 +84,11 @@ final class UpgradeJobManager
         $job['updated_at'] = date(DATE_ATOM);
         $this->writeJob($id, $job);
 
-        return $job;
+            return $job;
+        } finally {
+            flock($startLock, LOCK_UN);
+            fclose($startLock);
+        }
     }
 
     public function latest(): ?array
