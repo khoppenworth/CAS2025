@@ -60,10 +60,8 @@ try {
         throw new RuntimeException('Unable to start system operation process.');
     }
 
-    $status = proc_get_status($process);
     $jobs->update($jobId, [
         'phase' => 'operation_running',
-        'operation_pid' => (int)($status['pid'] ?? 0),
     ]);
 
     $exitCode = proc_close($process);
