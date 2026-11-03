@@ -79,6 +79,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preserveInput = (string)($options['preserve'] ?? '');
     $extraPreserve = array_filter(array_map('trim', explode(',', $preserveInput)));
     $preservePaths = array_values(array_unique(array_merge([
+        '.git',
+        '.env',
         'config.php',
         'assets/uploads',
         'storage',
