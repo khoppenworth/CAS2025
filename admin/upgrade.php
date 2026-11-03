@@ -238,25 +238,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'download_backups':
         case 'create_backup':
             try {
-                if (function_exists('set_time_limit')) {
-                    @set_time_limit(0);
-                }
-                $backup = upgrade_create_manual_backup($pdo);
-                $upgradeState['backup_ready'] = true;
-                $upgradeState['last_backup_at'] = time();
-                $upgradeState['last_backup_path'] = $backup['relative_path'];
+                $job = upgrade_start_background_job('backup', ['--action=backup']);
                 $flashMessage = sprintf(
-                    t(
-                        $t,
-                        'backup_ready_message',
-                        'Full backup %s was created and validated successfully. Use Download selected backup to save it locally.'
-                    ),
-                    (string)($backup['id'] ?? '')
+                    t($t, 'backup_job_started', 'Full backup job %s started in the background. The page remains available while CAS creates and verifies it.'),
+                    (string)$job['id']
                 );
-                $flashType = 'success';
+                $flashType = 'info';
             } catch (Throwable $backupError) {
-                error_log('Admin backup failed: ' . $backupError->getMessage());
-                $flashMessage = t($t, 'backup_failed', 'Unable to generate the backup archive.') . ' ' . $backupError->getMessage();
+                error_log('Admin backup job start failed: ' . $backupError->getMessage());
+                $flashMessage = t($t, 'backup_failed', 'Unable to start the backup operation.') . ' ' . $backupError->getMessage();
                 $flashType = 'error';
             }
             break;
@@ -307,74 +297,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flashType = 'error';
                 break;
             }
-            $arguments = ['--action=upgrade', '--repo=' . $repoArg, '--latest-release'];
-            $commandForLog = array_merge([PHP_BINARY ?: 'php', base_path('scripts/system_upgrade.php')], $arguments);
-            if (function_exists('set_time_limit')) {
-                @set_time_limit(0);
-            }
             try {
-                $result = upgrade_run_cli($arguments);
-                $_SESSION['admin_upgrade_log'] = [
-                    'type' => 'upgrade',
-                    'timestamp' => time(),
-                    'command' => upgrade_format_command($result['command']),
-                    'stdout' => trim((string)$result['stdout']),
-                    'stderr' => trim((string)$result['stderr']),
-                    'exit_code' => $result['exit_code'],
-                ];
-                if ((int)$result['exit_code'] === 0) {
-                    $newVersionTag = $upgradeState['available_version'] ?? null;
-                    $newVersionLabel = $upgradeState['available_version_label'] ?? $newVersionTag;
-                    $newVersionUrl = $upgradeState['available_version_url'] ?? null;
-                    if (!empty($newVersionLabel)) {
-                        $upgradeState['current_version'] = $newVersionLabel;
-                    }
-                    $upgradeState['current_version_tag'] = $newVersionTag;
-                    $upgradeState['current_version_url'] = $newVersionUrl;
-                    $upgradeState['current_version_installed_at'] = date(DATE_ATOM);
-                    $upgradeState['available_version'] = null;
-                    $upgradeState['available_version_label'] = null;
-                    $upgradeState['available_version_url'] = null;
-                    $upgradeState['backup_ready'] = false;
-                    try {
-                        upgrade_store_installed_release([
-                            'tag' => $newVersionTag,
-                            'name' => $newVersionLabel,
-                            'repo' => $repoForUpgrade,
-                            'url' => $newVersionUrl,
-                            'installed_at' => $upgradeState['current_version_installed_at'],
-                        ]);
-                    } catch (Throwable $versionStoreError) {
-                        error_log('Installed release metadata save failed: ' . $versionStoreError->getMessage());
-                    }
-                    $flashMessage = t($t, 'upgrade_command_success', 'Upgrade command completed successfully. Review the logs for details.');
-                    $flashType = 'info';
-                } else {
-                    $flashMessage = t($t, 'upgrade_command_failed', 'The upgrade command returned a non-zero exit code. Review the log for details.');
-                    $flashType = 'error';
-                    $_SESSION['admin_upgrade_popup'] = [
-                        'message' => $flashMessage,
-                    ];
-                }
-            } catch (Throwable $upgradeError) {
-                error_log('Admin upgrade failed: ' . $upgradeError->getMessage());
-                $_SESSION['admin_upgrade_log'] = [
-                    'type' => 'upgrade',
-                    'timestamp' => time(),
-                    'command' => upgrade_format_command($commandForLog),
-                    'stdout' => '',
-                    'stderr' => $upgradeError->getMessage(),
-                    'exit_code' => -1,
-                ];
-                $flashMessage = t(
-                    $t,
-                    'upgrade_failed',
-                    'The upgrade could not be completed. Review the logs and database permissions, then try again.'
+                $job = upgrade_start_background_job(
+                    'upgrade',
+                    ['--action=upgrade', '--repo=' . $repoArg, '--latest-release'],
+                    [
+                        'target_version' => $upgradeState['available_version'] ?? null,
+                        'target_label' => $upgradeState['available_version_label'] ?? null,
+                    ]
                 );
+                $flashMessage = sprintf(
+                    t($t, 'upgrade_job_started', 'Upgrade job %s started in the background. CAS will verify backup, candidate database, and release package before the brief maintenance cutover.'),
+                    (string)$job['id']
+                );
+                $flashType = 'info';
+            } catch (Throwable $upgradeError) {
+                error_log('Admin upgrade job start failed: ' . $upgradeError->getMessage());
+                $flashMessage = t($t, 'upgrade_failed', 'Unable to start the upgrade operation.') . ' ' . $upgradeError->getMessage();
                 $flashType = 'error';
-                $_SESSION['admin_upgrade_popup'] = [
-                    'message' => $flashMessage,
-                ];
             }
             break;
 
@@ -412,72 +352,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'restore_backup':
             $backupId = trim((string)($_POST['backup_id'] ?? ''));
-            $restoreDb = true;
             if ($backupId === '') {
                 $flashMessage = t($t, 'restore_backup_invalid', 'Select a backup before attempting a restore.');
                 $flashType = 'error';
                 break;
             }
-            $availableBackups = upgrade_list_backups();
-            $selectedBackup = null;
-            foreach ($availableBackups as $candidate) {
-                $candidateId = (string)($candidate['id'] ?? ($candidate['timestamp'] ?? ''));
-                if ($candidateId === $backupId) {
-                    $selectedBackup = $candidate;
-                    break;
-                }
-            }
-            if ($selectedBackup === null) {
-                $flashMessage = t($t, 'restore_backup_missing', 'The selected backup metadata could not be found on the server.');
+
+            $selectedBackup = upgrade_find_backup_set($backupId);
+            if ($selectedBackup === null || empty($selectedBackup['backup_set_path'])) {
+                $flashMessage = t(
+                    $t,
+                    'restore_backup_legacy_blocked',
+                    'Automated restore is limited to verified full backup sets. Legacy in-place restore is disabled.'
+                );
                 $flashType = 'error';
                 break;
             }
-            $arguments = ['--action=downgrade', '--backup-id=' . $backupId];
-            if ($restoreDb) {
-                $arguments[] = '--restore-db';
-            }
-            $restoreCommandForLog = array_merge([PHP_BINARY ?: 'php', base_path('scripts/system_upgrade.php')], $arguments);
-            if (function_exists('set_time_limit')) {
-                @set_time_limit(0);
-            }
+
             try {
-                $result = upgrade_run_cli($arguments);
-                $_SESSION['admin_upgrade_log'] = [
-                    'type' => 'restore',
-                    'timestamp' => time(),
-                    'command' => upgrade_format_command($result['command']),
-                    'stdout' => trim((string)$result['stdout']),
-                    'stderr' => trim((string)$result['stderr']),
-                    'exit_code' => $result['exit_code'],
-                ];
-                if ((int)$result['exit_code'] === 0) {
-                    $upgradeState['available_version'] = null;
-                    $upgradeState['available_version_label'] = null;
-                    $upgradeState['available_version_url'] = null;
-                    $flashMessage = t($t, 'restore_backup_success', 'Backup restoration completed successfully.');
-                    $flashType = 'success';
-                } else {
-                    $flashMessage = t($t, 'restore_backup_failed', 'The restore command failed. Review the log for details.');
-                    $flashType = 'error';
-                    $_SESSION['admin_upgrade_popup'] = [
-                        'message' => $flashMessage,
-                    ];
-                }
+                $job = upgrade_start_background_job(
+                    'restore',
+                    ['--action=restore', '--backup-id=' . $backupId],
+                    ['backup_id' => $backupId]
+                );
+                $flashMessage = sprintf(
+                    t($t, 'restore_job_started', 'Restore job %s started in the background. The target database will be restored and verified in isolation before any cutover.'),
+                    (string)$job['id']
+                );
+                $flashType = 'info';
             } catch (Throwable $restoreError) {
-                error_log('Admin restore failed: ' . $restoreError->getMessage());
-                $_SESSION['admin_upgrade_log'] = [
-                    'type' => 'restore',
-                    'timestamp' => time(),
-                    'command' => upgrade_format_command($restoreCommandForLog),
-                    'stdout' => '',
-                    'stderr' => $restoreError->getMessage(),
-                    'exit_code' => -1,
-                ];
-                $flashMessage = t($t, 'restore_backup_failed', 'The restore command failed. Review the log for details.');
+                error_log('Admin restore job start failed: ' . $restoreError->getMessage());
+                $flashMessage = t($t, 'restore_backup_failed', 'Unable to start the restore operation.') . ' ' . $restoreError->getMessage();
                 $flashType = 'error';
-                $_SESSION['admin_upgrade_popup'] = [
-                    'message' => $flashMessage,
-                ];
             }
             break;
 
@@ -498,6 +404,13 @@ $_SESSION['admin_upgrade_state'] = $upgradeState;
 
 $upgradeLog = $_SESSION['admin_upgrade_log'] ?? null;
 unset($_SESSION['admin_upgrade_log']);
+
+$backgroundJob = upgrade_latest_background_job();
+$backgroundJobActive = is_array($backgroundJob)
+    && in_array((string)($backgroundJob['status'] ?? ''), ['queued', 'running'], true);
+$backgroundJobLog = is_array($backgroundJob)
+    ? upgrade_background_job_tail((string)($backgroundJob['id'] ?? ''), 60)
+    : '';
 
 $upgradeBackups = upgrade_list_backups();
 
@@ -754,17 +667,32 @@ $pageHelpKey = 'admin.dashboard';
             <input type="hidden" name="action" value="check_upgrade">
             <button type="submit" class="md-button md-primary md-elev-2 md-upgrade-action-button"><?=t($t,'check_for_upgrade','Check for Upgrade')?></button>
           </form>
-          <form method="post" data-upgrade-progress-trigger data-upgrade-progress-message="<?=htmlspecialchars(t($t, 'upgrade_progress_install', 'Installing update. Please keep this page open until the process completes.'), ENT_QUOTES, 'UTF-8')?>">
+          <form method="post">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="install_upgrade">
-            <button type="submit" class="md-button md-primary md-elev-2 md-upgrade-action-button" <?=($upgradeRepoDisplay === '' ? 'disabled' : '')?>><?=t($t,'install_upgrade','Install Upgrade')?></button>
+            <button type="submit" class="md-button md-primary md-elev-2 md-upgrade-action-button" <?=($upgradeRepoDisplay === '' || $backgroundJobActive ? 'disabled' : '')?>><?=t($t,'install_upgrade','Install Upgrade')?></button>
           </form>
         </div>
-        <p class="md-upgrade-meta"><?=t($t,'upgrade_hint_script','Every upgrade now creates and validates a full App + DB backup set before applying changes. Create a manual backup whenever you need an additional restore point.')?></p>
+        <p class="md-upgrade-meta"><?=t($t,'upgrade_hint_script','Upgrade work runs in the background. CAS first proves a native backup by isolated restore, validates the release and candidate database, and only then enters a brief maintenance cutover.')?></p>
       </article>
       <article class="md-card md-upgrade-card">
-        <h3 class="md-upgrade-heading"><?=t($t,'upgrade_log_heading','Recent upgrade activity')?></h3>
-        <?php if ($upgradeLog): ?>
+        <h3 class="md-upgrade-heading"><?=t($t,'upgrade_log_heading','Recent system operation')?></h3>
+        <?php if (is_array($backgroundJob)): ?>
+          <p class="md-upgrade-meta"><strong>Job:</strong> <?=htmlspecialchars((string)($backgroundJob['id'] ?? ''), ENT_QUOTES, 'UTF-8')?> · <?=htmlspecialchars(ucfirst((string)($backgroundJob['type'] ?? 'operation')), ENT_QUOTES, 'UTF-8')?></p>
+          <p class="md-upgrade-meta"><strong>Status:</strong> <span class="md-upgrade-chip <?=($backgroundJob['status'] ?? '') === 'completed' ? 'success' : ((($backgroundJob['status'] ?? '') === 'failed') ? 'error' : 'warning')?>"><?=htmlspecialchars((string)($backgroundJob['status'] ?? 'unknown'), ENT_QUOTES, 'UTF-8')?></span></p>
+          <?php if (!empty($backgroundJob['phase_message'])): ?>
+            <p class="md-upgrade-meta"><strong>Current step:</strong> <?=htmlspecialchars((string)$backgroundJob['phase_message'], ENT_QUOTES, 'UTF-8')?></p>
+          <?php endif; ?>
+          <?php if ($backgroundJobLog !== ''): ?>
+            <div class="md-upgrade-log-block">
+              <strong>Operation log:</strong>
+              <pre class="md-code-block"><?=htmlspecialchars($backgroundJobLog, ENT_QUOTES, 'UTF-8')?></pre>
+            </div>
+          <?php endif; ?>
+          <?php if ($backgroundJobActive): ?>
+            <p class="md-upgrade-meta">This page can be left open or revisited; the operation continues independently of the browser request.</p>
+          <?php endif; ?>
+        <?php elseif ($upgradeLog): ?>
           <?php if (!empty($upgradeLog['timestamp'])): ?>
             <p class="md-upgrade-meta"><?=t($t,'upgrade_log_timestamp','Run at:')?> <?=htmlspecialchars(app_format_display_datetime('@' . (int)$upgradeLog['timestamp'], $locale, $cfg), ENT_QUOTES, 'UTF-8')?></p>
           <?php endif; ?>
@@ -824,15 +752,14 @@ $pageHelpKey = 'admin.dashboard';
             <input type="hidden" name="restore_db" value="1">
             <p class="md-upgrade-meta">
               <strong>Full restore:</strong>
-              application files and the database are restored together. Before any changes are applied,
-              CAS creates and validates an emergency pre-restore backup so it can automatically roll back if restoration fails.
+              application files and the database are restored together. CAS restores the target database into an isolated staging database first. The currently active database is never dropped or migrated in place.
             </p>
             <div class="md-upgrade-backup-toolbar">
-              <button type="submit" name="action" value="restore_backup" class="md-button md-outline md-elev-1 md-upgrade-action-button"><?=t($t,'restore_backup','Restore backup')?></button>
+              <button type="submit" name="action" value="restore_backup" class="md-button md-outline md-elev-1 md-upgrade-action-button" <?=$backgroundJobActive ? 'disabled' : ''?>><?=t($t,'restore_backup','Restore backup')?></button>
               <button type="submit" name="action" value="download_backup_set" class="md-button md-outline md-elev-1 md-upgrade-action-button">
                 <?=t($t,'download_selected_backup','Download selected backup')?>
               </button>
-              <button type="submit" name="action" value="create_backup" class="md-button md-elev-1 md-upgrade-action-button">
+              <button type="submit" name="action" value="create_backup" class="md-button md-elev-1 md-upgrade-action-button" <?=$backgroundJobActive ? 'disabled' : ''?>>
                 <?=t($t,'create_full_backup','Create Full Backup')?>
               </button>
             </div>
@@ -854,7 +781,7 @@ $pageHelpKey = 'admin.dashboard';
           <form method="post" class="md-upgrade-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
             <input type="hidden" name="action" value="create_backup">
-            <button type="submit" class="md-button md-elev-1 md-upgrade-action-button"><?=t($t,'create_full_backup','Create Full Backup')?></button>
+            <button type="submit" class="md-button md-elev-1 md-upgrade-action-button" <?=$backgroundJobActive ? 'disabled' : ''?>><?=t($t,'create_full_backup','Create Full Backup')?></button>
           </form>
           <form method="post" enctype="multipart/form-data" class="md-upgrade-form md-upgrade-import-form">
             <input type="hidden" name="csrf" value="<?=csrf_token()?>">
@@ -874,4 +801,9 @@ $pageHelpKey = 'admin.dashboard';
   </section>
 </section>
 <?php include __DIR__.'/../templates/footer.php'; ?>
+<?php if ($backgroundJobActive): ?>
+<script nonce="<?=htmlspecialchars(csp_nonce(), ENT_QUOTES, 'UTF-8')?>">
+window.setTimeout(function () { window.location.reload(); }, 5000);
+</script>
+<?php endif; ?>
 </body></html>
