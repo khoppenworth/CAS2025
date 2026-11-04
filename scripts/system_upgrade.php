@@ -7,7 +7,7 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/system_cli_bootstrap.php';
 require_once __DIR__ . '/../lib/upgrade.php';
 
 $options = getopt('', [
@@ -56,13 +56,27 @@ function runBackup(PDO $pdo): void
     }
 }
 
+function systemUpgradeSourceFromDatabase(PDO $pdo): string
+{
+    try {
+        $stmt = $pdo->query("SELECT upgrade_repo FROM site_config WHERE id = 1");
+        $value = $stmt ? trim((string)$stmt->fetchColumn()) : '';
+        if ($value !== '') {
+            return $value;
+        }
+    } catch (Throwable $e) {
+        // Fall through to the repository default without mutating the database.
+    }
+
+    return ADMIN_UPGRADE_DEFAULT_REPO;
+}
+
 function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 {
     $manager = system_backup_manager();
     $repo = upgrade_normalize_source((string)($options['repo'] ?? ''));
     if ($repo === '') {
-        $cfg = get_site_config($pdo);
-        $repo = upgrade_effective_source($cfg);
+        $repo = systemUpgradeSourceFromDatabase($pdo);
     }
 
     if (!upgrade_is_valid_source($repo)) {
