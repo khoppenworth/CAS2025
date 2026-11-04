@@ -521,6 +521,46 @@ final class SystemBackupManager
         }
     }
 
+    public function restoreApplicationFromBackupSet(
+        string $archivePath,
+        array $preserve = [],
+        bool $restoreInstalledRelease = false
+    ): array {
+        $preservePaths = $this->normalizePreservePaths($preserve);
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $manifest = $prepared['manifest'];
+            $this->verifyApplicationArchive(
+                $prepared['application_path'],
+                (string)($manifest['application']['tree_hash'] ?? '')
+            );
+
+            $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
+
+            $expectedTreeHash = (string)($manifest['application']['tree_hash'] ?? '');
+            if ($expectedTreeHash !== '') {
+                $current = $this->applicationTreeMetadata($preservePaths);
+                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
+                    throw new RuntimeException('Application rollback verification failed.');
+                }
+            }
+
+            if ($restoreInstalledRelease) {
+                $installed = $manifest['installed_release'] ?? null;
+                if (is_array($installed) && $installed !== []) {
+                    $this->writeInstalledRelease($installed);
+                }
+            }
+
+            return [
+                'restored_id' => (string)($manifest['id'] ?? ''),
+                'installed_release_restored' => $restoreInstalledRelease,
+            ];
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
     public function createVerifiedCandidateDatabase(
         string $dumpPath,
         array $expectedObjects,
