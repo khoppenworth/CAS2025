@@ -112,6 +112,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $tempDir = null;
     $maintenanceEnabled = false;
     $applicationMutated = false;
+    $cutoverMutated = false;
     $cutoverState = system_backup_manager()->captureCutoverState();
 
     info('Starting upgrade run ' . $run['id']);
@@ -185,6 +186,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Switching CAS to the verified candidate database...');
         system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        $cutoverMutated = true;
         upgradeTestFailurePoint('after-pointer');
 
         // Prove a fresh PHP process resolves the new runtime pointer through the
@@ -234,10 +236,12 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             }
         }
 
-        try {
-            system_backup_manager()->restoreCutoverState($cutoverState);
-        } catch (Throwable $stateError) {
-            $rollbackErrors[] = 'runtime state: ' . $stateError->getMessage();
+        if ($cutoverMutated) {
+            try {
+                system_backup_manager()->restoreCutoverState($cutoverState);
+            } catch (Throwable $stateError) {
+                $rollbackErrors[] = 'runtime state: ' . $stateError->getMessage();
+            }
         }
 
         if ($applicationMutated && is_array($backupSet) && !empty($backupSet['absolute_path'])) {
