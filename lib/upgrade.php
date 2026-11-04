@@ -1099,8 +1099,14 @@ final class UpgradeEngine
             throw new RuntimeException('Unable to encode JSON for ' . $path);
         }
 
-        if (file_put_contents($path, $json . "\n") === false) {
-            throw new RuntimeException('Unable to write JSON to ' . $path);
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $json . "\n", LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to prepare JSON write for ' . $path);
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically write JSON to ' . $path);
         }
     }
 
