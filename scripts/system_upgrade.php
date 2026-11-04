@@ -95,7 +95,6 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         '.env',
         '.htaccess',
         '.user.ini',
-        'config.php',
         'assets/uploads',
         'storage',
     ], $extraPreserve)));
@@ -161,7 +160,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         // responsibility begins before the first deployment mutation.
         $applicationMutated = true;
         $engine->deployRelease($download['extract_root'], $preservePaths);
-        info('Release deployed successfully. config.php and .env were not modified.');
+        info('Release deployed successfully. Server-owned runtime files were preserved.');
         upgradeTestFailurePoint('after-deploy');
 
         info('Checking for database migrations against the isolated candidate database...');
