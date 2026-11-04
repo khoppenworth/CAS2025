@@ -36,6 +36,7 @@ $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-test-' . bin2hex(
 $externalBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-import-' . bin2hex(random_bytes(5)) . '.zip';
 $unsafeZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-unsafe-' . bin2hex(random_bytes(5)) . '.zip';
 $downloadedCopy = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-downloaded-' . bin2hex(random_bytes(5)) . '.zip';
+$badContractBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-bad-contract-' . bin2hex(random_bytes(5)) . '.zip';
 
 $convertBackupToLegacyV2 = static function (string $source, string $target): void {
     if (!copy($source, $target)) {
@@ -313,6 +314,69 @@ try {
         'Downloaded/copied backup bytes differ from the validated server backup.'
     );
 
+    // Failure before maintenance/cutover must be non-invasive. Change only the
+    // manifest contract so candidate verification fails after the emergency backup
+    // is created, but before any live application mutation can begin.
+    $assert(copy((string)$listedBackup['backup_set_path'], $badContractBackup),
+        'Unable to create candidate-verification failure fixture.');
+    $badZip = new ZipArchive();
+    $assert($badZip->open($badContractBackup) === true, 'Unable to open failure fixture.');
+    try {
+        $badManifestRaw = $badZip->getFromName('manifest.json');
+        $badManifest = is_string($badManifestRaw) ? json_decode($badManifestRaw, true) : null;
+        $assert(is_array($badManifest), 'Failure fixture manifest is invalid.');
+        $changedContract = false;
+        foreach ($badManifest['database']['objects'] as &$badObject) {
+            if (($badObject['type'] ?? '') === 'BASE TABLE' && ($badObject['name'] ?? '') === 'baseline_data') {
+                $badObject['row_count'] = (int)($badObject['row_count'] ?? 0) + 1;
+                $changedContract = true;
+                break;
+            }
+        }
+        unset($badObject);
+        $assert($changedContract, 'Unable to alter failure fixture database contract.');
+        $badManifestJson = json_encode($badManifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $assert(is_string($badManifestJson), 'Unable to encode failure fixture manifest.');
+        $badZip->deleteName('manifest.json');
+        $assert($badZip->addFromString('manifest.json', $badManifestJson . "\n"),
+            'Unable to replace failure fixture manifest.');
+    } finally {
+        $badZip->close();
+    }
+
+    $beforeFailedRestoreIndex = hash_file('sha256', $root . '/index.php');
+    $beforeFailedRestoreConfig = hash_file('sha256', $root . '/config.php');
+    $beforeFailedRestoreInstalled = hash_file('sha256', $root . '/storage/upgrades/installed.json');
+    $pointerPathBeforeFailure = $root . '/storage/upgrades/active_database.json';
+    $pointerExistedBeforeFailure = is_file($pointerPathBeforeFailure);
+    $pointerBytesBeforeFailure = $pointerExistedBeforeFailure
+        ? file_get_contents($pointerPathBeforeFailure)
+        : null;
+
+    $candidateFailureSeen = false;
+    try {
+        $manager->restoreBackupSet($pdo, $badContractBackup);
+    } catch (RuntimeException $e) {
+        $candidateFailureSeen = str_contains($e->getMessage(), 'Database verification failed');
+    }
+    $assert($candidateFailureSeen, 'Candidate-verification failure was not surfaced.');
+    $assert(hash_file('sha256', $root . '/index.php') === $beforeFailedRestoreIndex,
+        'Pre-cutover restore failure changed live application files.');
+    $assert(hash_file('sha256', $root . '/config.php') === $beforeFailedRestoreConfig,
+        'Pre-cutover restore failure changed config.php.');
+    $assert(hash_file('sha256', $root . '/storage/upgrades/installed.json') === $beforeFailedRestoreInstalled,
+        'Pre-cutover restore failure changed installed-release metadata.');
+    $assert(is_file($pointerPathBeforeFailure) === $pointerExistedBeforeFailure,
+        'Pre-cutover restore failure changed DB-pointer existence.');
+    if ($pointerExistedBeforeFailure) {
+        $assert(file_get_contents($pointerPathBeforeFailure) === $pointerBytesBeforeFailure,
+            'Pre-cutover restore failure changed DB-pointer contents.');
+    }
+    $assert(!is_file($root . '/storage/upgrades/maintenance.flag'),
+        'Pre-cutover restore failure left maintenance enabled.');
+    $assert((string)$pdo->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn() === 'alpha;beta',
+        'Pre-cutover restore failure changed live database contents.');
+
     // Legacy v2 compatibility: manifests created by 0.5.101 list only
     // tables/views. They must remain restorable across release metadata changes,
     // while deployment-local config.php remains byte-identical.
@@ -549,5 +613,6 @@ try {
     @unlink($externalBackup);
     @unlink($unsafeZip);
     @unlink($downloadedCopy);
+    @unlink($badContractBackup);
     if (isset($legacyV2)) @unlink($legacyV2);
 }
