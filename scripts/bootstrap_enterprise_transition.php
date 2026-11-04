@@ -31,11 +31,12 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/upgrade.php' => [
-        'target' => 'f0d50481c0a80c474117c5a990401940b330607e',
+        'target' => '2fe2499b10fec014cadafa7938a5dea89f878eb9',
         'allowed' => [
             'a240b32ed60106ebf564ce01df7ad94ce1134265',
             '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
             'f0d50481c0a80c474117c5a990401940b330607e',
+            '2fe2499b10fec014cadafa7938a5dea89f878eb9',
         ],
     ],
     'lib/path.php' => [
@@ -51,23 +52,30 @@ const BRIDGE_FILES = [
         'may_be_absent' => true,
         'metadata_reference' => 'lib/path.php',
     ],
+    'lib/system_cli_bootstrap.php' => [
+        'target' => 'b3f79991c7cd17a7b35b90c5eb91afb67d36d4bf',
+        'allowed' => ['b3f79991c7cd17a7b35b90c5eb91afb67d36d4bf'],
+        'may_be_absent' => true,
+        'metadata_reference' => 'lib/path.php',
+    ],
     'scripts/system_upgrade.php' => [
-        'target' => '49e342b95719ce02c26cb6e2daf561667a4714c9',
+        'target' => 'f72c68d862daa86d44d2edb9fbc725189dcfd969',
         'allowed' => [
             'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
             'c646a5c5774f72663fd31e33157bb9ea641b1baf',
             '49e342b95719ce02c26cb6e2daf561667a4714c9',
+            'f72c68d862daa86d44d2edb9fbc725189dcfd969',
         ],
     ],
     'scripts/system_job.php' => [
-        'target' => 'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7',
-        'allowed' => ['b54dc2d0c46c765490ac8af8b30ceaf05371d3a7'],
+        'target' => '0e69795a74dc23bb0745c1dffb46795b3b5ca13e',
+        'allowed' => ['b54dc2d0c46c765490ac8af8b30ceaf05371d3a7', '0e69795a74dc23bb0745c1dffb46795b3b5ca13e'],
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
     ],
     'scripts/system_healthcheck.php' => [
-        'target' => '197c8ef2544f217a8ec2947938c48361740c9b24',
-        'allowed' => ['197c8ef2544f217a8ec2947938c48361740c9b24'],
+        'target' => 'e47e40d7113f070a9b80c0978923c2d28149fb4b',
+        'allowed' => ['197c8ef2544f217a8ec2947938c48361740c9b24', 'e47e40d7113f070a9b80c0978923c2d28149fb4b'],
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
     ],
