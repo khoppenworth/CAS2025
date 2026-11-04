@@ -37,29 +37,97 @@ $externalBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-import-
 $unsafeZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-unsafe-' . bin2hex(random_bytes(5)) . '.zip';
 $downloadedCopy = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-downloaded-' . bin2hex(random_bytes(5)) . '.zip';
 
-$rewriteBackupManifest = static function (string $source, string $target, callable $mutator): void {
+$convertBackupToLegacyV2 = static function (string $source, string $target): void {
     if (!copy($source, $target)) {
-        throw new RuntimeException('Unable to copy backup for compatibility test.');
+        throw new RuntimeException('Unable to copy backup for legacy-v2 compatibility test.');
     }
 
-    $zip = new ZipArchive();
-    if ($zip->open($target) !== true) {
-        throw new RuntimeException('Unable to open compatibility backup ZIP.');
+    $outer = new ZipArchive();
+    if ($outer->open($target) !== true) {
+        throw new RuntimeException('Unable to open legacy-v2 compatibility backup.');
+    }
+
+    $tempApp = tempnam(sys_get_temp_dir(), 'cas-v2-app-');
+    if ($tempApp === false) {
+        $outer->close();
+        throw new RuntimeException('Unable to create temporary legacy application archive.');
     }
 
     try {
-        $raw = $zip->getFromName('manifest.json');
-        $manifest = is_string($raw) ? json_decode($raw, true) : null;
-        if (!is_array($manifest)) {
-            throw new RuntimeException('Compatibility backup manifest is invalid.');
+        $manifestRaw = $outer->getFromName('manifest.json');
+        $appRaw = $outer->getFromName('application.zip');
+        $manifest = is_string($manifestRaw) ? json_decode($manifestRaw, true) : null;
+        if (!is_array($manifest) || !is_string($appRaw)) {
+            throw new RuntimeException('Source backup is missing its manifest/application archive.');
         }
-        $manifest = $mutator($manifest);
+        if (file_put_contents($tempApp, $appRaw) === false) {
+            throw new RuntimeException('Unable to materialize application archive for v2 conversion.');
+        }
+
+        $inner = new ZipArchive();
+        if ($inner->open($tempApp) !== true) {
+            throw new RuntimeException('Unable to open inner application archive for v2 conversion.');
+        }
+        if ($inner->locateName('config.php') !== false && !$inner->deleteName('config.php')) {
+            $inner->close();
+            throw new RuntimeException('Unable to remove config.php from synthetic v2 application snapshot.');
+        }
+        if (!$inner->close()) {
+            throw new RuntimeException('Unable to finalize synthetic v2 application snapshot.');
+        }
+
+        // Recompute the exact application tree metadata used by SystemBackupManager.
+        $inner = new ZipArchive();
+        if ($inner->open($tempApp, ZipArchive::CHECKCONS) !== true) {
+            throw new RuntimeException('Synthetic v2 application ZIP failed integrity check.');
+        }
+        $files = [];
+        try {
+            for ($i = 0; $i < $inner->numFiles; $i++) {
+                $name = $inner->getNameIndex($i);
+                if (!is_string($name) || $name === '' || str_ends_with($name, '/')) {
+                    continue;
+                }
+                $bytes = $inner->getFromIndex($i);
+                if (!is_string($bytes)) {
+                    throw new RuntimeException('Unable to read synthetic v2 application entry ' . $name);
+                }
+                $files[$name] = hash('sha256', $bytes);
+            }
+        } finally {
+            $inner->close();
+        }
+        ksort($files, SORT_STRING);
+        $tree = hash_init('sha256');
+        foreach ($files as $relative => $fileHash) {
+            hash_update($tree, $relative . "\0" . $fileHash . "\n");
+        }
+
+        $manifest['format_version'] = 2;
+        $manifest['preserve_paths'] = array_values(array_unique(array_merge(
+            is_array($manifest['preserve_paths'] ?? null) ? $manifest['preserve_paths'] : [],
+            ['config.php']
+        )));
+        $manifest['application']['file_count'] = count($files);
+        $manifest['application']['tree_hash'] = hash_final($tree);
+        $manifest['checksums']['application.zip'] = hash_file('sha256', $tempApp);
+
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if (!is_string($json) || !$zip->addFromString('manifest.json', $json . "\n")) {
-            throw new RuntimeException('Unable to rewrite compatibility backup manifest.');
+        if (!is_string($json)) {
+            throw new RuntimeException('Unable to encode synthetic v2 manifest.');
+        }
+
+        $outer->deleteName('application.zip');
+        $outer->deleteName('manifest.json');
+        if (!$outer->addFile($tempApp, 'application.zip')) {
+            throw new RuntimeException('Unable to replace synthetic v2 application archive.');
+        }
+        if (!$outer->addFromString('manifest.json', $json . "\n")) {
+            throw new RuntimeException('Unable to replace synthetic v2 manifest.');
         }
     } finally {
-        $zip->close();
+        $outer->close();
+        @unlink($tempApp);
     }
 };
 
@@ -218,24 +286,9 @@ try {
     // Legacy format-v2 compatibility: same-release restore remains allowed,
     // but a cross-version v2 application restore must fail before live mutation.
     $legacyV2 = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-v2-' . bin2hex(random_bytes(5)) . '.zip';
-    $rewriteBackupManifest(
+    $convertBackupToLegacyV2(
         (string)$listedBackup['backup_set_path'],
-        $legacyV2,
-        static function (array $manifest): array {
-            $manifest['format_version'] = 2;
-            $manifest['preserve_paths'] = array_values(array_unique(array_merge(
-                is_array($manifest['preserve_paths'] ?? null) ? $manifest['preserve_paths'] : [],
-                ['config.php']
-            )));
-            $manifest['installed_release'] = [
-                'tag' => 'v0.test.baseline',
-                'name' => 'Baseline Test Release',
-                'repo' => 'test/repo',
-                'url' => 'https://example.invalid/test/repo',
-                'installed_at' => '2026-11-02T12:00:00-05:00',
-            ];
-            return $manifest;
-        }
+        $legacyV2
     );
     $legacyValidation = $manager->validateBackupSet($legacyV2);
     $assert($legacyValidation['valid'] === true, 'Synthetic same-release v2 backup failed validation.');
