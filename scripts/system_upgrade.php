@@ -142,7 +142,27 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
 
     try {
-        info('Creating and validating full pre-upgrade backup set...');
+        info('Fetching release package before maintenance mode...');
+        $download = $engine->downloadReleaseArchive($repo, $targetRef, $token !== '' ? $token : null);
+        $tempDir = $download['tmp_dir'];
+        $engine->updateRun($run, [
+            'package_path' => $engine->relativeToRoot($download['archive']),
+        ]);
+
+        info('Validating release package before touching live application/database state...');
+        $releaseValidation = $engine->validateReleasePackage($download['extract_root']);
+        info('Release package passed PHP syntax validation for '
+            . (int)($releaseValidation['php_files_linted'] ?? 0) . ' file(s).');
+
+        info('Entering maintenance mode before the authoritative database snapshot...');
+        $manager->setMaintenanceMode(true, 'upgrade');
+        $maintenanceEnabled = true;
+
+        info('Waiting for pre-maintenance application DB sessions to drain...');
+        $manager->waitForApplicationConnectionsToDrain($pdo, 30);
+        info('Application DB sessions drained. No new CAS web request can enter the database while maintenance is active.');
+
+        info('Creating and validating the authoritative pre-upgrade backup set...');
         $backupSet = $manager->createUpgradeBackup(
             $pdo,
             $run['id'],
@@ -160,26 +180,14 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'backup_set' => $backupSet['relative_path'],
             'backup_format_version' => SYSTEM_BACKUP_FORMAT_VERSION,
         ]);
-        info('Verified backup set stored at ' . $backupSet['relative_path']);
+        info('Verified authoritative backup set stored at ' . $backupSet['relative_path']);
 
-        info('Restoring the backup into an isolated candidate database...');
+        info('Restoring the frozen backup into an isolated candidate database...');
         $candidate = $manager->stageCandidateFromBackupSet(
             (string)$backupSet['absolute_path'],
             'upgrade'
         );
         info('Verified candidate database: ' . (string)$candidate['db_name']);
-
-        info('Fetching release package...');
-        $download = $engine->downloadReleaseArchive($repo, $targetRef, $token !== '' ? $token : null);
-        $tempDir = $download['tmp_dir'];
-        $engine->updateRun($run, [
-            'package_path' => $engine->relativeToRoot($download['archive']),
-        ]);
-
-        info('Validating release package before touching the live application...');
-        $releaseValidation = $engine->validateReleasePackage($download['extract_root']);
-        info('Release package passed PHP syntax validation for '
-            . (int)($releaseValidation['php_files_linted'] ?? 0) . ' file(s).');
 
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
             throw new RuntimeException('Verified candidate database connection is unavailable.');
@@ -204,10 +212,6 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         }
         $candidate['pdo']->query('SELECT COUNT(*) FROM users')->fetchColumn();
         info('Candidate database passed post-migration validation.');
-
-        info('Entering controlled maintenance mode for cutover...');
-        $manager->setMaintenanceMode(true, 'upgrade');
-        $maintenanceEnabled = true;
 
         info('Applying the validated release as an exact application deployment...');
         $applicationMutationStarted = true;
