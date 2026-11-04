@@ -612,6 +612,32 @@ final class SystemBackupManager
         }
     }
 
+    public function applyNativeSqlFile(string $dbName, string $path): void
+    {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $dbName)) {
+            throw new RuntimeException('Unsafe candidate database name.');
+        }
+        if (!is_file($path) || (filesize($path) ?: 0) <= 0) {
+            throw new RuntimeException('Migration SQL file is missing or empty: ' . $path);
+        }
+
+        $binary = $this->findExecutable(['mysql', 'mariadb']);
+        if ($binary === null) {
+            throw new RuntimeException('Native MySQL/MariaDB client is required for migrations.');
+        }
+
+        $connection = $this->databaseConnectionSettings(true);
+        $args = [
+            $binary,
+            '--host=' . $connection['host'],
+            '--port=' . (string)$connection['port'],
+            '--user=' . $connection['user'],
+            '--default-character-set=utf8mb4',
+            $dbName,
+        ];
+        $this->runNativeCommand($args, ['MYSQL_PWD' => $connection['pass']], $path);
+    }
+
     public function stageCandidateFromBackupSet(string $archivePath, string $purpose = 'upgrade'): array
     {
         $prepared = $this->prepareBackupSet($archivePath);
