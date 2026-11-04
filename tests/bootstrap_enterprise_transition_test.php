@@ -105,11 +105,17 @@ $makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, 
     );
 
     // Simulate a real deployed server where config.php has legitimate local changes.
-    file_put_contents(
-        $fixture . '/config.php',
-        "\n// DEPLOYMENT-SPECIFIC LOCAL CONFIG MARKER - MUST NEVER BE OVERWRITTEN\n",
-        FILE_APPEND
-    );
+    $configPath = $fixture . '/config.php';
+    $configContents = file_get_contents($configPath);
+    if (!is_string($configContents)) {
+        throw new RuntimeException('Unable to customize fixture config.php.');
+    }
+    $marker = "\n// DEPLOYMENT-SPECIFIC LOCAL CONFIG MARKER - MUST NEVER BE OVERWRITTEN\n";
+    $closing = strrpos($configContents, '?>');
+    $configContents = $closing === false
+        ? $configContents . $marker
+        : substr($configContents, 0, $closing) . $marker . substr($configContents, $closing);
+    file_put_contents($configPath, $configContents);
 
     chmod($fixture . '/config.php', 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
