@@ -473,7 +473,8 @@ final class SystemBackupManager
             $candidate = $this->createVerifiedCandidateDatabase(
                 $prepared['database_path'],
                 $expectedObjects,
-                'restore'
+                'restore',
+                (int)($targetManifest['format_version'] ?? 0) >= 3
             );
 
             // Verify the application snapshot before entering maintenance mode.
@@ -571,7 +572,8 @@ final class SystemBackupManager
     public function createVerifiedCandidateDatabase(
         string $dumpPath,
         array $expectedObjects,
-        string $purpose = 'candidate'
+        string $purpose = 'candidate',
+        bool $extendedContract = true
     ): array {
         if (!is_file($dumpPath) || (filesize($dumpPath) ?: 0) <= 0) {
             throw new RuntimeException('Database snapshot is missing or empty.');
@@ -588,7 +590,8 @@ final class SystemBackupManager
             $this->restoreNativeDump($dumpPath, $dbName);
             $this->grantApplicationUserAccess($admin, $dbName);
             $candidatePdo = $this->connectToDatabase($dbName);
-            $this->verifyDatabaseState($candidatePdo, $expectedObjects);
+            $candidateAdminPdo = $this->connectAdminToDatabase($dbName);
+            $this->verifyDatabaseState($candidateAdminPdo, $expectedObjects, $extendedContract);
 
             // Critical application invariant: a CAS backup must contain the users table.
             $critical = $candidatePdo->query(
@@ -620,7 +623,8 @@ final class SystemBackupManager
             return $this->createVerifiedCandidateDatabase(
                 $prepared['database_path'],
                 $expectedObjects,
-                $purpose
+                $purpose,
+                (int)($manifest['format_version'] ?? 0) >= 3
             );
         } finally {
             $this->cleanupPreparedBackupSet($prepared);
@@ -830,7 +834,7 @@ final class SystemBackupManager
 
     private function verifyNativeDumpInStaging(string $dumpPath, array $expectedObjects): void
     {
-        $candidate = $this->createVerifiedCandidateDatabase($dumpPath, $expectedObjects, 'verify');
+        $candidate = $this->createVerifiedCandidateDatabase($dumpPath, $expectedObjects, 'verify', true);
         try {
             // Successful construction is the verification.
         } finally {
@@ -909,6 +913,29 @@ final class SystemBackupManager
             $s['user'],
             $s['pass'],
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    }
+
+    private function connectAdminToDatabase(string $dbName): PDO
+    {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $dbName)) {
+            throw new RuntimeException('Unsafe database name.');
+        }
+        $s = $this->databaseConnectionSettings(true);
+        return new PDO(
+            sprintf(
+                'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+                $s['host'],
+                $s['port'],
+                $dbName
+            ),
+            $s['user'],
+            $s['pass'],
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]
         );
     }
 
@@ -1299,18 +1326,22 @@ final class SystemBackupManager
 
     private function createDatabaseSnapshot(PDO $pdo, string $destination): array
     {
-        $objects = $this->databaseObjects($pdo, true);
         $dbName = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
         if ($dbName === '' || !preg_match('/^[A-Za-z0-9_]+$/', $dbName)) {
             throw new RuntimeException('Unable to determine a safe source database name.');
         }
+
+        // Inventory with the recovery/admin account so the backup contract covers
+        // routines/events/triggers even when the application account cannot list them.
+        $metadataPdo = $this->connectAdminToDatabase($dbName);
+        $objects = $this->databaseObjects($metadataPdo, true);
 
         $binary = $this->findExecutable(['mysqldump', 'mariadb-dump']);
         if ($binary === null) {
             throw new RuntimeException('Native MySQL/MariaDB dump utility is required (mysqldump or mariadb-dump).');
         }
 
-        $connection = $this->databaseConnectionSettings();
+        $connection = $this->databaseConnectionSettings(true);
         $args = [
             $binary,
             '--host=' . $connection['host'],
@@ -1381,33 +1412,88 @@ final class SystemBackupManager
             $objects[] = $entry;
         }
 
-        usort($objects, static function (array $a, array $b): int {
-            $aType = (string)($a['type'] ?? 'BASE TABLE');
-            $bType = (string)($b['type'] ?? 'BASE TABLE');
-            if ($aType !== $bType) {
-                return $aType === 'BASE TABLE' ? -1 : 1;
+        $routineStatement = $pdo->query(
+            'SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES '
+            . 'WHERE ROUTINE_SCHEMA = DATABASE()'
+        );
+        foreach ($routineStatement ? $routineStatement->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
+            $name = trim((string)($row['ROUTINE_NAME'] ?? ''));
+            $type = strtoupper(trim((string)($row['ROUTINE_TYPE'] ?? '')));
+            if ($name !== '' && in_array($type, ['PROCEDURE', 'FUNCTION'], true)) {
+                $objects[] = ['name' => $name, 'type' => $type, 'row_count' => null];
             }
-            return strcmp((string)$a['name'], (string)$b['name']);
+        }
+
+        $triggerStatement = $pdo->query(
+            'SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()'
+        );
+        foreach ($triggerStatement ? $triggerStatement->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
+            $name = trim((string)($row['TRIGGER_NAME'] ?? ''));
+            if ($name !== '') {
+                $objects[] = ['name' => $name, 'type' => 'TRIGGER', 'row_count' => null];
+            }
+        }
+
+        $eventStatement = $pdo->query(
+            'SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE()'
+        );
+        foreach ($eventStatement ? $eventStatement->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
+            $name = trim((string)($row['EVENT_NAME'] ?? ''));
+            if ($name !== '') {
+                $objects[] = ['name' => $name, 'type' => 'EVENT', 'row_count' => null];
+            }
+        }
+
+        usort($objects, static function (array $a, array $b): int {
+            $typeCompare = strcmp((string)($a['type'] ?? ''), (string)($b['type'] ?? ''));
+            return $typeCompare !== 0
+                ? $typeCompare
+                : strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? ''));
         });
+
         return $objects;
     }
 
-    private function verifyDatabaseState(PDO $pdo, array $expectedObjects): void
+    private function verifyDatabaseState(PDO $pdo, array $expectedObjects, bool $extendedContract = true): void
     {
         $actual = $this->databaseObjects($pdo, true);
+
+        if (!$extendedContract) {
+            $actual = array_values(array_filter(
+                $actual,
+                static fn(array $object): bool => in_array(
+                    (string)($object['type'] ?? ''),
+                    ['BASE TABLE', 'VIEW'],
+                    true
+                )
+            ));
+            $expectedObjects = array_values(array_filter(
+                $expectedObjects,
+                static fn(array $object): bool => in_array(
+                    (string)($object['type'] ?? ''),
+                    ['BASE TABLE', 'VIEW'],
+                    true
+                )
+            ));
+        }
 
         $normalize = static function (array $objects): array {
             $result = [];
             foreach ($objects as $object) {
                 $name = (string)($object['name'] ?? '');
+                $type = (string)($object['type'] ?? 'BASE TABLE');
                 if ($name === '') {
                     continue;
                 }
-                $result[$name] = [
-                    'type' => (string)($object['type'] ?? 'BASE TABLE'),
-                    'row_count' => ($object['type'] ?? '') === 'VIEW'
-                        ? null
-                        : (int)($object['row_count'] ?? 0),
+
+                // Type is part of the key because MySQL namespaces can contain
+                // different object classes with the same visible name.
+                $key = $type . ':' . $name;
+                $result[$key] = [
+                    'type' => $type,
+                    'row_count' => $type === 'BASE TABLE'
+                        ? (int)($object['row_count'] ?? 0)
+                        : null,
                 ];
             }
             ksort($result, SORT_STRING);
@@ -1415,7 +1501,9 @@ final class SystemBackupManager
         };
 
         if ($normalize($expectedObjects) !== $normalize($actual)) {
-            throw new RuntimeException('Database verification failed after restore: schema or row counts do not match the backup.');
+            throw new RuntimeException(
+                'Database verification failed after restore: database objects or table row counts do not match the backup.'
+            );
         }
     }
 
