@@ -134,7 +134,7 @@ $makeFixture = static function (string $name, string $dbName) use (
     return $fixture;
 };
 
-$createReleaseZip = static function (string $filename, string $migrationSql) use ($repoRoot): void {
+$createReleaseZip = static function (string $filename, string $migrationSql, string $legacySql) use ($repoRoot): void {
     $zip = new ZipArchive();
     if ($zip->open($filename, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         throw new RuntimeException('Unable to create release test ZIP.');
@@ -156,6 +156,7 @@ $createReleaseZip = static function (string $filename, string $migrationSql) use
         elseif ($entry->isFile()) $zip->addFile($absolute, $prefix . $relative);
     }
     $zip->addFromString($prefix . 'migration.sql', $migrationSql);
+    $zip->addFromString($prefix . 'upgrade_to_v3.sql', $legacySql);
     $zip->close();
 };
 
@@ -192,8 +193,18 @@ try {
     mkdir($serverDir, 0750, true);
     $goodZip = $serverDir . '/good.zip';
     $badZip = $serverDir . '/bad.zip';
-    $createReleaseZip($goodZip, "CREATE TABLE upgrade_candidate_probe (id INT PRIMARY KEY, marker VARCHAR(50) NOT NULL);\nINSERT INTO upgrade_candidate_probe VALUES (1, 'candidate-only');\n");
-    $createReleaseZip($badZip, "THIS IS DELIBERATELY INVALID SQL;\n");
+    $legacyMarkerSql = "CREATE TABLE legacy_migration_should_not_run (id INT PRIMARY KEY);\n";
+    $createReleaseZip(
+        $goodZip,
+        "CREATE TABLE upgrade_candidate_probe (id INT PRIMARY KEY, marker VARCHAR(50) NOT NULL);\n"
+            . "INSERT INTO upgrade_candidate_probe VALUES (1, 'candidate-only');\n",
+        $legacyMarkerSql
+    );
+    $createReleaseZip(
+        $badZip,
+        "THIS IS DELIBERATELY INVALID SQL;\n",
+        $legacyMarkerSql
+    );
 
     $http = $startServer($serverDir);
 
@@ -272,7 +283,13 @@ try {
             );
             $assert(
                 (string)$candidate->query('SELECT marker FROM upgrade_candidate_probe WHERE id=1')->fetchColumn() === 'candidate-only',
-                $name . ': candidate migration did not execute on candidate DB.'
+                $name . ': canonical migration.sql did not execute on candidate DB.'
+            );
+            $assert(
+                (int)$candidate->query(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='legacy_migration_should_not_run'"
+                )->fetchColumn() === 0,
+                $name . ': legacy upgrade_to_v3.sql ran even though migration.sql was present.'
             );
             $installed = json_decode((string)$installedAfter, true);
             $assert(($installed['tag'] ?? '') === '0.5.e2e', $name . ': installed release metadata not updated.');
