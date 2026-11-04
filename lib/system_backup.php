@@ -894,13 +894,13 @@ final class SystemBackupManager
 
     private function grantApplicationUserAccess(PDO $admin, string $dbName): void
     {
-        // If the normal application account already has wildcard access to newly
-        // created candidate DBs, do not require GRANT OPTION unnecessarily.
+        // First prove the normal application account already has the complete
+        // database-scoped privileges required to replay a native CAS dump.
         try {
-            $this->connectToDatabase($dbName)->query('SELECT 1')->fetchColumn();
+            $this->probeCandidatePrivileges($this->connectToDatabase($dbName));
             return;
         } catch (Throwable $directAccessError) {
-            // Fall through to an explicit grant using the maintenance account.
+            // Fall through to an explicit database-scoped grant.
         }
 
         $app = $this->databaseConnectionSettings(false);
@@ -925,7 +925,50 @@ final class SystemBackupManager
             . $quotedUser . '@' . $quotedHost
         );
 
-        $this->connectToDatabase($dbName)->query('SELECT 1')->fetchColumn();
+        $this->probeCandidatePrivileges($this->connectToDatabase($dbName));
+    }
+
+    private function probeCandidatePrivileges(PDO $pdo): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $table = '__cas_priv_' . $suffix;
+        $view = $table . '_v';
+        $trigger = $table . '_tr';
+        $procedure = $table . '_p';
+        $event = $table . '_e';
+
+        try {
+            $pdo->exec('CREATE TABLE ' . $this->quoteIdentifier($table) . ' (id INT PRIMARY KEY, v INT NULL)');
+            $pdo->exec('INSERT INTO ' . $this->quoteIdentifier($table) . ' (id, v) VALUES (1, 1)');
+            $pdo->exec('ALTER TABLE ' . $this->quoteIdentifier($table) . ' ADD COLUMN note VARCHAR(10) NULL');
+            $pdo->exec('CREATE INDEX ' . $this->quoteIdentifier($table . '_idx') . ' ON ' . $this->quoteIdentifier($table) . ' (v)');
+            $pdo->exec('CREATE VIEW ' . $this->quoteIdentifier($view) . ' AS SELECT id FROM ' . $this->quoteIdentifier($table));
+            $pdo->exec(
+                'CREATE TRIGGER ' . $this->quoteIdentifier($trigger)
+                . ' BEFORE INSERT ON ' . $this->quoteIdentifier($table)
+                . ' FOR EACH ROW SET NEW.v = COALESCE(NEW.v, 0)'
+            );
+            $pdo->exec('CREATE PROCEDURE ' . $this->quoteIdentifier($procedure) . '() SELECT 1');
+            $pdo->exec(
+                'CREATE EVENT ' . $this->quoteIdentifier($event)
+                . ' ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 DAY'
+                . ' DO INSERT INTO ' . $this->quoteIdentifier($table) . ' (id, v) VALUES (999999, 1)'
+            );
+        } finally {
+            foreach ([
+                'DROP EVENT IF EXISTS ' . $this->quoteIdentifier($event),
+                'DROP PROCEDURE IF EXISTS ' . $this->quoteIdentifier($procedure),
+                'DROP TRIGGER IF EXISTS ' . $this->quoteIdentifier($trigger),
+                'DROP VIEW IF EXISTS ' . $this->quoteIdentifier($view),
+                'DROP TABLE IF EXISTS ' . $this->quoteIdentifier($table),
+            ] as $sql) {
+                try {
+                    $pdo->exec($sql);
+                } catch (Throwable $cleanupError) {
+                    // Candidate creation will fail and drop the whole DB if the probe failed.
+                }
+            }
+        }
     }
 
     private function databaseConnectionSettings(bool $admin = false): array
