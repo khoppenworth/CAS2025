@@ -244,6 +244,26 @@ try {
     $pdo->exec("INSERT INTO related_data (baseline_id, value_text) VALUES (1, 'child value')");
     $pdo->exec("CREATE VIEW baseline_view AS SELECT id, CONCAT(label, ';quoted''value') AS decorated FROM baseline_data");
 
+    // Enterprise DB-object contract: routines, functions, triggers and events
+    // must survive the same verified native dump/restore round-trip as tables/views.
+    $pdo->exec(
+        'CREATE PROCEDURE backup_probe_procedure() '
+        . 'READS SQL DATA SELECT COUNT(*) AS c FROM baseline_data'
+    );
+    $pdo->exec(
+        'CREATE FUNCTION backup_probe_function(input_value INT) RETURNS INT '
+        . 'DETERMINISTIC NO SQL RETURN input_value + 1'
+    );
+    $pdo->exec(
+        'CREATE TRIGGER backup_probe_trigger BEFORE INSERT ON baseline_data '
+        . 'FOR EACH ROW SET NEW.label = TRIM(NEW.label)'
+    );
+    $pdo->exec(
+        'CREATE EVENT backup_probe_event '
+        . 'ON SCHEDULE EVERY 1 DAY STARTS CURRENT_TIMESTAMP + INTERVAL 1 DAY '
+        . 'DO UPDATE baseline_data SET label = label WHERE id = -1'
+    );
+
     $manager = new SystemBackupManager($root);
 
     $backupTarget = $root . '/storage/upgrades/manual/roundtrip.zip';
@@ -469,6 +489,47 @@ try {
         $viewValue === "alpha;beta;quoted'value",
         'Database view with semicolon and quoted literal was not restored correctly.'
     );
+
+    $routineRows = $pdo->query(
+        "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES "
+        . "WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME IN "
+        . "('backup_probe_procedure','backup_probe_function')"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    $routineMap = [];
+    foreach ($routineRows as $routineRow) {
+        $routineMap[(string)$routineRow['ROUTINE_NAME']] = strtoupper((string)$routineRow['ROUTINE_TYPE']);
+    }
+    $assert(
+        ($routineMap['backup_probe_procedure'] ?? '') === 'PROCEDURE',
+        'Stored procedure was not restored.'
+    );
+    $assert(
+        ($routineMap['backup_probe_function'] ?? '') === 'FUNCTION',
+        'Stored function was not restored.'
+    );
+    $assert(
+        (int)$pdo->query('SELECT backup_probe_function(41)')->fetchColumn() === 42,
+        'Restored stored function is not executable.'
+    );
+
+    $procedure = $pdo->query('CALL backup_probe_procedure()');
+    $procedureCount = $procedure ? (int)$procedure->fetchColumn() : -1;
+    if ($procedure) {
+        $procedure->closeCursor();
+    }
+    $assert($procedureCount === count($edgeValues) + 2, 'Restored stored procedure returned the wrong result.');
+
+    $triggerCount = (int)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TRIGGERS "
+        . "WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'backup_probe_trigger'"
+    )->fetchColumn();
+    $assert($triggerCount === 1, 'Database trigger was not restored.');
+
+    $eventCount = (int)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.EVENTS "
+        . "WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = 'backup_probe_event'"
+    )->fetchColumn();
+    $assert($eventCount === 1, 'Scheduled database event was not restored.');
 
     $emergency = $manager->findBackupSet((string)$restore['emergency_backup_id']);
     $assert($emergency !== null, 'Emergency pre-restore backup is not retained in the backup catalog.');
