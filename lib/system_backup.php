@@ -434,6 +434,7 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $cutoverMutated = false;
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
             $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
@@ -466,6 +467,7 @@ final class SystemBackupManager
             }
 
             $this->switchActiveDatabase($candidate['db_name']);
+            $cutoverMutated = true;
 
             $installed = $targetManifest['installed_release'] ?? null;
             if (is_array($installed) && $installed !== []) {
@@ -486,10 +488,12 @@ final class SystemBackupManager
             // Restore the exact pre-operation pointer and installed-release metadata.
             // The original live database itself is never rewritten.
             $stateRollbackError = null;
-            try {
-                $this->restoreCutoverState($cutoverState);
-            } catch (Throwable $stateFailure) {
-                $stateRollbackError = $stateFailure;
+            if ($cutoverMutated) {
+                try {
+                    $this->restoreCutoverState($cutoverState);
+                } catch (Throwable $stateFailure) {
+                    $stateRollbackError = $stateFailure;
+                }
             }
 
             // Restore application files from the independently verified emergency backup.
