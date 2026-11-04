@@ -561,42 +561,9 @@ final class UpgradeEngine
 
     public function restoreDatabaseFromDump(PDO $pdo, string $dumpPath): void
     {
-        if (!is_file($dumpPath)) {
-            throw new RuntimeException('Database dump not found at ' . $dumpPath);
-        }
-
-        $handle = fopen($dumpPath, 'r');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to open database dump at ' . $dumpPath);
-        }
-
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        try {
-            $buffer = '';
-            while (($line = fgets($handle)) !== false) {
-                $trimmed = trim($line);
-                if ($trimmed === '' || strpos($trimmed, '--') === 0) {
-                    continue;
-                }
-
-                $buffer .= $line;
-                if (substr(rtrim($line), -1) === ';') {
-                    $statement = trim($buffer);
-                    if ($statement !== '') {
-                        $pdo->exec($statement);
-                    }
-                    $buffer = '';
-                }
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $pdo->exec($statement);
-            }
-        } finally {
-            fclose($handle);
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-        }
+        throw new RuntimeException(
+            'Legacy destructive in-place database restore is disabled. Import or use a verified full backup set so CAS can restore into an isolated candidate database.'
+        );
     }
 
     public function downloadReleaseArchive(string $source, string $reference, ?string $token = null): array
