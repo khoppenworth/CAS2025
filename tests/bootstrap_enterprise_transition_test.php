@@ -104,6 +104,29 @@ $makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, 
         . "BASE_URL=/\n"
     );
 
+    // Use the actual 0.5.95 bootstrap schema so bridge preflight performs
+    // a real dump/temporary-restore round-trip against a representative database.
+    $client = is_executable('/usr/bin/mysql')
+        ? '/usr/bin/mysql'
+        : (is_executable('/usr/bin/mariadb') ? '/usr/bin/mariadb' : '');
+    if ($client === '') {
+        throw new RuntimeException('Native mysql/mariadb client is unavailable in bridge fixture.');
+    }
+    $schemaCommand = 'exec ' . escapeshellarg($client)
+        . ' --host=' . escapeshellarg($host)
+        . ' --port=' . escapeshellarg((string)$port)
+        . ' --user=' . escapeshellarg($user)
+        . ' --default-character-set=utf8mb4 '
+        . escapeshellarg($baseDb)
+        . ' < ' . escapeshellarg($fixture . '/init.sql');
+    $schema = $run(
+        ['/bin/bash', '-lc', $schemaCommand],
+        ['MYSQL_PWD' => $pass]
+    );
+    if ($schema['exit'] !== 0) {
+        throw new RuntimeException('Unable to initialize bridge fixture from 0.5.95 init.sql: ' . $schema['stderr']);
+    }
+
     // Simulate a real deployed server where config.php has legitimate local changes.
     $configPath = $fixture . '/config.php';
     $configContents = file_get_contents($configPath);
