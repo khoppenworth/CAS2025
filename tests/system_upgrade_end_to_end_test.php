@@ -271,7 +271,14 @@ try {
     $success = $prepareFixture('success-fixture', $successDb);
     $fixture = $success['root'];
     file_put_contents($fixture . '/obsolete_before_upgrade.php', "<?php echo 'obsolete';\n");
+    file_put_contents($fixture . '/.htaccess', "RewriteEngine On\n# server-local e2e\n");
+    file_put_contents($fixture . '/.user.ini', "upload_max_filesize=64M\n");
+    mkdir($fixture . '/.well-known', 0755, true);
+    file_put_contents($fixture . '/.well-known/acme-probe.txt', "server-local-acme\n");
     $envHash = $sha256($fixture . '/.env');
+    $htaccessHash = $sha256($fixture . '/.htaccess');
+    $userIniHash = $sha256($fixture . '/.user.ini');
+    $wellKnownHash = $sha256($fixture . '/.well-known/acme-probe.txt');
 
     $upgrade = $run([
         PHP_BINARY,
@@ -286,6 +293,12 @@ try {
     $assert($sha256($fixture . '/config.php') === $releaseConfigHash,
         'Successful upgrade did not install the tracked release config.php.');
     $assert($sha256($fixture . '/.env') === $envHash, 'Successful upgrade changed .env.');
+    $assert($sha256($fixture . '/.htaccess') === $htaccessHash, 'Successful upgrade changed server-local .htaccess.');
+    $assert($sha256($fixture . '/.user.ini') === $userIniHash, 'Successful upgrade changed server-local .user.ini.');
+    $assert(
+        $sha256($fixture . '/.well-known/acme-probe.txt') === $wellKnownHash,
+        'Successful upgrade changed server-local .well-known content.'
+    );
     $assert(!file_exists($fixture . '/obsolete_before_upgrade.php'),
         'Exact deployment did not remove obsolete application file.');
 
@@ -325,6 +338,12 @@ try {
     $assert($sha256($fixture . '/config.php') === $releaseConfigHash,
         'Restore changed tracked release config unexpectedly.');
     $assert($sha256($fixture . '/.env') === $envHash, 'Restore changed .env.');
+    $assert($sha256($fixture . '/.htaccess') === $htaccessHash, 'Restore changed server-local .htaccess.');
+    $assert($sha256($fixture . '/.user.ini') === $userIniHash, 'Restore changed server-local .user.ini.');
+    $assert(
+        $sha256($fixture . '/.well-known/acme-probe.txt') === $wellKnownHash,
+        'Restore changed server-local .well-known content.'
+    );
 
     $restoredPointer = json_decode((string)file_get_contents($pointerPath), true);
     $restoredDb = is_array($restoredPointer) ? (string)($restoredPointer['db_name'] ?? '') : '';
@@ -344,8 +363,15 @@ try {
     $failureDb = 'cas_e2e_failure_' . $suffix;
     $failure = $prepareFixture('failure-fixture', $failureDb);
     $fixtureFail = $failure['root'];
+    file_put_contents($fixtureFail . '/.htaccess', "RewriteEngine On\n# rollback-local e2e\n");
+    file_put_contents($fixtureFail . '/.user.ini', "memory_limit=256M\n");
+    mkdir($fixtureFail . '/.well-known', 0755, true);
+    file_put_contents($fixtureFail . '/.well-known/acme-probe.txt', "rollback-acme\n");
     $configBeforeFailure = $sha256($fixtureFail . '/config.php');
     $envBeforeFailure = $sha256($fixtureFail . '/.env');
+    $htaccessBeforeFailure = $sha256($fixtureFail . '/.htaccess');
+    $userIniBeforeFailure = $sha256($fixtureFail . '/.user.ini');
+    $wellKnownBeforeFailure = $sha256($fixtureFail . '/.well-known/acme-probe.txt');
     $installedBeforeFailure = $sha256($fixtureFail . '/storage/upgrades/installed.json');
     $systemUpgradeBeforeFailure = $sha256($fixtureFail . '/scripts/system_upgrade.php');
     file_put_contents($fixtureFail . '/legacy_only_before_failure.txt', "must return after rollback\n");
@@ -365,6 +391,12 @@ try {
     $assert($sha256($fixtureFail . '/config.php') === $configBeforeFailure,
         'Failed upgrade did not restore customized config.php byte-identically.');
     $assert($sha256($fixtureFail . '/.env') === $envBeforeFailure, 'Failed upgrade changed .env.');
+    $assert($sha256($fixtureFail . '/.htaccess') === $htaccessBeforeFailure, 'Failed upgrade changed server-local .htaccess.');
+    $assert($sha256($fixtureFail . '/.user.ini') === $userIniBeforeFailure, 'Failed upgrade changed server-local .user.ini.');
+    $assert(
+        $sha256($fixtureFail . '/.well-known/acme-probe.txt') === $wellKnownBeforeFailure,
+        'Failed upgrade changed server-local .well-known content.'
+    );
     $assert($sha256($fixtureFail . '/storage/upgrades/installed.json') === $installedBeforeFailure,
         'Failed upgrade did not restore installed metadata exactly.');
     $assert($sha256($fixtureFail . '/scripts/system_upgrade.php') === $systemUpgradeBeforeFailure,
