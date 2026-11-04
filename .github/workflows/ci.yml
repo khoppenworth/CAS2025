@@ -42,6 +42,8 @@ jobs:
           mysql --version
       - name: PHP lint
         run: make lint
+      - name: Enterprise runtime request-scope regression
+        run: php tests/enterprise_runtime_test.php
       - name: Fetch release tags for enterprise bridge test
         run: git fetch --tags --force
       - name: Legacy 0.5.95 to enterprise updater bridge (MySQL)
@@ -118,6 +120,8 @@ jobs:
           fi
           mariadb-dump --version
           mariadb --version
+      - name: Enterprise runtime request-scope regression
+        run: php tests/enterprise_runtime_test.php
       - name: Fetch release tags for enterprise bridge test
         run: git fetch --tags --force
       - name: Legacy 0.5.95 to enterprise updater bridge (MariaDB 10.11)
