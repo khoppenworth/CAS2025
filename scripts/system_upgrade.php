@@ -93,6 +93,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preservePaths = array_values(array_unique(array_merge([
         '.git',
         '.env',
+        '.htaccess',
+        '.user.ini',
         'config.php',
         'assets/uploads',
         'storage',
