@@ -343,6 +343,60 @@ try {
     $emergencyValidation = $manager->validateBackupSet((string)$emergency['backup_set_path']);
     $assert($emergencyValidation['valid'] === true, 'Emergency pre-restore backup failed validation.');
 
+    // Inject a failure after DB pointer + installed metadata cutover and prove that
+    // pointer state, installed metadata, application files, config.php and the
+    // previously active database all return exactly to their pre-restore state.
+    file_put_contents($root . '/index.php', "<?php echo 'current-before-failed-restore';\n");
+    $pdo->exec("UPDATE baseline_data SET label='current-before-failed-restore-db' WHERE id=1");
+    file_put_contents(
+        $root . '/storage/upgrades/installed.json',
+        json_encode(['tag' => 'current-before-failed-restore', 'name' => 'Current Before Failed Restore'], JSON_PRETTY_PRINT) . "\n"
+    );
+
+    $pointerBeforeFailedRestore = file_get_contents($root . '/storage/upgrades/active_database.json');
+    $installedBeforeFailedRestore = file_get_contents($root . '/storage/upgrades/installed.json');
+    $configBeforeFailedRestore = file_get_contents($root . '/config.php');
+    $indexBeforeFailedRestore = file_get_contents($root . '/index.php');
+    $dbBeforeFailedRestore = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+
+    putenv('CAS_RESTORE_TEST_MODE=1');
+    putenv('CAS_RESTORE_FAIL_AT=after_installed_metadata');
+    $restoreFailed = false;
+    try {
+        $manager->restoreBackupSet($pdo, $backup['absolute_path']);
+    } catch (RuntimeException $e) {
+        $restoreFailed = str_contains($e->getMessage(), 'Injected restore failure');
+    } finally {
+        putenv('CAS_RESTORE_TEST_MODE');
+        putenv('CAS_RESTORE_FAIL_AT');
+    }
+
+    $assert($restoreFailed, 'Injected restore cutover failure did not fail as expected.');
+    $assert(
+        file_get_contents($root . '/storage/upgrades/active_database.json') === $pointerBeforeFailedRestore,
+        'Failed restore did not restore the exact prior active DB pointer state.'
+    );
+    $assert(
+        file_get_contents($root . '/storage/upgrades/installed.json') === $installedBeforeFailedRestore,
+        'Failed restore did not restore exact prior installed-release metadata.'
+    );
+    $assert(
+        file_get_contents($root . '/config.php') === $configBeforeFailedRestore,
+        'Failed restore changed config.php.'
+    );
+    $assert(
+        file_get_contents($root . '/index.php') === $indexBeforeFailedRestore,
+        'Failed restore did not restore the pre-restore application state.'
+    );
+    $assert(
+        (string)$pdo->query('SELECT DATABASE()')->fetchColumn() === $dbBeforeFailedRestore,
+        'Failed restore changed the existing PDO live database identity.'
+    );
+    $assert(
+        (string)$pdo->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn() === 'current-before-failed-restore-db',
+        'Failed restore modified the previously active database.'
+    );
+
     fwrite(
         STDOUT,
         "Verified full backup/restore round-trip passed against "
