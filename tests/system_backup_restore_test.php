@@ -37,6 +37,32 @@ $externalBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-import-
 $unsafeZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-unsafe-' . bin2hex(random_bytes(5)) . '.zip';
 $downloadedCopy = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-downloaded-' . bin2hex(random_bytes(5)) . '.zip';
 
+$rewriteBackupManifest = static function (string $source, string $target, callable $mutator): void {
+    if (!copy($source, $target)) {
+        throw new RuntimeException('Unable to copy backup for compatibility test.');
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($target) !== true) {
+        throw new RuntimeException('Unable to open compatibility backup ZIP.');
+    }
+
+    try {
+        $raw = $zip->getFromName('manifest.json');
+        $manifest = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($manifest)) {
+            throw new RuntimeException('Compatibility backup manifest is invalid.');
+        }
+        $manifest = $mutator($manifest);
+        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json) || !$zip->addFromString('manifest.json', $json . "\n")) {
+            throw new RuntimeException('Unable to rewrite compatibility backup manifest.');
+        }
+    } finally {
+        $zip->close();
+    }
+};
+
 $removeDirectory = static function (string $path) use (&$removeDirectory): void {
     if (!is_dir($path)) {
         return;
@@ -187,6 +213,90 @@ try {
     $assert(
         hash_file('sha256', $downloadedCopy) === hash_file('sha256', (string)$listedBackup['backup_set_path']),
         'Downloaded/copied backup bytes differ from the validated server backup.'
+    );
+
+    // Legacy format-v2 compatibility: same-release restore remains allowed,
+    // but a cross-version v2 application restore must fail before live mutation.
+    $legacyV2 = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-v2-' . bin2hex(random_bytes(5)) . '.zip';
+    $rewriteBackupManifest(
+        (string)$listedBackup['backup_set_path'],
+        $legacyV2,
+        static function (array $manifest): array {
+            $manifest['format_version'] = 2;
+            $manifest['preserve_paths'] = array_values(array_unique(array_merge(
+                is_array($manifest['preserve_paths'] ?? null) ? $manifest['preserve_paths'] : [],
+                ['config.php']
+            )));
+            $manifest['installed_release'] = [
+                'tag' => 'v0.test.baseline',
+                'name' => 'Baseline Test Release',
+                'repo' => 'test/repo',
+                'url' => 'https://example.invalid/test/repo',
+                'installed_at' => '2026-11-02T12:00:00-05:00',
+            ];
+            return $manifest;
+        }
+    );
+    $legacyValidation = $manager->validateBackupSet($legacyV2);
+    $assert($legacyValidation['valid'] === true, 'Synthetic same-release v2 backup failed validation.');
+
+    // Change only preserved config.php and prove same-release v2 restore keeps it.
+    file_put_contents($root . '/config.php', "<?php return ['env' => 'same-release-v2-preserved'];\n");
+    $sameReleaseRestore = $manager->restoreBackupSet($pdo, $legacyV2);
+    $assert(
+        file_get_contents($root . '/config.php') === "<?php return ['env' => 'same-release-v2-preserved'];\n",
+        'Same-release v2 restore did not preserve config.php as required by its manifest.'
+    );
+
+    // Point our working PDO at the successful v2 candidate before continuing the test.
+    $v2ActiveDb = (string)($sameReleaseRestore['active_database'] ?? '');
+    $pdo = new PDO(
+        preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $v2ActiveDb,
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
+
+    // Simulate a newer installed application release and ensure the legacy backup
+    // is rejected before changing app files, pointer state, or DB contents.
+    file_put_contents(
+        $root . '/storage/upgrades/installed.json',
+        json_encode([
+            'tag' => 'v0.test.newer',
+            'name' => 'Newer Test Release',
+            'repo' => 'test/repo',
+            'url' => 'https://example.invalid/test/repo',
+            'installed_at' => '2026-11-03T12:00:00-05:00',
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
+    );
+    $pointerBeforeLegacyRefusal = file_get_contents($root . '/storage/upgrades/active_database.json');
+    $configBeforeLegacyRefusal = file_get_contents($root . '/config.php');
+    $legacyRefused = false;
+    try {
+        $manager->restoreBackupSet($pdo, $legacyV2);
+    } catch (RuntimeException $e) {
+        $legacyRefused = str_contains($e->getMessage(), 'Legacy format-v2 backup');
+    }
+    $assert($legacyRefused, 'Cross-version v2 restore was not refused.');
+    $assert(
+        file_get_contents($root . '/storage/upgrades/active_database.json') === $pointerBeforeLegacyRefusal,
+        'Refused cross-version v2 restore changed the active DB pointer.'
+    );
+    $assert(
+        file_get_contents($root . '/config.php') === $configBeforeLegacyRefusal,
+        'Refused cross-version v2 restore changed application config.'
+    );
+
+    // Return installed metadata to the baseline expected by the remaining roundtrip.
+    file_put_contents(
+        $root . '/storage/upgrades/installed.json',
+        json_encode([
+            'tag' => 'v0.test.baseline',
+            'name' => 'Baseline Test Release',
+            'repo' => 'test/repo',
+            'url' => 'https://example.invalid/test/repo',
+            'installed_at' => '2026-11-02T12:00:00-05:00',
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
     );
 
     // Create an external backup and prove that a downloaded set can be imported.
@@ -341,4 +451,5 @@ try {
     @unlink($externalBackup);
     @unlink($unsafeZip);
     @unlink($downloadedCopy);
+    if (isset($legacyV2)) @unlink($legacyV2);
 }
