@@ -979,16 +979,16 @@ final class UpgradeEngine
 
     private function shouldSkip(string $relative, array $exclusions): bool
     {
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
-
-            if (strpos($relative, $entry) === 0) {
+            if ($relative === $entry || str_starts_with($relative, $entry . '/')) {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -1009,8 +1009,14 @@ final class UpgradeEngine
             throw new RuntimeException('Unable to encode JSON for ' . $path);
         }
 
-        if (file_put_contents($path, $json . "\n") === false) {
-            throw new RuntimeException('Unable to write JSON to ' . $path);
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $json . "\n", LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to stage JSON for ' . $path);
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically write JSON to ' . $path);
         }
     }
 
