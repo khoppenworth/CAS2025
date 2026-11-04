@@ -690,13 +690,51 @@ final class UpgradeEngine
 
     public function deployRelease(string $sourcePath, array $preserve = []): void
     {
-        $exclusions = ['storage/upgrades'];
+        if (!is_dir($sourcePath)) {
+            throw new RuntimeException('Release source directory does not exist: ' . $sourcePath);
+        }
+
+        $exclusions = ['.git', '.env', 'config.php', 'assets/uploads', 'storage'];
         foreach ($preserve as $item) {
-            $normalized = trim((string)$item, '/');
+            $normalized = trim(str_replace('\\', '/', (string)$item), '/');
             if ($normalized === '' || in_array($normalized, $exclusions, true)) {
                 continue;
             }
             $exclusions[] = $normalized;
+        }
+
+        // Exact deployment: remove non-preserved live paths that do not exist in
+        // the target release. This prevents stale PHP/JS/CSS from surviving upgrades.
+        $current = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($current as $fileInfo) {
+            $relative = substr($fileInfo->getPathname(), strlen($this->root) + 1);
+            if ($relative === false || $relative === '') {
+                continue;
+            }
+
+            $relative = str_replace('\\', '/', $relative);
+            if ($this->shouldSkip($relative, $exclusions)) {
+                continue;
+            }
+
+            $sourceEquivalent = $sourcePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+            if (file_exists($sourceEquivalent) || is_link($sourceEquivalent)) {
+                continue;
+            }
+
+            if ($fileInfo->isDir()) {
+                if (!@rmdir($fileInfo->getPathname()) && is_dir($fileInfo->getPathname())) {
+                    throw new RuntimeException('Unable to remove stale release directory ' . $relative);
+                }
+            } else {
+                if (!@unlink($fileInfo->getPathname()) && file_exists($fileInfo->getPathname())) {
+                    throw new RuntimeException('Unable to remove stale release file ' . $relative);
+                }
+            }
         }
 
         $directoryIterator = new RecursiveDirectoryIterator(
@@ -709,7 +747,6 @@ final class UpgradeEngine
         );
 
         foreach ($iterator as $fileInfo) {
-            /** @var SplFileInfo $fileInfo */
             $relative = substr($fileInfo->getPathname(), strlen($sourcePath) + 1);
             if ($relative === false || $relative === '') {
                 continue;
@@ -724,18 +761,18 @@ final class UpgradeEngine
 
             if ($fileInfo->isDir()) {
                 if (!is_dir($target) && !mkdir($target, 0755, true) && !is_dir($target)) {
-                    throw new RuntimeException('Unable to create directory ' . $target);
+                    throw new RuntimeException('Unable to create release directory ' . $target);
                 }
                 continue;
             }
 
             $directory = dirname($target);
             if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-                throw new RuntimeException('Unable to create directory ' . $directory);
+                throw new RuntimeException('Unable to create release directory ' . $directory);
             }
 
             if (!copy($fileInfo->getPathname(), $target)) {
-                throw new RuntimeException('Failed to copy ' . $fileInfo->getPathname() . ' to ' . $target);
+                throw new RuntimeException('Failed to copy release file ' . $relative);
             }
         }
     }
@@ -1012,12 +1049,14 @@ final class UpgradeEngine
 
     private function shouldSkip(string $relative, array $exclusions): bool
     {
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
 
-            if (strpos($relative, $entry) === 0) {
+            if ($relative === $entry || strpos($relative, $entry . '/') === 0) {
                 return true;
             }
         }
