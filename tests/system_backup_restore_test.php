@@ -467,11 +467,7 @@ try {
     $pdo->exec('DELETE FROM related_data');
 
     $originalDbName = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
-    $restore = $manager->restoreBackupSet(
-        $pdo,
-        $backup['absolute_path'],
-        ['lib/path.php', 'lib/enterprise_runtime.php']
-    );
+    $restore = $manager->restoreBackupSet($pdo, $backup['absolute_path']);
 
     $assert(($restore['restored_id'] ?? '') === 'roundtrip_test', 'Restore returned the wrong backup identifier.');
     $assert(($restore['previous_database'] ?? '') === $originalDbName, 'Restore did not retain the original database identity.');
