@@ -113,7 +113,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $maintenanceEnabled = false;
     $liveApplicationChanged = false;
     $pointerSwitched = false;
-    $previousPointerState = captureActiveDatabasePointerState();
+    $previousCutoverState = system_backup_manager()->captureCutoverState();
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -213,14 +213,12 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         if (is_array($backupSet) && !empty($backupSet['absolute_path']) && ($liveApplicationChanged || $pointerSwitched)) {
             try {
                 info('Upgrade failed during cutover. Restoring only the previous application and runtime pointers; the original live database is not restored or rewritten.');
-                if ($pointerSwitched) {
-                    restoreActiveDatabasePointerState($previousPointerState);
-                    $pointerSwitched = false;
-                }
+                system_backup_manager()->restoreCutoverState($previousCutoverState);
+                $pointerSwitched = false;
                 system_backup_manager()->restoreApplicationFromBackupSet(
                     (string)$backupSet['absolute_path'],
                     $preservePaths,
-                    true
+                    false
                 );
                 $liveApplicationChanged = false;
                 $rollbackMessage = 'Automatic cutover rollback completed using backup ' . (string)($backupSet['id'] ?? $run['id']) . '. Original live database remained untouched.';
@@ -433,41 +431,6 @@ function upgradeTestFailpoint(string $name): void
     }
     if ((string)getenv('CAS_UPGRADE_FAIL_AT') === $name) {
         throw new RuntimeException('Injected upgrade failure at ' . $name);
-    }
-}
-
-function captureActiveDatabasePointerState(): array
-{
-    $path = base_path('storage/upgrades/active_database.json');
-    if (!is_file($path)) {
-        return ['exists' => false, 'contents' => null];
-    }
-    $contents = file_get_contents($path);
-    if (!is_string($contents)) {
-        throw new RuntimeException('Unable to read existing active database pointer safely.');
-    }
-    return ['exists' => true, 'contents' => $contents];
-}
-
-function restoreActiveDatabasePointerState(array $state): void
-{
-    $path = base_path('storage/upgrades/active_database.json');
-    if (empty($state['exists'])) {
-        if (is_file($path) && !@unlink($path)) {
-            throw new RuntimeException('Unable to restore the previous absence of active database pointer.');
-        }
-        return;
-    }
-
-    $contents = $state['contents'] ?? null;
-    if (!is_string($contents)) {
-        throw new RuntimeException('Previous active database pointer state is invalid.');
-    }
-
-    $tmp = $path . '.rollback-' . bin2hex(random_bytes(4));
-    if (file_put_contents($tmp, $contents, LOCK_EX) === false || !@rename($tmp, $path)) {
-        @unlink($tmp);
-        throw new RuntimeException('Unable to restore previous active database pointer atomically.');
     }
 }
 
