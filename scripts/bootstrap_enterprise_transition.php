@@ -468,10 +468,22 @@ function proveStagingPrivileges(string $root): void
             $admin->exec('GRANT ALL PRIVILEGES ON ' . $quotedDb . '.* TO ' . $admin->quote($m[1]) . '@' . $admin->quote($m[2]));
             $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $pdoOptions);
         }
-        $appCandidate->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY)');
-        $appCandidate->exec('INSERT INTO bridge_probe VALUES (1)');
+        $appCandidate->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY, v INT NULL)');
+        $appCandidate->exec('INSERT INTO bridge_probe (id, v) VALUES (1, 1)');
+        $appCandidate->exec('ALTER TABLE bridge_probe ADD COLUMN note VARCHAR(10) NULL');
+        $appCandidate->exec('CREATE INDEX bridge_probe_idx ON bridge_probe (v)');
+        $appCandidate->exec('CREATE VIEW bridge_probe_view AS SELECT id FROM bridge_probe');
+        $appCandidate->exec(
+            'CREATE TRIGGER bridge_probe_trigger BEFORE INSERT ON bridge_probe '
+            . 'FOR EACH ROW SET NEW.v = COALESCE(NEW.v, 0)'
+        );
+        $appCandidate->exec('CREATE PROCEDURE bridge_probe_proc() SELECT 1');
+        $appCandidate->exec(
+            'CREATE EVENT bridge_probe_event ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 DAY '
+            . 'DO INSERT INTO bridge_probe (id, v) VALUES (999999, 1)'
+        );
         if ((int)$appCandidate->query('SELECT COUNT(*) FROM bridge_probe')->fetchColumn() !== 1) {
-            throw new RuntimeException('Staging application account write verification failed.');
+            throw new RuntimeException('Staging application account restore-capability verification failed.');
         }
     } finally {
         $admin->exec('DROP DATABASE IF EXISTS ' . $quotedDb);
