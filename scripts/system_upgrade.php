@@ -158,6 +158,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $engine->deployRelease($download['extract_root'], $preservePaths);
         $applicationMutated = true;
         info('Release deployed successfully. config.php and .env were not modified.');
+        upgradeTestFailurePoint('after-deploy');
 
         info('Checking for database migrations against the isolated candidate database...');
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
@@ -181,6 +182,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Switching CAS to the verified candidate database...');
         system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        upgradeTestFailurePoint('after-pointer');
 
         // Prove a fresh PHP process resolves the new runtime pointer through the
         // preserved site config before users are allowed back in.
@@ -193,6 +195,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'url' => $releaseUrl,
             'installed_at' => date(DATE_ATOM),
         ]);
+        upgradeTestFailurePoint('after-installed');
 
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
@@ -433,6 +436,15 @@ USAGE;
 function info(string $message): void
 {
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
+}
+
+function upgradeTestFailurePoint(string $stage): void
+{
+    if (getenv('CAS_UPGRADE_TEST_MODE') === '1'
+        && trim((string)(getenv('CAS_UPGRADE_TEST_FAIL_STAGE') ?: '')) === $stage
+    ) {
+        throw new RuntimeException('Injected upgrade failure at ' . $stage);
+    }
 }
 
 function verifyRuntimeDatabase(string $expectedDatabase): void
