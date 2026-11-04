@@ -53,6 +53,10 @@ final class UpgradeEngine
             return true;
         }
 
+        if (is_file($normalized) || is_dir($normalized)) {
+            return true;
+        }
+
         $absolute = $this->path($normalized);
         return is_file($absolute) || is_dir($absolute);
     }
@@ -604,6 +608,15 @@ final class UpgradeEngine
         $normalized = $this->normalizeSource($source);
         if ($normalized === '') {
             throw new RuntimeException('Unable to determine repository slug from ' . $source);
+        }
+
+        $local = is_dir($normalized) ? realpath($normalized) : false;
+        if ($local !== false && is_dir($local)) {
+            return [
+                'tmp_dir' => null,
+                'archive' => $local,
+                'extract_root' => $local,
+            ];
         }
 
         $downloadUrl = null;
