@@ -422,6 +422,9 @@ final class SystemBackupManager
             throw new RuntimeException('Unable to determine the current live database safely.');
         }
 
+        $pointerState = $this->activeDatabasePointerState();
+        $installedState = $this->installedReleaseState();
+
         $emergencyId = 'pre_restore_' . date('Ymd_His');
         $emergencyPath = $this->emergencyDirectory . DIRECTORY_SEPARATOR . $emergencyId . '.zip';
         $emergency = $this->createBackupSet($pdo, 'emergency', $emergencyPath, [
@@ -483,10 +486,18 @@ final class SystemBackupManager
         } catch (Throwable $restoreError) {
             // Database pointer is switched only at the very end. If anything failed before
             // then, the original live database is still active and untouched.
+            $pointerRollbackError = null;
             try {
-                $this->switchActiveDatabase($currentDatabase);
+                $this->restoreActiveDatabasePointerState($pointerState);
             } catch (Throwable $pointerError) {
-                // Preserve original failure as primary; append pointer rollback details below.
+                $pointerRollbackError = $pointerError;
+            }
+
+            $installedRollbackError = null;
+            try {
+                $this->restoreInstalledReleaseState($installedState);
+            } catch (Throwable $installedError) {
+                $installedRollbackError = $installedError;
             }
 
             // Restore application files from the independently verified emergency backup.
@@ -507,6 +518,12 @@ final class SystemBackupManager
             }
 
             $message = 'Restore failed before a verified cutover completed: ' . $restoreError->getMessage();
+            if ($pointerRollbackError !== null) {
+                $message .= ' Database-pointer rollback also failed: ' . $pointerRollbackError->getMessage();
+            }
+            if ($installedRollbackError !== null) {
+                $message .= ' Installed-release metadata rollback also failed: ' . $installedRollbackError->getMessage();
+            }
             if ($rollbackError === null) {
                 $message .= ' The original database remained available and application files were rolled back from the emergency backup.';
             } else {
@@ -620,6 +637,107 @@ final class SystemBackupManager
         ]);
         if (file_put_contents($flag, $payload) === false) {
             throw new RuntimeException('Unable to enable maintenance mode.');
+        }
+    }
+
+    public function activeDatabasePointerState(): array
+    {
+        $path = $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json';
+        if (!is_file($path)) {
+            return ['exists' => false, 'contents' => null];
+        }
+
+        $contents = file_get_contents($path);
+        if (!is_string($contents)) {
+            throw new RuntimeException('Unable to read active database pointer.');
+        }
+
+        return ['exists' => true, 'contents' => $contents];
+    }
+
+    public function restoreActiveDatabasePointerState(array $state): void
+    {
+        $path = $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json';
+
+        if (empty($state['exists'])) {
+            if (is_file($path) && !@unlink($path)) {
+                throw new RuntimeException('Unable to restore the previous empty database-pointer state.');
+            }
+            return;
+        }
+
+        $contents = (string)($state['contents'] ?? '');
+        $decoded = json_decode($contents, true);
+        $dbName = is_array($decoded) ? trim((string)($decoded['db_name'] ?? '')) : '';
+        if ($dbName === '' || preg_match('/^[A-Za-z0-9_]+$/', $dbName) !== 1) {
+            throw new RuntimeException('Refusing to restore an invalid previous database pointer.');
+        }
+
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $contents, LOCK_EX) === false || !@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore the previous database pointer atomically.');
+        }
+    }
+
+    public function installedReleaseState(): array
+    {
+        if (!is_file($this->installedFile)) {
+            return ['exists' => false, 'contents' => null];
+        }
+
+        $contents = file_get_contents($this->installedFile);
+        if (!is_string($contents)) {
+            throw new RuntimeException('Unable to read installed release metadata.');
+        }
+
+        return ['exists' => true, 'contents' => $contents];
+    }
+
+    public function restoreInstalledReleaseState(array $state): void
+    {
+        if (empty($state['exists'])) {
+            if (is_file($this->installedFile) && !@unlink($this->installedFile)) {
+                throw new RuntimeException('Unable to restore the previous empty installed-release state.');
+            }
+            return;
+        }
+
+        $contents = (string)($state['contents'] ?? '');
+        if (!is_array(json_decode($contents, true))) {
+            throw new RuntimeException('Refusing to restore invalid installed release metadata.');
+        }
+
+        $this->ensureDirectory(dirname($this->installedFile));
+        $tmp = $this->installedFile . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $contents, LOCK_EX) === false || !@rename($tmp, $this->installedFile)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore installed release metadata atomically.');
+        }
+    }
+
+    public function restoreApplicationFromBackupSet(string $archivePath, array $preserve = []): void
+    {
+        $preservePaths = $this->normalizePreservePaths($preserve);
+        $prepared = $this->prepareBackupSet($archivePath);
+
+        try {
+            $manifest = $prepared['manifest'];
+            $this->verifyApplicationArchive(
+                $prepared['application_path'],
+                (string)($manifest['application']['tree_hash'] ?? '')
+            );
+            $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
+
+            $expectedTreeHash = (string)($manifest['application']['tree_hash'] ?? '');
+            if ($expectedTreeHash !== '') {
+                $current = $this->applicationTreeMetadata($preservePaths);
+                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
+                    throw new RuntimeException('Application rollback verification failed.');
+                }
+            }
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
         }
     }
 
@@ -1477,8 +1595,12 @@ final class SystemBackupManager
     private function writeInstalledRelease(array $release): void
     {
         $this->ensureDirectory(dirname($this->installedFile));
-        if (file_put_contents($this->installedFile, $this->encodeJson($release)) === false) {
-            throw new RuntimeException('Unable to restore installed release metadata.');
+        $tmp = $this->installedFile . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $this->encodeJson($release), LOCK_EX) === false
+            || !@rename($tmp, $this->installedFile)
+        ) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore installed release metadata atomically.');
         }
     }
 
