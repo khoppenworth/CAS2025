@@ -61,8 +61,8 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/enterprise_runtime.php' => [
-        'target' => 'fffa004790a197127775d7f09ef42d9adbfb978b',
-        'allowed' => ['66b524da32af90b5939d5120dedd84c3655c2453', 'fffa004790a197127775d7f09ef42d9adbfb978b'],
+        'target' => '2d70e359d50b9d324fd7534463c8f9140f858772',
+        'allowed' => ['66b524da32af90b5939d5120dedd84c3655c2453', 'fffa004790a197127775d7f09ef42d9adbfb978b', '2d70e359d50b9d324fd7534463c8f9140f858772'],
         'may_be_absent' => true,
         'metadata_reference' => 'lib/path.php',
     ],
