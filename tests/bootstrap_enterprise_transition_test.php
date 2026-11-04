@@ -104,6 +104,11 @@ $makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, 
         . "BASE_URL=/\n"
     );
 
+    file_put_contents(
+        $fixture . '/config.php',
+        "\n// SITE-LOCAL CUSTOMIZATION: must survive every bridge/upgrade operation byte-for-byte.\n",
+        FILE_APPEND
+    );
     chmod($fixture . '/config.php', 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
 
@@ -145,9 +150,10 @@ try {
 
     $paths = [
         'admin/upgrade.php',
-        'config.php',
         'lib/system_backup.php',
         'lib/upgrade.php',
+        'lib/path.php',
+        'lib/enterprise_runtime.php',
         'scripts/system_upgrade.php',
         'scripts/system_job.php',
     ];
@@ -157,7 +163,8 @@ try {
             'Installed bridge target differs from repository source: ' . $path
         );
     }
-    $assert((fileperms($fixture . '/config.php') & 0777) === $configMode, 'config.php mode was not preserved.');
+    $assert($blob($fixture . '/config.php') === $beforeConfig, 'Bridge apply changed site-owned config.php.');
+    $assert((fileperms($fixture . '/config.php') & 0777) === $configMode, 'config.php mode changed unexpectedly.');
     $assert((fileperms($fixture . '/scripts/system_upgrade.php') & 0777) === $upgradeMode, 'system_upgrade.php mode was not preserved.');
     $assert((fileperms($fixture . '/scripts/system_job.php') & 0777) === $upgradeMode, 'New system_job.php did not inherit script mode.');
     $assert(
@@ -174,9 +181,10 @@ try {
     ]);
     $assert($second['exit'] === 0, 'Idempotent bridge rerun failed: ' . $second['stderr']);
 
-    // 4) Locally modified updater files must be refused before any other file changes.
+    // 4) Site-local config.php is accepted, but unknown updater-code changes are refused.
     $modified = $makeFixture('modified');
-    file_put_contents($modified . '/config.php', "\n// local unknown modification\n", FILE_APPEND);
+    $modifiedConfigBefore = $blob($modified . '/config.php');
+    file_put_contents($modified . '/lib/upgrade.php', "\n// unknown local updater modification\n", FILE_APPEND);
     $modifiedAdminBefore = $blob($modified . '/admin/upgrade.php');
     $refusal = $run([
         PHP_BINARY, $script,
@@ -184,17 +192,20 @@ try {
         '--source-root=' . $repoRoot,
         '--apply',
     ]);
-    $assert($refusal['exit'] !== 0, 'Bridge unexpectedly accepted a locally modified config.php.');
+    $assert($refusal['exit'] !== 0, 'Bridge unexpectedly accepted an unknown updater-code modification.');
     $assert(
         $blob($modified . '/admin/upgrade.php') === $modifiedAdminBefore,
-        'Bridge changed files before refusing unknown local config.php.'
+        'Bridge changed files before refusing unknown updater code.'
     );
+    $assert($blob($modified . '/config.php') === $modifiedConfigBefore, 'Refused bridge changed config.php.');
     $assert(!file_exists($modified . '/scripts/system_job.php'), 'Refused bridge left new system_job.php behind.');
+    $assert(!file_exists($modified . '/lib/enterprise_runtime.php'), 'Refused bridge left enterprise_runtime.php behind.');
 
     // 5) Injected mid-install failure must restore exact 0.5.95 files and remove new files.
     $rollback = $makeFixture('rollback');
     $original = [];
-    foreach (['admin/upgrade.php','config.php','lib/system_backup.php','lib/upgrade.php','scripts/system_upgrade.php'] as $path) {
+    $rollbackConfigBefore = $blob($rollback . '/config.php');
+    foreach (['admin/upgrade.php','lib/system_backup.php','lib/upgrade.php','lib/path.php','scripts/system_upgrade.php'] as $path) {
         $original[$path] = [
             'blob' => $blob($rollback . '/' . $path),
             'mode' => fileperms($rollback . '/' . $path) & 0777,
@@ -213,6 +224,8 @@ try {
         $assert((fileperms($rollback . '/' . $path) & 0777) === $state['mode'], 'Rollback mode mismatch for ' . $path);
     }
     $assert(!file_exists($rollback . '/scripts/system_job.php'), 'Rollback failed to remove newly created system_job.php.');
+    $assert(!file_exists($rollback . '/lib/enterprise_runtime.php'), 'Rollback failed to remove enterprise_runtime.php.');
+    $assert($blob($rollback . '/config.php') === $rollbackConfigBefore, 'Injected rollback changed config.php.');
 
     echo "Enterprise bootstrap transition test passed.\n";
 } finally {
