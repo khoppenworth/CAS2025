@@ -272,6 +272,17 @@ try {
         "#!/usr/bin/env php\n<?php\ndeclare(strict_types=1);\nfwrite(STDERR, \"INJECTED_POST_CUTOVER_FAILURE\\n\");\nexit(99);\n"
     );
 
+    // A separate release fixture intentionally deletes one pre-upgrade row during
+    // candidate migration. The upgrader must detect that before application
+    // deployment or DB-pointer cutover.
+    $releaseDestructive = $tempRoot . '/release-destructive-migration';
+    $extractGitTree('HEAD', $releaseDestructive);
+    file_put_contents(
+        $releaseDestructive . '/migration.sql',
+        "\nDELETE FROM e2e_upgrade_sentinel WHERE id = 1;\n",
+        FILE_APPEND
+    );
+
     // ---------------------------------------------------------------------
     // Successful real upgrade, then real backup + restore.
     // ---------------------------------------------------------------------
@@ -364,6 +375,47 @@ try {
     $assert($oldCandidateMarker === 'mutated-after-backup',
         'Restore overwrote the previously active DB instead of preserving it.');
     $assert(!is_file($fixture . '/storage/upgrades/maintenance.flag'), 'Maintenance flag remained after successful restore.');
+
+    // ---------------------------------------------------------------------
+    // Destructive candidate migration must be blocked before live mutation.
+    // ---------------------------------------------------------------------
+    $preCutDb = 'cas_e2e_precut_' . $suffix;
+    $preCut = $prepareFixture('precut-fixture', $preCutDb);
+    $fixturePre = $preCut['root'];
+    file_put_contents($fixturePre . '/precut_live_only.txt', "must remain untouched\n");
+    $preConfigHash = $sha256($fixturePre . '/config.php');
+    $preEnvHash = $sha256($fixturePre . '/.env');
+    $preInstalledHash = $sha256($fixturePre . '/storage/upgrades/installed.json');
+    $preLiveFileHash = $sha256($fixturePre . '/precut_live_only.txt');
+
+    $preCutUpgrade = $run([
+        PHP_BINARY,
+        $fixturePre . '/scripts/system_upgrade.php',
+        '--action=upgrade',
+        '--repo=' . $releaseDestructive,
+        '--ref=0.5.102-e2e-destructive',
+    ], $fixturePre);
+    $assert($preCutUpgrade['exit'] !== 0, 'Destructive candidate migration unexpectedly succeeded.');
+    $assert(
+        str_contains($preCutUpgrade['stderr'] . $preCutUpgrade['stdout'], 'reduced row count'),
+        'Destructive candidate migration was not rejected by the data-preservation guard.'
+    );
+    $assert($sha256($fixturePre . '/config.php') === $preConfigHash,
+        'Pre-cutover migration failure changed config.php.');
+    $assert($sha256($fixturePre . '/.env') === $preEnvHash,
+        'Pre-cutover migration failure changed .env.');
+    $assert($sha256($fixturePre . '/storage/upgrades/installed.json') === $preInstalledHash,
+        'Pre-cutover migration failure changed installed release metadata.');
+    $assert($sha256($fixturePre . '/precut_live_only.txt') === $preLiveFileHash,
+        'Pre-cutover migration failure changed live application files.');
+    $assert(!is_file($fixturePre . '/storage/upgrades/active_database.json'),
+        'Pre-cutover migration failure created an active DB pointer.');
+    $assert(!is_file($fixturePre . '/storage/upgrades/maintenance.flag'),
+        'Pre-cutover migration failure left maintenance enabled after verified rollback.');
+    $server->exec('USE ' . chr(96) . $preCutDb . chr(96));
+    $preMarker = (string)$server->query('SELECT marker FROM e2e_upgrade_sentinel WHERE id=1')->fetchColumn();
+    $assert($preMarker === 'original-live-db',
+        'Destructive candidate migration changed the original live database.');
 
     // ---------------------------------------------------------------------
     // Forced failure after pointer/metadata cutover must fully roll back.
