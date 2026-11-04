@@ -22,7 +22,7 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/system_backup.php' => [
-        'target' => 'fab8e6f267638977416209dee78b00a523f725f8',
+        'target' => '2210f1fbf6184cf9c78eed70fd7939ecf5e642d4',
         'allowed' => [
             '48c85a53283aa515ccce0fa9e84f4e02ef8112e8',
             '705af28f16565dfc97acf0142cefb0daf69419fa',
@@ -35,6 +35,7 @@ const BRIDGE_FILES = [
             'd50d952248b8d78739bb14b51844c99dc81c3c34',
             'e83069e3a56947a9aa3df5b291e6c0e9e7e62f5f',
             'fab8e6f267638977416209dee78b00a523f725f8',
+            '2210f1fbf6184cf9c78eed70fd7939ecf5e642d4',
         ],
     ],
     'lib/upgrade.php' => [
@@ -69,7 +70,7 @@ const BRIDGE_FILES = [
         'metadata_reference' => 'lib/path.php',
     ],
     'scripts/system_upgrade.php' => [
-        'target' => '38d4167ffa8b466ee8c2d501af9b88b69f5fc43e',
+        'target' => 'e5055de45acf6af9bb5449fdae88b3ab446d7803',
         'allowed' => [
             'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
             'c646a5c5774f72663fd31e33157bb9ea641b1baf',
@@ -78,6 +79,7 @@ const BRIDGE_FILES = [
             '138c7ec57eb1734d7db2252ec4ae697b15a5e5f9',
             '6acc8e85fc73c77e4875e6ecbbc60c2d057f4030',
             '38d4167ffa8b466ee8c2d501af9b88b69f5fc43e',
+            'e5055de45acf6af9bb5449fdae88b3ab446d7803',
         ],
     ],
     'scripts/system_job.php' => [
