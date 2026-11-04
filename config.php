@@ -190,7 +190,6 @@ if ($isBootstrapRequested) {
 
     $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
     $dbName = getenv('DB_NAME') ?: 'epss_v300';
-
     $dbUser = getenv('DB_USER') ?: 'epss_user';
     $dbPass = getenv('DB_PASS') ?: 'StrongPassword123!';
     $dbPortRaw = getenv('DB_PORT');
