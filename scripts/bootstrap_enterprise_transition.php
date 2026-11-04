@@ -498,7 +498,10 @@ function proveStagingPrivileges(string $root): void
     $adminPass = $get('DB_ADMIN_PASS', $appPass);
 
     if ($appUser === '' || $adminUser === '') {
-        throw new RuntimeException('DB_USER and a staging-capable DB_ADMIN_USER (or DB_USER fallback) are required.');
+        throw new RuntimeException(
+            'DB_USER and a staging-capable DB_ADMIN_USER/DB_ADMIN_PASS '
+            . '(or a DB_USER fallback with CREATE/DROP/GRANT privileges) are required.'
+        );
     }
 
     $dsnBase = 'mysql:host=' . $host . ';port=' . $port . ';charset=utf8mb4';
@@ -508,39 +511,97 @@ function proveStagingPrivileges(string $root): void
         PDO::ATTR_EMULATE_PREPARES => false,
     ];
 
-    $appLive = new PDO($dsnBase . ';dbname=' . $dbName, $appUser, $appPass, $pdoOptions);
-    $currentUser = (string)$appLive->query('SELECT CURRENT_USER()')->fetchColumn();
+    try {
+        $appLive = new PDO($dsnBase . ';dbname=' . $dbName, $appUser, $appPass, $pdoOptions);
+        $currentUser = (string)$appLive->query('SELECT CURRENT_USER()')->fetchColumn();
+    } catch (Throwable $e) {
+        throw new RuntimeException('Unable to connect to the existing live database for read-only preflight: ' . $e->getMessage(), 0, $e);
+    }
+
     if ($currentUser === '' || strpos($currentUser, '@') === false) {
         throw new RuntimeException('Unable to determine the application database account.');
     }
 
-    $admin = new PDO($dsnBase, $adminUser, $adminPass, $pdoOptions);
+    try {
+        $admin = new PDO($dsnBase, $adminUser, $adminPass, $pdoOptions);
+    } catch (Throwable $e) {
+        throw new RuntimeException('Unable to connect with the staging database account: ' . $e->getMessage(), 0, $e);
+    }
+
     $candidate = 'cas_bridge_preflight_' . bin2hex(random_bytes(5));
     $tick = chr(96);
     $quotedDb = $tick . str_replace($tick, $tick . $tick, $candidate) . $tick;
+    $created = false;
+    $primaryError = null;
 
     try {
-        $admin->exec('CREATE DATABASE ' . $quotedDb . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        try {
+            $admin->exec('CREATE DATABASE ' . $quotedDb . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            $created = true;
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Staging preflight cannot create an isolated database. '
+                . 'Configure DB_ADMIN_USER/DB_ADMIN_PASS with CREATE/DROP and permission to grant the CAS application user access. '
+                . 'The live database was not modified. MySQL/MariaDB error: ' . $e->getMessage(),
+                0,
+                $e
+            );
+        }
 
         try {
-            $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $pdoOptions);
-            $appCandidate->query('SELECT 1')->fetchColumn();
-        } catch (Throwable $initialAccessError) {
-            [$accountUser, $accountHost] = explode('@', $currentUser, 2);
-            $admin->exec(
-                'GRANT ALL PRIVILEGES ON ' . $quotedDb . '.* TO '
-                . $admin->quote($accountUser) . '@' . $admin->quote($accountHost)
-            );
-            $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $pdoOptions);
-        }
+            try {
+                $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $pdoOptions);
+                $appCandidate->query('SELECT 1')->fetchColumn();
+            } catch (Throwable $initialAccessError) {
+                [$accountUser, $accountHost] = explode('@', $currentUser, 2);
+                $admin->exec(
+                    'GRANT ALL PRIVILEGES ON ' . $quotedDb . '.* TO '
+                    . $admin->quote($accountUser) . '@' . $admin->quote($accountHost)
+                );
+                $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $pdoOptions);
+            }
 
-        $appCandidate->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY)');
-        $appCandidate->exec('INSERT INTO bridge_probe (id) VALUES (1)');
-        if ((int)$appCandidate->query('SELECT COUNT(*) FROM bridge_probe')->fetchColumn() !== 1) {
-            throw new RuntimeException('Application staging database write test failed.');
+            $appCandidate->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY)');
+            $appCandidate->exec('INSERT INTO bridge_probe (id) VALUES (1)');
+            if ((int)$appCandidate->query('SELECT COUNT(*) FROM bridge_probe')->fetchColumn() !== 1) {
+                throw new RuntimeException('Application staging database write verification failed.');
+            }
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Staging database was created, but the CAS application account could not be granted and verified against it. '
+                . 'The live database was not modified. Error: ' . $e->getMessage(),
+                0,
+                $e
+            );
         }
-    } finally {
-        $admin->exec('DROP DATABASE IF EXISTS ' . $quotedDb);
+    } catch (Throwable $e) {
+        $primaryError = $e;
+    }
+
+    $cleanupError = null;
+    if ($created) {
+        try {
+            $admin->exec('DROP DATABASE ' . $quotedDb);
+        } catch (Throwable $e) {
+            $cleanupError = $e;
+        }
+    }
+
+    if ($primaryError !== null) {
+        $message = $primaryError->getMessage();
+        if ($cleanupError !== null) {
+            $message .= ' Additionally, cleanup of throwaway database ' . $candidate . ' failed: ' . $cleanupError->getMessage();
+        }
+        throw new RuntimeException($message, 0, $primaryError);
+    }
+
+    if ($cleanupError !== null) {
+        throw new RuntimeException(
+            'Staging preflight succeeded but could not remove throwaway database '
+            . $candidate . '. Resolve DROP DATABASE permission before continuing: ' . $cleanupError->getMessage(),
+            0,
+            $cleanupError
+        );
     }
 }
 
