@@ -708,6 +708,13 @@ final class UpgradeEngine
         }
 
         foreach ([
+            // Public/application entry points. Exact deployment is allowed to
+            // remove obsolete files, so a malformed release must be rejected
+            // before maintenance rather than deleting a critical live entry point.
+            'index.php',
+            'login.php',
+            'config.php',
+            'i18n.php',
             'admin/upgrade.php',
             'lib/upgrade.php',
             'lib/system_backup.php',
