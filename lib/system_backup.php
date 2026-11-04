@@ -415,6 +415,30 @@ final class SystemBackupManager
     {
         $prepared = $this->prepareBackupSet($archivePath);
         $targetManifest = $prepared['manifest'];
+
+        // Format-v2 application snapshots intentionally excluded config.php.
+        // They are safe to restore only while the installed application release
+        // still matches the backup. Cross-version v2 restore would create a
+        // mixed application tree, so fail before creating any emergency backup
+        // or touching live state. Format v3 includes tracked config.php.
+        $formatVersion = (int)($targetManifest['format_version'] ?? 0);
+        if ($formatVersion === 2) {
+            $currentInstalled = $this->readInstalledRelease();
+            $targetInstalled = is_array($targetManifest['installed_release'] ?? null)
+                ? $targetManifest['installed_release']
+                : [];
+            $currentTag = trim((string)($currentInstalled['tag'] ?? $currentInstalled['name'] ?? ''));
+            $targetTag = trim((string)($targetInstalled['tag'] ?? $targetInstalled['name'] ?? ''));
+
+            if ($currentTag === '' || $targetTag === '' || !hash_equals($currentTag, $targetTag)) {
+                $this->cleanupPreparedBackupSet($prepared);
+                throw new RuntimeException(
+                    'Legacy format-v2 backup can only restore application files on the same CAS release. '
+                    . 'Use the format-v3 pre-upgrade backup for cross-version rollback.'
+                );
+            }
+        }
+
         $manifestPreserve = is_array($targetManifest['preserve_paths'] ?? null)
             ? $targetManifest['preserve_paths']
             : [];
