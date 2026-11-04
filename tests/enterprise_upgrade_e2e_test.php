@@ -195,8 +195,7 @@ $upgrade = static function (array $fixture, ?string $failureStage = null) use (
     ], $env, $fixture['root']);
 };
 
-$assertProtected = static function (array $fixture) use ($assert): void {
-    $assert(hash_file('sha256', $fixture['root'] . '/config.php') === $fixture['config_hash'], 'config.php changed.');
+$assertServerOwned = static function (array $fixture) use ($assert): void {
     $assert(hash_file('sha256', $fixture['root'] . '/.env') === $fixture['env_hash'], '.env changed.');
     $assert(hash_file('sha256', $fixture['root'] . '/.htaccess') === $fixture['htaccess_hash'], '.htaccess changed.');
     $assert(hash_file('sha256', $fixture['root'] . '/.user.ini') === $fixture['user_ini_hash'], '.user.ini changed.');
@@ -223,7 +222,15 @@ try {
         $successResult['exit'] === 0,
         "Real upgrade command failed.\nSTDOUT:\n{$successResult['stdout']}\nSTDERR:\n{$successResult['stderr']}"
     );
-    $assertProtected($success);
+    $assertServerOwned($success);
+    $assert(
+        hash_file('sha256', $success['root'] . '/config.php') === hash_file('sha256', $repoRoot . '/config.php'),
+        'Successful upgrade did not install the release config.php.'
+    );
+    $assert(
+        hash_file('sha256', $success['root'] . '/config.php') !== $success['config_hash'],
+        'Successful upgrade incorrectly retained customized legacy config.php.'
+    );
     $assertOriginalDb($success);
     $assert(!file_exists($success['root'] . '/obsolete-enterprise-e2e.php'), 'Exact deployment left stale application file.');
     $assert(!file_exists($success['root'] . '/storage/upgrades/maintenance.flag'), 'Maintenance flag remained after success.');
@@ -264,7 +271,11 @@ try {
         $result = $upgrade($fixture, $stage);
         $assert($result['exit'] !== 0, 'Injected failure unexpectedly succeeded at ' . $stage);
 
-        $assertProtected($fixture);
+        $assertServerOwned($fixture);
+        $assert(
+            hash_file('sha256', $fixture['root'] . '/config.php') === $fixture['config_hash'],
+            'Failed upgrade did not restore customized legacy config.php exactly at ' . $stage
+        );
         $assertOriginalDb($fixture);
         $assert(
             (string)file_get_contents($fixture['root'] . '/storage/upgrades/installed.json') === $fixture['installed'],
