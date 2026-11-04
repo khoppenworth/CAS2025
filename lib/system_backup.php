@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const SYSTEM_BACKUP_FORMAT_VERSION = 2;
+const SYSTEM_BACKUP_FORMAT_VERSION = 3;
 
 final class SystemBackupManager
 {
@@ -44,7 +44,6 @@ final class SystemBackupManager
         return [
             '.git',
             '.env',
-            'config.php',
             'assets/uploads',
             'storage',
         ];
@@ -350,7 +349,8 @@ final class SystemBackupManager
                 if (($manifest['format'] ?? '') !== 'cas-full-backup-set') {
                     $errors[] = 'Unsupported backup set format.';
                 }
-                if ((int)($manifest['format_version'] ?? 0) !== SYSTEM_BACKUP_FORMAT_VERSION) {
+                $formatVersion = (int)($manifest['format_version'] ?? 0);
+                if (!in_array($formatVersion, [2, SYSTEM_BACKUP_FORMAT_VERSION], true)) {
                     $errors[] = 'Unsupported backup set format version.';
                 }
                 if (trim((string)($manifest['id'] ?? '')) === '') {
@@ -413,9 +413,12 @@ final class SystemBackupManager
 
     public function restoreBackupSet(PDO $pdo, string $archivePath, array $preserve = []): array
     {
-        $preservePaths = $this->normalizePreservePaths($preserve);
         $prepared = $this->prepareBackupSet($archivePath);
         $targetManifest = $prepared['manifest'];
+        $manifestPreserve = is_array($targetManifest['preserve_paths'] ?? null)
+            ? $targetManifest['preserve_paths']
+            : [];
+        $preservePaths = $this->normalizeExplicitPreservePaths(array_merge($manifestPreserve, $preserve));
         $currentDatabase = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
         if ($currentDatabase === '' || !preg_match('/^[A-Za-z0-9_]+$/', $currentDatabase)) {
             $this->cleanupPreparedBackupSet($prepared);
@@ -1544,6 +1547,20 @@ final class SystemBackupManager
                 }
             }
         }
+    }
+
+    private function normalizeExplicitPreservePaths(array $preserve): array
+    {
+        $result = [];
+        foreach ($preserve as $path) {
+            $normalized = trim(str_replace('\\', '/', (string)$path), '/');
+            if ($normalized !== '') {
+                $result[] = $normalized;
+            }
+        }
+        $result = array_values(array_unique($result));
+        sort($result, SORT_STRING);
+        return $result;
     }
 
     private function normalizePreservePaths(array $preserve): array
