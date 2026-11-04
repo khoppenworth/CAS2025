@@ -108,6 +108,16 @@ $convertBackupToLegacyV2 = static function (string $source, string $target): voi
             is_array($manifest['preserve_paths'] ?? null) ? $manifest['preserve_paths'] : [],
             ['config.php']
         )));
+        $legacyObjects = array_values(array_filter(
+            is_array($manifest['database']['objects'] ?? null) ? $manifest['database']['objects'] : [],
+            static fn(array $object): bool => in_array(
+                (string)($object['type'] ?? ''),
+                ['BASE TABLE', 'VIEW'],
+                true
+            )
+        ));
+        $manifest['database']['objects'] = $legacyObjects;
+        $manifest['database']['object_count'] = count($legacyObjects);
         $manifest['application']['file_count'] = count($files);
         $manifest['application']['tree_hash'] = hash_final($tree);
         $manifest['checksums']['application.zip'] = hash_file('sha256', $tempApp);
@@ -303,35 +313,19 @@ try {
         'Downloaded/copied backup bytes differ from the validated server backup.'
     );
 
-    // Legacy format-v2 compatibility: same-release restore remains allowed,
-    // but a cross-version v2 application restore must fail before live mutation.
+    // Legacy v2 compatibility: manifests created by 0.5.101 list only
+    // tables/views. They must remain restorable across release metadata changes,
+    // while deployment-local config.php remains byte-identical.
     $legacyV2 = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-v2-' . bin2hex(random_bytes(5)) . '.zip';
     $convertBackupToLegacyV2(
         (string)$listedBackup['backup_set_path'],
         $legacyV2
     );
     $legacyValidation = $manager->validateBackupSet($legacyV2);
-    $assert($legacyValidation['valid'] === true, 'Synthetic same-release v2 backup failed validation.');
+    $assert($legacyValidation['valid'] === true, 'Synthetic legacy v2 backup failed validation.');
 
-    // Change only preserved config.php and prove same-release v2 restore keeps it.
-    file_put_contents($root . '/config.php', "<?php return ['env' => 'same-release-v2-preserved'];\n");
-    $sameReleaseRestore = $manager->restoreBackupSet($pdo, $legacyV2);
-    $assert(
-        file_get_contents($root . '/config.php') === "<?php return ['env' => 'same-release-v2-preserved'];\n",
-        'Same-release v2 restore did not preserve config.php as required by its manifest.'
-    );
-
-    // Point our working PDO at the successful v2 candidate before continuing the test.
-    $v2ActiveDb = (string)($sameReleaseRestore['active_database'] ?? '');
-    $pdo = new PDO(
-        preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $v2ActiveDb,
-        $user,
-        $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-    );
-
-    // Simulate a newer installed application release and ensure the legacy backup
-    // is rejected before changing app files, pointer state, or DB contents.
+    file_put_contents($root . '/config.php', "<?php return ['env' => 'legacy-v2-preserved'];\n");
+    $legacyConfigHash = hash_file('sha256', $root . '/config.php');
     file_put_contents(
         $root . '/storage/upgrades/installed.json',
         json_encode([
@@ -342,34 +336,24 @@ try {
             'installed_at' => '2026-11-03T12:00:00-05:00',
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
     );
-    $pointerBeforeLegacyRefusal = file_get_contents($root . '/storage/upgrades/active_database.json');
-    $configBeforeLegacyRefusal = file_get_contents($root . '/config.php');
-    $legacyRefused = false;
-    try {
-        $manager->restoreBackupSet($pdo, $legacyV2);
-    } catch (RuntimeException $e) {
-        $legacyRefused = str_contains($e->getMessage(), 'Legacy format-v2 backup');
-    }
-    $assert($legacyRefused, 'Cross-version v2 restore was not refused.');
-    $assert(
-        file_get_contents($root . '/storage/upgrades/active_database.json') === $pointerBeforeLegacyRefusal,
-        'Refused cross-version v2 restore changed the active DB pointer.'
-    );
-    $assert(
-        file_get_contents($root . '/config.php') === $configBeforeLegacyRefusal,
-        'Refused cross-version v2 restore changed application config.'
-    );
 
-    // Return installed metadata to the baseline expected by the remaining roundtrip.
-    file_put_contents(
-        $root . '/storage/upgrades/installed.json',
-        json_encode([
-            'tag' => 'v0.test.baseline',
-            'name' => 'Baseline Test Release',
-            'repo' => 'test/repo',
-            'url' => 'https://example.invalid/test/repo',
-            'installed_at' => '2026-11-02T12:00:00-05:00',
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
+    $legacyRestore = $manager->restoreBackupSet($pdo, $legacyV2);
+    $assert(
+        hash_file('sha256', $root . '/config.php') === $legacyConfigHash,
+        'Cross-version legacy v2 restore changed deployment-local config.php.'
+    );
+    $legacyActiveDb = (string)($legacyRestore['active_database'] ?? '');
+    $assert($legacyActiveDb !== '' && $legacyActiveDb !== $safeDb,
+        'Legacy v2 restore did not cut over to an isolated candidate database.');
+    $legacyInstalled = json_decode((string)file_get_contents($root . '/storage/upgrades/installed.json'), true);
+    $assert(($legacyInstalled['tag'] ?? '') === 'v0.test.baseline',
+        'Legacy v2 restore did not restore backup release metadata.');
+
+    $pdo = new PDO(
+        preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $legacyActiveDb,
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
     );
 
     // Create an external backup and prove that a downloaded set can be imported.
