@@ -104,8 +104,4 @@ function cleanRedirect(?string $target, ?string $default = null): string {
 
     return $result;
 }
-$configMigrationPath = dirname(__DIR__) . '/config.migrations.php';
-if (is_readable($configMigrationPath)) {
-    require_once $configMigrationPath;
-}
 ?>
