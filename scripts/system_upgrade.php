@@ -348,6 +348,10 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
             [
                 '.git',
                 '.env',
+                'config.php',
+                '.htaccess',
+                '.user.ini',
+                '.well-known',
                 'assets/uploads',
                 'storage',
             ]
