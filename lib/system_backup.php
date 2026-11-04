@@ -435,6 +435,7 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $applicationMutated = false;
         $cutoverMutated = false;
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
@@ -456,8 +457,9 @@ final class SystemBackupManager
             $this->setMaintenanceMode(true, 'restore');
             $maintenanceEnabled = true;
 
-            // Application restore is the only live-file mutation. Database cutover happens
-            // only after the application tree has restored and verified successfully.
+            // Application rollback responsibility begins before the first live-file
+            // mutation because an exact restore can fail part-way through.
+            $applicationMutated = true;
             $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
             $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
             if ($expectedTreeHash !== '') {
@@ -497,17 +499,19 @@ final class SystemBackupManager
                 }
             }
 
-            // Restore application files from the independently verified emergency backup.
+            // Restore application files only if live application mutation had started.
             $rollbackError = null;
-            try {
-                $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+            if ($applicationMutated) {
                 try {
-                    $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
-                } finally {
-                    $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+                    try {
+                        $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
+                    } finally {
+                        $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    }
+                } catch (Throwable $rollbackFailure) {
+                    $rollbackError = $rollbackFailure;
                 }
-            } catch (Throwable $rollbackFailure) {
-                $rollbackError = $rollbackFailure;
             }
 
             $cleanupError = null;
@@ -532,7 +536,9 @@ final class SystemBackupManager
 
             $message = 'Restore failed before a verified cutover completed: ' . $restoreError->getMessage();
             if ($rollbackComplete) {
-                $message .= ' The previous database pointer, release metadata, and application files were restored exactly.';
+                $message .= $applicationMutated
+                    ? ' The previous database pointer, release metadata, and application files were restored exactly.'
+                    : ' No live application or database state was changed.';
                 if ($cleanupError !== null) {
                     $message .= ' Candidate cleanup warning: ' . $cleanupError->getMessage();
                 }
