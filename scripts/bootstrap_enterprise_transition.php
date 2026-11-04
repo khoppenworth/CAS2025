@@ -15,6 +15,7 @@ const BRIDGE_FILES = [
     'admin/upgrade.php' => [
         'target' => 'e728cf5262452782cb18ddb9e6f28d3015f66207',
         'allowed' => [
+            // Published 0.5.95/0.5.97, 0.5.98, 0.5.99-0.5.101.
             'afceaa03265bd76e6d16f14bcbfac8ea5ba5144c',
             'a97038b94921bcc75c6d4f31c9e6b286b0b9e771',
             'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
@@ -22,47 +23,36 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/system_backup.php' => [
-        'target' => 'a17d99bc03ea9b66b17eda5801169cef5b3f31e0',
+        'target' => '8f6daaa80e18a7cb13f9960a4464487892e51986',
         'allowed' => [
+            // Published 0.5.95, 0.5.97, 0.5.98, 0.5.99-0.5.101.
             '48c85a53283aa515ccce0fa9e84f4e02ef8112e8',
             '705af28f16565dfc97acf0142cefb0daf69419fa',
             '6d24268acba4f40ef3d872a9a3bbffd74e67985a',
             'c42f2659aa4e8e3d3116d0c5159597cc7616124f',
-            '34138ce19c94519bf39862b8efeb9a7a447eb3e4',
-            '907556f6c0afb33741230c29399f36caa4d6fb72',
-            'e901fb9aed43a8ed0981fe7008498cc29f9d2e5e',
-            '9e591ec38ee78cff0a0149b602431552fd2199bc',
-            'd50d952248b8d78739bb14b51844c99dc81c3c34',
-            'e83069e3a56947a9aa3df5b291e6c0e9e7e62f5f',
-            'fab8e6f267638977416209dee78b00a523f725f8',
-            '2210f1fbf6184cf9c78eed70fd7939ecf5e642d4',
-            'd994975996108445fa79bb57b8dda2312e97be9a',
-            'a17d99bc03ea9b66b17eda5801169cef5b3f31e0',
+            '8f6daaa80e18a7cb13f9960a4464487892e51986',
         ],
     ],
     'lib/upgrade.php' => [
         'target' => '3f7d9418ab253eb8ea278aaec04762a52858bbce',
         'allowed' => [
+            // Published 0.5.95-0.5.98 and 0.5.99-0.5.101.
             'a240b32ed60106ebf564ce01df7ad94ce1134265',
             '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
-            'f0d50481c0a80c474117c5a990401940b330607e',
-            '2fe2499b10fec014cadafa7938a5dea89f878eb9',
-            '0e16902b865a95fba2fa833896a966fb9592c344',
-            'b02513ea8042e5543912bc6d1df58c3ce946c15a',
-            'a6bfec17e4692139c6e5d998dc109e7b1591bf8a',
             '3f7d9418ab253eb8ea278aaec04762a52858bbce',
         ],
     ],
     'lib/path.php' => [
         'target' => '0d253ad666db3882bf7c1445c1f8e27183f141cf',
         'allowed' => [
+            // Published 0.5.95-0.5.101.
             '1c350a4d4132ec695699db696ff6f6093efcebdb',
             '0d253ad666db3882bf7c1445c1f8e27183f141cf',
         ],
     ],
     'lib/enterprise_runtime.php' => [
         'target' => '2d70e359d50b9d324fd7534463c8f9140f858772',
-        'allowed' => ['66b524da32af90b5939d5120dedd84c3655c2453', 'fffa004790a197127775d7f09ef42d9adbfb978b', '2d70e359d50b9d324fd7534463c8f9140f858772'],
+        'allowed' => ['2d70e359d50b9d324fd7534463c8f9140f858772'],
         'may_be_absent' => true,
         'metadata_reference' => 'lib/path.php',
     ],
@@ -75,28 +65,25 @@ const BRIDGE_FILES = [
     'scripts/system_upgrade.php' => [
         'target' => '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
         'allowed' => [
+            // Published 0.5.95-0.5.98 and 0.5.99-0.5.101.
             'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
             'c646a5c5774f72663fd31e33157bb9ea641b1baf',
-            '49e342b95719ce02c26cb6e2daf561667a4714c9',
-            'f72c68d862daa86d44d2edb9fbc725189dcfd969',
-            '138c7ec57eb1734d7db2252ec4ae697b15a5e5f9',
-            '6acc8e85fc73c77e4875e6ecbbc60c2d057f4030',
-            '38d4167ffa8b466ee8c2d501af9b88b69f5fc43e',
-            'e5055de45acf6af9bb5449fdae88b3ab446d7803',
-            '4c2e328ada59ac858d1a9269816c01b00f5cc359',
-            '7057716437de5db83a83d14b3725f1ccf011a852',
             '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
         ],
     ],
     'scripts/system_job.php' => [
         'target' => '0e69795a74dc23bb0745c1dffb46795b3b5ca13e',
-        'allowed' => ['b54dc2d0c46c765490ac8af8b30ceaf05371d3a7', '0e69795a74dc23bb0745c1dffb46795b3b5ca13e'],
+        'allowed' => [
+            // Published 0.5.99-0.5.101 plus the final target.
+            'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7',
+            '0e69795a74dc23bb0745c1dffb46795b3b5ca13e',
+        ],
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
     ],
     'scripts/system_healthcheck.php' => [
         'target' => 'e47e40d7113f070a9b80c0978923c2d28149fb4b',
-        'allowed' => ['197c8ef2544f217a8ec2947938c48361740c9b24', 'e47e40d7113f070a9b80c0978923c2d28149fb4b'],
+        'allowed' => ['e47e40d7113f070a9b80c0978923c2d28149fb4b'],
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
     ],
