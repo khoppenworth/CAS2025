@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const ADMIN_UPGRADE_DEFAULT_REPO = 'khoppenworth/HRassessv300';
+const ADMIN_UPGRADE_DEFAULT_REPO = 'khoppenworth/CAS2025';
 const ADMIN_UPGRADE_STORAGE_DIR = 'storage/upgrades';
 const ADMIN_UPGRADE_RUN_DIR = 'storage/upgrades/runs';
 const ADMIN_UPGRADE_MANUAL_DIR = 'storage/upgrades/manual';
