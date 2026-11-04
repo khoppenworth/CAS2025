@@ -168,6 +168,7 @@ try {
 
     file_put_contents($root . '/index.php', "<?php echo 'baseline';\n");
     file_put_contents($root . '/lib/baseline.php', "<?php return 'baseline-lib';\n");
+    file_put_contents($root . '/lib/path.php', "<?php // old pre-enterprise path runtime\n");
     file_put_contents($root . '/config.php', "<?php return ['env' => 'baseline-config'];\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "baseline upload\n");
     file_put_contents($root . '/storage/runtime.txt', "baseline runtime\n");
@@ -445,6 +446,14 @@ try {
     @unlink($root . '/lib/baseline.php');
     file_put_contents($root . '/experimental.php', "<?php echo 'remove me';\n");
 
+    // Simulate a current enterprise recovery control plane restoring an older
+    // pre-bridge application backup. These files must survive the restore even
+    // though the backup contains an older lib/path.php and no enterprise runtime.
+    file_put_contents($root . '/lib/path.php', "<?php // current enterprise-aware path runtime\n");
+    file_put_contents($root . '/lib/enterprise_runtime.php', "<?php // current enterprise runtime\n");
+    $enterprisePathHash = hash_file('sha256', $root . '/lib/path.php');
+    $enterpriseRuntimeHash = hash_file('sha256', $root . '/lib/enterprise_runtime.php');
+
     // Preserved environment/runtime data should survive restore.
     file_put_contents($root . '/config.php', "<?php return ['env' => 'production-secret-change'];\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "new upload retained\n");
@@ -458,7 +467,11 @@ try {
     $pdo->exec('DELETE FROM related_data');
 
     $originalDbName = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
-    $restore = $manager->restoreBackupSet($pdo, $backup['absolute_path']);
+    $restore = $manager->restoreBackupSet(
+        $pdo,
+        $backup['absolute_path'],
+        ['lib/path.php', 'lib/enterprise_runtime.php']
+    );
 
     $assert(($restore['restored_id'] ?? '') === 'roundtrip_test', 'Restore returned the wrong backup identifier.');
     $assert(($restore['previous_database'] ?? '') === $originalDbName, 'Restore did not retain the original database identity.');
@@ -488,6 +501,14 @@ try {
     $assert(file_get_contents($root . '/index.php') === "<?php echo 'baseline';\n", 'Changed application file was not restored.');
     $assert(is_file($root . '/lib/baseline.php'), 'Deleted baseline application file was not restored.');
     $assert(!file_exists($root . '/experimental.php'), 'New experimental application file survived exact restore.');
+    $assert(
+        hash_file('sha256', $root . '/lib/path.php') === $enterprisePathHash,
+        'Restore downgraded the enterprise-aware lib/path.php control-plane hook.'
+    );
+    $assert(
+        hash_file('sha256', $root . '/lib/enterprise_runtime.php') === $enterpriseRuntimeHash,
+        'Restore removed or downgraded the enterprise runtime control plane.'
+    );
 
     $assert(
         file_get_contents($root . '/config.php') === "<?php return ['env' => 'production-secret-change'];\n",
