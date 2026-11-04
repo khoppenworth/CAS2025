@@ -588,8 +588,8 @@ final class SystemBackupManager
         $admin->exec('CREATE DATABASE ' . $quotedDb . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 
         try {
-            $this->restoreNativeDump($dumpPath, $dbName);
             $this->grantApplicationUserAccess($admin, $dbName);
+            $this->restoreNativeDump($dumpPath, $dbName);
             $candidatePdo = $this->connectToDatabase($dbName);
             $this->verifyDatabaseState($candidatePdo, $expectedObjects);
 
@@ -626,7 +626,7 @@ final class SystemBackupManager
             throw new RuntimeException('Native MySQL/MariaDB client is required for migrations.');
         }
 
-        $connection = $this->databaseConnectionSettings(true);
+        $connection = $this->databaseConnectionSettings(false);
         $args = [
             $binary,
             '--host=' . $connection['host'],
@@ -880,7 +880,7 @@ final class SystemBackupManager
             throw new RuntimeException('Native MySQL/MariaDB client is required (mysql or mariadb).');
         }
 
-        $connection = $this->databaseConnectionSettings(true);
+        $connection = $this->databaseConnectionSettings(false);
         $args = [
             $binary,
             '--host=' . $connection['host'],
