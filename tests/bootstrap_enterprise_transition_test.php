@@ -186,6 +186,26 @@ try {
     $assert($apply['exit'] === 0, 'Bridge apply failed: ' . $apply['stderr']);
     $assert(str_contains($apply['stdout'], 'BRIDGE INSTALLATION PASSED'), 'Bridge apply did not report success.');
 
+    // The next operator action after the bridge is Admin > System Upgrade.
+    // Prove the newly bridged page actually renders against the still-0.5.95
+    // application/database and the customized deployment config.
+    $adminProbeCode = '$_SERVER["REQUEST_METHOD"]="GET";'
+        . '$_SERVER["SCRIPT_NAME"]="/admin/upgrade.php";'
+        . '$_SERVER["PHP_SELF"]="/admin/upgrade.php";'
+        . 'chdir(' . var_export($fixture, true) . ');'
+        . 'require ' . var_export($fixture . '/config.php', true) . ';'
+        . '$_SESSION["user"]=["id"=>999999,"role"=>"admin","account_status"=>"active","profile_completed"=>1];'
+        . 'ob_start(); require ' . var_export($fixture . '/admin/upgrade.php', true) . ';'
+        . '$html=ob_get_clean();'
+        . 'if(strlen($html)<500 || strpos($html,"System Upgrade")===false) exit(41);'
+        . 'echo "BRIDGED_ADMIN_PAGE_OK\\n";';
+    $adminProbe = $run([PHP_BINARY, '-r', $adminProbeCode]);
+    $assert(
+        $adminProbe['exit'] === 0 && str_contains($adminProbe['stdout'], 'BRIDGED_ADMIN_PAGE_OK'),
+        'Bridged Admin > System Upgrade page did not render on the 0.5.95 fixture: '
+            . $adminProbe['stderr'] . $adminProbe['stdout']
+    );
+
     $paths = [
         'admin/upgrade.php',
         'lib/system_backup.php',
