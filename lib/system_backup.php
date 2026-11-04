@@ -44,6 +44,8 @@ final class SystemBackupManager
         return [
             '.git',
             '.env',
+            '.htaccess',
+            '.user.ini',
             'config.php',
             'assets/uploads',
             'storage',
