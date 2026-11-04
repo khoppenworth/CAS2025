@@ -868,6 +868,15 @@ final class SystemBackupManager
 
     private function grantApplicationUserAccess(PDO $admin, string $dbName): void
     {
+        // If the normal application account already has wildcard access to newly
+        // created candidate DBs, do not require GRANT OPTION unnecessarily.
+        try {
+            $this->connectToDatabase($dbName)->query('SELECT 1')->fetchColumn();
+            return;
+        } catch (Throwable $directAccessError) {
+            // Fall through to an explicit grant using the maintenance account.
+        }
+
         $app = $this->databaseConnectionSettings(false);
         $probe = new PDO(
             sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $app['host'], $app['port']),
@@ -889,6 +898,8 @@ final class SystemBackupManager
             'GRANT ALL PRIVILEGES ON ' . $this->quoteIdentifier($dbName) . '.* TO '
             . $quotedUser . '@' . $quotedHost
         );
+
+        $this->connectToDatabase($dbName)->query('SELECT 1')->fetchColumn();
     }
 
     private function databaseConnectionSettings(bool $admin = false): array
