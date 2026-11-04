@@ -31,15 +31,15 @@ const BRIDGE_FILES = [
             'a240b32ed60106ebf564ce01df7ad94ce1134265',
         ],
     ],
-    'lib/path.php' => [
-        'allowed_legacy' => [
-            '1c350a4d4132ec695699db696ff6f6093efcebdb',
-        ],
-    ],
     'lib/enterprise_runtime.php' => [
         'allowed_legacy' => [],
         'may_be_absent' => true,
         'metadata_reference' => 'lib/path.php',
+    ],
+    'lib/path.php' => [
+        'allowed_legacy' => [
+            '1c350a4d4132ec695699db696ff6f6093efcebdb',
+        ],
     ],
     'scripts/system_upgrade.php' => [
         'allowed_legacy' => [
