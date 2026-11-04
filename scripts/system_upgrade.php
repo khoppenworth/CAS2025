@@ -362,6 +362,18 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
                 '.well-known',
                 'assets/uploads',
                 'storage',
+
+                // Recovery control plane stays on the current verified enterprise
+                // implementation even when restoring an older application backup.
+                'admin/upgrade.php',
+                'lib/upgrade.php',
+                'lib/system_backup.php',
+                'lib/path.php',
+                'lib/enterprise_runtime.php',
+                'lib/system_cli_bootstrap.php',
+                'scripts/system_upgrade.php',
+                'scripts/system_job.php',
+                'scripts/system_healthcheck.php',
             ]
         );
         info('Application and database restored and verified successfully.');
@@ -369,53 +381,17 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
         return;
     }
 
-    // Backward compatibility for snapshots created before backup-set format v2.
-    $runs = $engine->listUpgradeRuns();
-    $target = null;
-    foreach ($runs as $run) {
-        $runId = (string)($run['id'] ?? ($run['timestamp'] ?? ''));
-        if ($runId === $backupId) {
-            $target = $run;
-            break;
-        }
-    }
-
-    if ($target === null) {
-        fwrite(STDERR, 'Backup ' . $backupId . ' was not found.' . PHP_EOL);
-        exit(1);
-    }
-
-    $snapshotRelative = (string)($target['app_snapshot'] ?? '');
-    if ($snapshotRelative === '') {
-        fwrite(STDERR, 'The selected legacy backup does not include an application snapshot.' . PHP_EOL);
-        exit(1);
-    }
-
-    $restoreDb = isset($options['restore-db']);
-    $snapshotAbsolute = $engine->absoluteFromRoot($snapshotRelative);
-    info('Restoring legacy application snapshot from ' . $snapshotRelative . '...');
-    $engine->restoreApplicationSnapshot($snapshotAbsolute, [
-        'config.php',
-        'assets/uploads',
-        'storage',
-        'storage/upgrades',
-    ]);
-    info('Legacy application files restored.');
-
-    if ($restoreDb) {
-        $dbRelative = (string)($target['db_backup'] ?? '');
-        if ($dbRelative === '') {
-            fwrite(STDERR, 'The selected legacy backup does not include a database dump.' . PHP_EOL);
-            exit(1);
-        }
-        info('Restoring legacy database from ' . $dbRelative . '...');
-        $engine->restoreDatabaseFromDump($pdo, $engine->absoluteFromRoot($dbRelative));
-        info('Legacy database restored.');
-    } else {
-        info('Legacy database restore skipped. Use --restore-db to enable it.');
-    }
-
-    info('Legacy restore operation completed.');
+    // Pre-v2 snapshots do not provide the integrity/manifest contract required
+    // for isolated candidate restoration. Never replay those database dumps into
+    // the active schema. Keep the legacy artifacts for manual forensic recovery,
+    // but refuse them through the enterprise Restore command.
+    fwrite(
+        STDERR,
+        'Backup ' . $backupId
+        . ' predates verified format-v2 recovery and cannot be restored safely through CAS.'
+        . PHP_EOL
+    );
+    exit(1);
 }
 
 function runList(UpgradeEngine $engine): void
@@ -448,7 +424,7 @@ System upgrade utility
 Usage:
   php scripts/{$script} --action=backup
   php scripts/{$script} --action=upgrade [--repo=<repository>] [--ref=<branch|tag>] [--latest-release] [--preserve=<paths>]
-  php scripts/{$script} --action=downgrade [--backup-id=<id>] [--restore-db]
+  php scripts/{$script} --action=downgrade [--backup-id=<id>]
   php scripts/{$script} --action=list-backups
 
 Options:
@@ -457,8 +433,8 @@ Options:
   --latest-release   Resolve the newest GitHub release tag automatically.
   --preserve         Comma separated list of paths to keep untouched during deployment.
   --backup-id        Identifier of the backup set to restore. Defaults to the most recent ready backup.
-  --restore-db       Legacy snapshots only: restore the database dump alongside application files.
-                     Format-v2 backup sets always restore and verify both application and database.
+  Verified format-v2 backup sets restore application and database through isolated candidates.
+  Pre-v2 legacy snapshots are retained for forensic/manual recovery but are refused by this command.
 
 USAGE;
 }
