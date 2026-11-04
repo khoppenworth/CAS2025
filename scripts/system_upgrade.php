@@ -205,6 +205,14 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             : 'Applied ' . $appliedMigrations . ' candidate database migration statement'
                 . ($appliedMigrations === 1 ? '' : 's') . '.');
 
+        assertCandidatePreservesBackupData(
+            $candidate['pdo'],
+            is_array($backupSet['manifest']['database']['objects'] ?? null)
+                ? $backupSet['manifest']['database']['objects']
+                : []
+        );
+        info('Candidate migration preserved every pre-upgrade base table and row count.');
+
         $criticalUsers = $candidate['pdo']->query(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'"
         );
@@ -494,6 +502,41 @@ function runSystemHealthcheck(UpgradeEngine $engine, string $expectedDatabase, b
             'CAS post-cutover health check failed'
             . ($stderr !== '' ? ': ' . trim($stderr) : ($stdout !== '' ? ': ' . trim($stdout) : '.'))
         );
+    }
+}
+
+function assertCandidatePreservesBackupData(PDO $pdo, array $backupObjects): void
+{
+    foreach ($backupObjects as $object) {
+        if (strtoupper((string)($object['type'] ?? '')) !== 'BASE TABLE') {
+            continue;
+        }
+
+        $name = (string)($object['name'] ?? '');
+        if ($name === '') {
+            continue;
+        }
+
+        $exists = $pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.tables '
+            . 'WHERE table_schema = DATABASE() AND table_name = ? AND table_type = "BASE TABLE"'
+        );
+        $exists->execute([$name]);
+        if ((int)$exists->fetchColumn() !== 1) {
+            throw new RuntimeException(
+                'Candidate migration removed pre-upgrade table ' . $name . '. Refusing cutover.'
+            );
+        }
+
+        $quoted = '`' . str_replace('`', '``', $name) . '`';
+        $after = (int)$pdo->query('SELECT COUNT(*) FROM ' . $quoted)->fetchColumn();
+        $before = (int)($object['row_count'] ?? 0);
+        if ($after < $before) {
+            throw new RuntimeException(
+                'Candidate migration reduced row count for ' . $name
+                . ' from ' . $before . ' to ' . $after . '. Refusing cutover.'
+            );
+        }
     }
 }
 
