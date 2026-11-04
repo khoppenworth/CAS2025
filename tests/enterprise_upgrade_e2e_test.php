@@ -169,6 +169,8 @@ $makeFixture = function (string $label) use (
 
     file_put_contents($fixture . '/.htaccess', "RewriteEngine On\n# LOCAL APACHE SENTINEL\n");
     file_put_contents($fixture . '/.user.ini', "upload_max_filesize=64M\n; LOCAL PHP SENTINEL\n");
+    mkdir($fixture . '/.well-known/acme-challenge', 0755, true);
+    file_put_contents($fixture . '/.well-known/acme-challenge/token', "LOCAL TLS SENTINEL\n");
 
     // A stale tracked-area file proves successful deploy is exact and failed
     // deploy rollback restores the pre-upgrade application snapshot.
@@ -220,6 +222,7 @@ $makeFixture = function (string $label) use (
         'env_hash' => hash_file('sha256', $fixture . '/.env'),
         'htaccess_hash' => hash_file('sha256', $fixture . '/.htaccess'),
         'user_ini_hash' => hash_file('sha256', $fixture . '/.user.ini'),
+        'well_known_hash' => hash_file('sha256', $fixture . '/.well-known/acme-challenge/token'),
         'installed' => (string)file_get_contents($fixture . '/storage/upgrades/installed.json'),
     ];
 };
@@ -244,6 +247,10 @@ $assertServerOwned = static function (array $fixture) use ($assert): void {
     $assert(hash_file('sha256', $fixture['root'] . '/.env') === $fixture['env_hash'], '.env changed.');
     $assert(hash_file('sha256', $fixture['root'] . '/.htaccess') === $fixture['htaccess_hash'], '.htaccess changed.');
     $assert(hash_file('sha256', $fixture['root'] . '/.user.ini') === $fixture['user_ini_hash'], '.user.ini changed.');
+    $assert(
+        hash_file('sha256', $fixture['root'] . '/.well-known/acme-challenge/token') === $fixture['well_known_hash'],
+        '.well-known TLS challenge data changed.'
+    );
 };
 
 $assertOriginalDb = static function (array $fixture) use ($host, $port, $user, $pass, $assert): void {
