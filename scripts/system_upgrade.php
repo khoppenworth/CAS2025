@@ -224,7 +224,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         ]);
 
         info('Running the new application health check before reopening CAS...');
-        runSystemHealthcheck($engine, (string)$candidate['db_name']);
+        runSystemHealthcheck($engine, (string)$candidate['db_name'], true);
 
         $manager->setMaintenanceMode(false);
         $maintenanceEnabled = false;
@@ -449,7 +449,7 @@ function info(string $message): void
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
 }
 
-function runSystemHealthcheck(UpgradeEngine $engine, string $expectedDatabase): void
+function runSystemHealthcheck(UpgradeEngine $engine, string $expectedDatabase, bool $full = false): void
 {
     $script = $engine->absoluteFromRoot('scripts/system_healthcheck.php');
     if (!is_file($script)) {
@@ -457,7 +457,12 @@ function runSystemHealthcheck(UpgradeEngine $engine, string $expectedDatabase): 
     }
 
     $process = proc_open(
-        [PHP_BINARY ?: 'php', $script, '--expect-db=' . $expectedDatabase],
+        array_values(array_filter([
+            PHP_BINARY ?: 'php',
+            $script,
+            '--expect-db=' . $expectedDatabase,
+            $full ? '--full' : null,
+        ])),
         [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
         $pipes,
         $engine->absoluteFromRoot('')
