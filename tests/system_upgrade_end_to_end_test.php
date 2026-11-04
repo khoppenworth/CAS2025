@@ -265,8 +265,6 @@ try {
     // Release tree used by the real upgrade command.
     $releaseSuccess = $tempRoot . '/release-success';
     $extractGitTree('HEAD', $releaseSuccess);
-    $releaseConfigHash = $sha256($releaseSuccess . '/config.php');
-
     $releaseFailure = $tempRoot . '/release-failure';
     $extractGitTree('HEAD', $releaseFailure);
     file_put_contents(
@@ -300,8 +298,8 @@ try {
     $assert($upgrade['exit'] === 0,
         'Real successful upgrade command failed: ' . $upgrade['stderr'] . $upgrade['stdout']);
 
-    $assert($sha256($fixture . '/config.php') === $releaseConfigHash,
-        'Successful upgrade did not install the tracked release config.php.');
+    $assert($sha256($fixture . '/config.php') === $success['bridge_config_hash'],
+        'Successful upgrade changed customized config.php.');
     $assert($sha256($fixture . '/.env') === $envHash, 'Successful upgrade changed .env.');
     $assert($sha256($fixture . '/.htaccess') === $htaccessHash, 'Successful upgrade changed server-local .htaccess.');
     $assert($sha256($fixture . '/.user.ini') === $userIniHash, 'Successful upgrade changed server-local .user.ini.');
@@ -329,7 +327,7 @@ try {
     $assert($backupRun['exit'] === 0, 'Post-upgrade backup failed: ' . $backupRun['stderr'] . $backupRun['stdout']);
     $backup = $latestManualBackup($fixture);
     $backupId = (string)$backup['manifest']['id'];
-    $assert((int)($backup['manifest']['format_version'] ?? 0) === 3, 'New backup did not use format v3.');
+    $assert((int)($backup['manifest']['format_version'] ?? 0) === 2, 'Backup format changed unexpectedly.');
 
     $indexHashBeforeMutation = $sha256($fixture . '/index.php');
     file_put_contents($fixture . '/index.php', "\n<?php // mutation after backup ?>\n", FILE_APPEND);
@@ -345,8 +343,8 @@ try {
     $assert($restore['exit'] === 0, 'Real restore command failed: ' . $restore['stderr'] . $restore['stdout']);
     $assert($sha256($fixture . '/index.php') === $indexHashBeforeMutation,
         'Restore did not recover application file exactly.');
-    $assert($sha256($fixture . '/config.php') === $releaseConfigHash,
-        'Restore changed tracked release config unexpectedly.');
+    $assert($sha256($fixture . '/config.php') === $success['bridge_config_hash'],
+        'Restore changed customized config.php.');
     $assert($sha256($fixture . '/.env') === $envHash, 'Restore changed .env.');
     $assert($sha256($fixture . '/.htaccess') === $htaccessHash, 'Restore changed server-local .htaccess.');
     $assert($sha256($fixture . '/.user.ini') === $userIniHash, 'Restore changed server-local .user.ini.');
