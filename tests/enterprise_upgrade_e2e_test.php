@@ -259,7 +259,7 @@ try {
     $assert(is_array($installed) && (string)($installed['tag'] ?? '') === $remoteRef, 'Installed release metadata was not updated.');
 
     // FAILURES: each must restore exact pointer/metadata/app state and leave original DB untouched.
-    foreach (['after-deploy', 'after-pointer', 'after-installed'] as $stage) {
+    foreach (['mid-deploy', 'after-deploy', 'after-pointer', 'after-installed'] as $stage) {
         $fixture = $makeFixture(str_replace('-', '_', $stage));
         $result = $upgrade($fixture, $stage);
         $assert($result['exit'] !== 0, 'Injected failure unexpectedly succeeded at ' . $stage);
@@ -289,7 +289,7 @@ try {
 
     fwrite(
         STDOUT,
-        "Enterprise upgrade E2E passed: success cutover plus rollback after deploy, pointer, and installed-metadata failure.\n"
+        "Enterprise upgrade E2E passed: success cutover plus rollback during deploy and after deploy, pointer, and installed-metadata failure.\n"
     );
 } finally {
     try {
