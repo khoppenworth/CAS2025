@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
 
+# Keep only the newest CI attempt for a pull request. Main-branch runs are
+# never auto-cancelled, so the exact merged commit always gets a full gate.
+concurrency:
+  group: cas-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   php:
     runs-on: ubuntu-latest
