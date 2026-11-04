@@ -963,15 +963,17 @@ final class SystemBackupManager
         }
 
         $contents = file_get_contents($path);
-        $mode = fileperms($path);
-        if (!is_string($contents) || $mode === false) {
+        $stat = stat($path);
+        if (!is_string($contents) || $stat === false) {
             throw new RuntimeException('Unable to capture runtime state file: ' . $path);
         }
 
         return [
             'exists' => true,
             'contents' => $contents,
-            'mode' => $mode & 0777,
+            'mode' => $stat['mode'] & 0777,
+            'uid' => $stat['uid'],
+            'gid' => $stat['gid'],
         ];
     }
 
@@ -996,7 +998,18 @@ final class SystemBackupManager
         }
 
         $mode = isset($state['mode']) ? (int)$state['mode'] : 0640;
-        @chmod($tmp, $mode);
+        if (!@chmod($tmp, $mode)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state mode: ' . $path);
+        }
+        if (isset($state['uid']) && function_exists('chown') && !@chown($tmp, (int)$state['uid'])) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state owner: ' . $path);
+        }
+        if (isset($state['gid']) && function_exists('chgrp') && !@chgrp($tmp, (int)$state['gid'])) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state group: ' . $path);
+        }
         if (!@rename($tmp, $path)) {
             @unlink($tmp);
             throw new RuntimeException('Unable to atomically restore runtime state file: ' . $path);
@@ -1471,8 +1484,14 @@ final class SystemBackupManager
     private function writeInstalledRelease(array $release): void
     {
         $this->ensureDirectory(dirname($this->installedFile));
-        if (file_put_contents($this->installedFile, $this->encodeJson($release)) === false) {
-            throw new RuntimeException('Unable to restore installed release metadata.');
+        $tmp = $this->installedFile . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $this->encodeJson($release), LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to prepare installed release metadata.');
+        }
+        if (!@rename($tmp, $this->installedFile)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically restore installed release metadata.');
         }
     }
 
