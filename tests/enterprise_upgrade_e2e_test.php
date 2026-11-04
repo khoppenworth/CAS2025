@@ -310,6 +310,10 @@ try {
     $installed = json_decode((string)file_get_contents($success['root'] . '/storage/upgrades/installed.json'), true);
     $assert(is_array($installed) && (string)($installed['tag'] ?? '') === $remoteRef, 'Installed release metadata was not updated.');
 
+    // Isolate rollback scenarios from the intentionally retained active database
+    // created by the successful-upgrade scenario.
+    $server->exec('DROP DATABASE IF EXISTS ' . quoteDb($activeDb));
+
     // FAILURES: each must restore exact pointer/metadata/app state and leave original DB untouched.
     foreach (['mid-deploy', 'after-deploy', 'after-pointer', 'after-installed'] as $stage) {
         $fixture = $makeFixture(str_replace('-', '_', $stage));
