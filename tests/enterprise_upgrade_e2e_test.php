@@ -27,14 +27,14 @@ $assert = static function (bool $condition, string $message): void {
 $tempRoot = sys_get_temp_dir() . '/cas-upgrade-e2e-' . bin2hex(random_bytes(6));
 mkdir($tempRoot, 0750, true);
 
-$run = static function (array $command, ?string $cwd = null, array $env = []): array {
+$run = static function (array $command, ?string $cwd = null, array $env = [], ?string $stdinFile = null): array {
     $process = proc_open($command, [
-        0 => ['pipe', 'r'],
+        0 => $stdinFile !== null ? ['file', $stdinFile, 'rb'] : ['pipe', 'r'],
         1 => ['pipe', 'w'],
         2 => ['pipe', 'w'],
     ], $pipes, $cwd, array_merge($_ENV, $env));
     if (!is_resource($process)) throw new RuntimeException('Unable to launch command.');
-    fclose($pipes[0]);
+    if ($stdinFile === null && isset($pipes[0]) && is_resource($pipes[0])) fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]) ?: '';
     $stderr = stream_get_contents($pipes[2]) ?: '';
     fclose($pipes[1]);
@@ -105,10 +105,21 @@ $makeFixture = static function (string $name, string $dbName) use (
     chmod($configPath, 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
 
-    // Boot the real 0.5.95 config once to create its normal schema.
-    $boot = $run([PHP_BINARY, '-r', 'chdir(' . var_export($fixture, true) . '); require "config.php";']);
-    if ($boot['exit'] !== 0) {
-        throw new RuntimeException('Unable to initialize 0.5.95 fixture database: ' . $boot['stderr']);
+    // Build the fixture from the actual 0.5.95 init.sql, not a synthetic schema.
+    $mysqlCli = trim((string)shell_exec('command -v mysql 2>/dev/null || command -v mariadb 2>/dev/null'));
+    if ($mysqlCli === '') {
+        throw new RuntimeException('Native MySQL/MariaDB client is required for the E2E fixture.');
+    }
+    $schema = $run([
+        $mysqlCli,
+        '--host=' . $host,
+        '--port=' . $port,
+        '--user=' . $user,
+        '--default-character-set=utf8mb4',
+        $dbName,
+    ], $fixture, ['MYSQL_PWD' => $pass], $fixture . '/init.sql');
+    if ($schema['exit'] !== 0) {
+        throw new RuntimeException('Unable to initialize real 0.5.95 schema: ' . $schema['stderr']);
     }
 
     $pdo = new PDO(
