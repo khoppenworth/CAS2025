@@ -53,6 +53,48 @@ $run = static function (array $command, array $env = [], ?string $cwd = null) us
     return ['exit' => proc_close($process), 'stdout' => $stdout, 'stderr' => $stderr];
 };
 
+$loadSql = static function (string $sqlFile, string $dbName) use ($host, $port, $user, $pass): void {
+    $client = null;
+    foreach (['/usr/bin/mysql', '/usr/bin/mariadb', '/usr/local/bin/mysql', '/usr/local/bin/mariadb'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) {
+            $client = $candidate;
+            break;
+        }
+    }
+    if ($client === null) {
+        throw new RuntimeException('Native mysql/mariadb client is unavailable for E2E fixture initialization.');
+    }
+
+    $process = proc_open([
+        $client,
+        '--host=' . $host,
+        '--port=' . $port,
+        '--user=' . $user,
+        '--default-character-set=utf8mb4',
+        $dbName,
+    ], [
+        0 => ['file', $sqlFile, 'rb'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes, null, array_merge($_ENV, ['MYSQL_PWD' => $pass]));
+
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start native client for E2E schema initialization.');
+    }
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+
+    if ($exit !== 0) {
+        throw new RuntimeException(
+            'Unable to initialize real 0.5.95 schema from init.sql: '
+            . trim($stderr !== '' ? $stderr : $stdout)
+        );
+    }
+};
+
 $sha256 = static function (string $path): string {
     $hash = hash_file('sha256', $path);
     if (!is_string($hash)) throw new RuntimeException('Unable to hash ' . $path);
@@ -75,7 +117,7 @@ $remove = static function (string $path) use (&$remove): void {
 $createdDatabases = [];
 
 $makeFixture = function (string $label) use (
-    $repoRoot, $tempRoot, $host, $port, $user, $pass, $server, $run, &$createdDatabases
+    $repoRoot, $tempRoot, $host, $port, $user, $pass, $server, $run, $loadSql, &$createdDatabases
 ): array {
     $safeLabel = preg_replace('/[^A-Za-z0-9_]/', '_', $label);
     $dbName = 'cas_e2e_' . $safeLabel . '_' . bin2hex(random_bytes(3));
@@ -143,7 +185,10 @@ $makeFixture = function (string $label) use (
         throw new RuntimeException('Fixture bridge failed: ' . $bridge['stderr']);
     }
 
-    // Bootstrap the real 0.5.95 application schema through its own config.
+    // Initialize the real 0.5.95 base schema exactly from its shipped init.sql,
+    // then let its own config perform the runtime/idempotent schema checks.
+    $loadSql($fixture . '/init.sql', $dbName);
+
     $init = $run([
         PHP_BINARY,
         '-r',
