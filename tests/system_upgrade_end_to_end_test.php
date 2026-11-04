@@ -15,16 +15,18 @@ if ($repoRoot === false) {
 }
 
 $dsn = getenv('UPGRADE_E2E_DB_DSN') ?: 'mysql:host=127.0.0.1;port=3306;charset=utf8mb4';
-$user = getenv('UPGRADE_E2E_DB_USER') ?: 'root';
-$pass = getenv('UPGRADE_E2E_DB_PASS') ?: 'root';
+$adminUser = getenv('UPGRADE_E2E_DB_USER') ?: 'root';
+$adminPass = getenv('UPGRADE_E2E_DB_PASS') ?: 'root';
 $suffix = preg_replace('/[^A-Za-z0-9_]/', '_', (string)(getenv('UPGRADE_E2E_SUFFIX') ?: '1'));
+$appUser = 'cas_e2e_app_' . strtolower($suffix) . '_' . bin2hex(random_bytes(2));
+$appPass = 'CasE2E_' . bin2hex(random_bytes(8)) . '!';
 
 preg_match('/host=([^;]+)/', $dsn, $hostMatch);
 preg_match('/port=([^;]+)/', $dsn, $portMatch);
 $host = $hostMatch[1] ?? '127.0.0.1';
 $port = $portMatch[1] ?? '3306';
 
-$server = new PDO($dsn, $user, $pass, [
+$server = new PDO($dsn, $adminUser, $adminPass, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
@@ -113,16 +115,18 @@ $customizeConfig = static function (string $fixture): string {
     return hash_file('sha256', $path);
 };
 
-$writeEnv = static function (string $fixture, string $dbName) use ($host, $port, $user, $pass): void {
+$writeEnv = static function (string $fixture, string $dbName) use (
+    $host, $port, $appUser, $appPass, $adminUser, $adminPass
+): void {
     file_put_contents(
         $fixture . '/.env',
         "DB_HOST={$host}\n"
         . "DB_PORT={$port}\n"
         . "DB_NAME={$dbName}\n"
-        . "DB_USER={$user}\n"
-        . "DB_PASS={$pass}\n"
-        . "DB_ADMIN_USER={$user}\n"
-        . "DB_ADMIN_PASS={$pass}\n"
+        . "DB_USER={$appUser}\n"
+        . "DB_PASS={$appPass}\n"
+        . "DB_ADMIN_USER={$adminUser}\n"
+        . "DB_ADMIN_PASS={$adminPass}\n"
         . "BASE_URL=/\n"
         . "APP_DEBUG=0\n"
     );
@@ -130,11 +134,17 @@ $writeEnv = static function (string $fixture, string $dbName) use ($host, $port,
 
 $prepareFixture = static function (string $name, string $dbName) use (
     $server, $extractGitTree, $customizeConfig, $writeEnv, $run, $repoRoot, $tempRoot, $assert,
-    $findDbClient, $host, $port, $user, $pass
+    $findDbClient, $host, $port, $adminUser, $adminPass, $appUser, $appPass
 ): array {
     $quoted = chr(96) . $dbName . chr(96);
     $server->exec('DROP DATABASE IF EXISTS ' . $quoted);
     $server->exec('CREATE DATABASE ' . $quoted . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+
+    $quotedApp = $server->quote($appUser);
+    $quotedPass = $server->quote($appPass);
+    $server->exec('DROP USER IF EXISTS ' . $quotedApp . "@'%'");
+    $server->exec('CREATE USER ' . $quotedApp . "@'%' IDENTIFIED BY " . $quotedPass);
+    $server->exec('GRANT ALL PRIVILEGES ON ' . $quoted . '.* TO ' . $quotedApp . "@'%'");
 
     $fixture = $tempRoot . '/' . $name;
     $extractGitTree('0.5.95', $fixture);
@@ -161,14 +171,14 @@ $prepareFixture = static function (string $name, string $dbName) use (
     $command = 'exec ' . escapeshellarg($client)
         . ' --host=' . escapeshellarg($host)
         . ' --port=' . escapeshellarg((string)$port)
-        . ' --user=' . escapeshellarg($user)
+        . ' --user=' . escapeshellarg($adminUser)
         . ' --default-character-set=utf8mb4 '
         . escapeshellarg($dbName)
         . ' < ' . escapeshellarg($schemaPath);
     $schemaImport = $run(
         ['/bin/bash', '-lc', $command],
         $fixture,
-        ['MYSQL_PWD' => $pass]
+        ['MYSQL_PWD' => $adminPass]
     );
     $assert(
         $schemaImport['exit'] === 0,
@@ -422,7 +432,10 @@ try {
     fwrite(STDERR, "Enterprise transition E2E failed: " . $e->getMessage() . "\n");
     exit(1);
 } finally {
-    try { $dropTestDatabases(); } catch (Throwable $cleanupError) {
+    try {
+        $dropTestDatabases();
+        $server->exec('DROP USER IF EXISTS ' . $server->quote($appUser) . "@'%'");
+    } catch (Throwable $cleanupError) {
         fwrite(STDERR, "DB cleanup warning: " . $cleanupError->getMessage() . "\n");
     }
     $remove($tempRoot);
