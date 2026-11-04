@@ -156,11 +156,11 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
             throw new RuntimeException('Verified candidate database connection is unavailable.');
         }
-        $appliedMigrations = applyDatabaseMigrations($engine, $candidate['pdo'], $download['extract_root']);
-        if ($appliedMigrations === 0) {
-            info('No migration scripts were executed.');
+        $migrationFile = applyDatabaseMigration($candidate, $download['extract_root']);
+        if ($migrationFile === null) {
+            info('No migration script was present in the release package.');
         } else {
-            info('Applied ' . $appliedMigrations . ' candidate database migration statement' . ($appliedMigrations === 1 ? '' : 's') . '.');
+            info('Applied candidate database migration using native client: ' . basename($migrationFile));
         }
 
         $criticalUsers = $candidate['pdo']->query(
@@ -397,31 +397,24 @@ function info(string $message): void
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
 }
 
-function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo, ?string $sourceRoot = null): int
+function applyDatabaseMigration(array $candidate, string $sourceRoot): ?string
 {
-    $totalStatements = 0;
-    $root = $sourceRoot !== null && $sourceRoot !== '' ? rtrim($sourceRoot, DIRECTORY_SEPARATOR) : base_path('');
-    $candidates = [
-        $root . DIRECTORY_SEPARATOR . 'upgrade_to_v3.sql',
-        $root . DIRECTORY_SEPARATOR . 'migration.sql',
-    ];
-
-    foreach ($candidates as $path) {
-        if ($path === '' || !is_file($path)) {
-            continue;
-        }
-
-        $statements = readSqlStatements($path);
-        if ($statements === []) {
-            continue;
-        }
-
-        $relative = $engine->relativeToRoot($path);
-        info('Running ' . count($statements) . ' SQL statement' . (count($statements) === 1 ? '' : 's') . ' from ' . $relative . '...');
-        $totalStatements += executeSqlStatements($pdo, $statements, $relative);
+    $dbName = trim((string)($candidate['db_name'] ?? ''));
+    if ($dbName === '') {
+        throw new RuntimeException('Candidate database name is unavailable.');
     }
 
-    return $totalStatements;
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    $preferred = $root . DIRECTORY_SEPARATOR . 'migration.sql';
+    $fallback = $root . DIRECTORY_SEPARATOR . 'upgrade_to_v3.sql';
+    $path = is_file($preferred) ? $preferred : (is_file($fallback) ? $fallback : null);
+
+    if ($path === null) {
+        return null;
+    }
+
+    system_backup_manager()->applyNativeSqlFile($dbName, $path);
+    return $path;
 }
 
 function upgradeTestFailpoint(string $name): void
@@ -434,102 +427,3 @@ function upgradeTestFailpoint(string $name): void
     }
 }
 
-function readSqlStatements(string $filePath): array
-{
-    $contents = file_get_contents($filePath);
-    if ($contents === false) {
-        throw new RuntimeException('Unable to read SQL file at ' . $filePath);
-    }
-
-    $withoutBlockComments = preg_replace('~/\*.*?\*/~s', '', $contents);
-    if ($withoutBlockComments === null) {
-        $withoutBlockComments = $contents;
-    }
-
-    $lines = [];
-    foreach (preg_split('/\R/', $withoutBlockComments) as $line) {
-        if (preg_match('/^\s*(--|#)/', $line)) {
-            continue;
-        }
-        $lines[] = $line;
-    }
-
-    $sanitized = implode("\n", $lines);
-    return splitSqlStatements($sanitized);
-}
-
-function splitSqlStatements(string $sql): array
-{
-    $statements = [];
-    $buffer = '';
-    $inString = false;
-    $stringChar = '';
-    $length = strlen($sql);
-
-    for ($i = 0; $i < $length; $i++) {
-        $char = $sql[$i];
-
-        if ($inString) {
-            if ($char === $stringChar) {
-                $backslashes = 0;
-                for ($j = $i - 1; $j >= 0 && $sql[$j] === '\\'; $j--) {
-                    $backslashes++;
-                }
-                if ($backslashes % 2 === 0) {
-                    $inString = false;
-                    $stringChar = '';
-                }
-            }
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === '\'' || $char === '"') {
-            $inString = true;
-            $stringChar = $char;
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === ';') {
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $statements[] = $statement;
-            }
-            $buffer = '';
-            continue;
-        }
-
-        $buffer .= $char;
-    }
-
-    $statement = trim($buffer);
-    if ($statement !== '') {
-        $statements[] = $statement;
-    }
-
-    return $statements;
-}
-
-function executeSqlStatements(PDO $pdo, array $statements, string $context): int
-{
-    $count = 0;
-    foreach ($statements as $statement) {
-        try {
-            $pdo->exec($statement);
-            $count++;
-        } catch (PDOException $e) {
-            if (upgrade_should_ignore_sql_error($e, $statement)) {
-                $preview = trim(preg_replace('/\s+/', ' ', $statement));
-                if (strlen($preview) > 120) {
-                    $preview = substr($preview, 0, 117) . '...';
-                }
-                error_log('Ignored SQL warning from ' . $context . ' while running "' . $preview . '": ' . $e->getMessage());
-                continue;
-            }
-            throw new RuntimeException('Failed to execute statement from ' . $context . ': ' . $e->getMessage(), 0, $e);
-        }
-    }
-
-    return $count;
-}
