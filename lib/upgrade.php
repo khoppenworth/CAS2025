@@ -705,6 +705,7 @@ final class UpgradeEngine
 
         // Exact deployment: remove non-preserved live paths that do not exist in
         // the target release. This prevents stale PHP/JS/CSS from surviving upgrades.
+        $mutationCount = 0;
         $current = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
@@ -730,10 +731,12 @@ final class UpgradeEngine
                 if (!@rmdir($fileInfo->getPathname()) && is_dir($fileInfo->getPathname())) {
                     throw new RuntimeException('Unable to remove stale release directory ' . $relative);
                 }
+                $this->upgradeTestDeployFailure(++$mutationCount);
             } else {
                 if (!@unlink($fileInfo->getPathname()) && file_exists($fileInfo->getPathname())) {
                     throw new RuntimeException('Unable to remove stale release file ' . $relative);
                 }
+                $this->upgradeTestDeployFailure(++$mutationCount);
             }
         }
 
@@ -774,6 +777,21 @@ final class UpgradeEngine
             if (!copy($fileInfo->getPathname(), $target)) {
                 throw new RuntimeException('Failed to copy release file ' . $relative);
             }
+            $this->upgradeTestDeployFailure(++$mutationCount);
+        }
+    }
+
+    private function upgradeTestDeployFailure(int $mutationCount): void
+    {
+        if (getenv('CAS_UPGRADE_TEST_MODE') !== '1'
+            || trim((string)(getenv('CAS_UPGRADE_TEST_FAIL_STAGE') ?: '')) !== 'mid-deploy'
+        ) {
+            return;
+        }
+
+        $after = (int)(getenv('CAS_UPGRADE_TEST_FAIL_DEPLOY_AFTER') ?: 1);
+        if ($mutationCount >= max(1, $after)) {
+            throw new RuntimeException('Injected deployment failure after filesystem mutation ' . $mutationCount);
         }
     }
 
