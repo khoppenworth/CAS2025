@@ -91,6 +91,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preserveInput = (string)($options['preserve'] ?? '');
     $extraPreserve = array_filter(array_map('trim', explode(',', $preserveInput)));
     $preservePaths = array_values(array_unique(array_merge([
+        '.git',
+        '.env',
         'config.php',
         'assets/uploads',
         'storage',
@@ -109,6 +111,9 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $candidate = null;
     $tempDir = null;
     $maintenanceEnabled = false;
+    $liveApplicationChanged = false;
+    $pointerSwitched = false;
+    $previousCutoverState = system_backup_manager()->captureCutoverState();
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -147,24 +152,20 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $engine->updateRun($run, [
             'package_path' => $engine->relativeToRoot($download['archive']),
         ]);
-        info('Package downloaded. Entering controlled maintenance mode...');
-        system_backup_manager()->setMaintenanceMode(true, 'upgrade');
-        $maintenanceEnabled = true;
 
-        info('Applying release files...');
-        $engine->deployRelease($download['extract_root'], $preservePaths);
-        info('Release deployed successfully.');
-        applyConfigMigrations($engine);
+        info('Validating release PHP syntax before touching live application files...');
+        $lintedFiles = validateReleasePhp($download['extract_root']);
+        info('Release syntax validation passed for ' . $lintedFiles . ' PHP file(s).');
 
-        info('Checking for database migrations against the isolated candidate database...');
+        info('Checking for database migrations against the isolated candidate database before touching live application files...');
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
             throw new RuntimeException('Verified candidate database connection is unavailable.');
         }
-        $appliedMigrations = applyDatabaseMigrations($engine, $candidate['pdo']);
-        if ($appliedMigrations === 0) {
-            info('No migration scripts were executed.');
+        $migrationFile = applyDatabaseMigration($candidate, $download['extract_root']);
+        if ($migrationFile === null) {
+            info('No migration script was present in the release package.');
         } else {
-            info('Applied ' . $appliedMigrations . ' candidate database migration statement' . ($appliedMigrations === 1 ? '' : 's') . '.');
+            info('Applied candidate database migration using native client: ' . basename($migrationFile));
         }
 
         $criticalUsers = $candidate['pdo']->query(
@@ -176,10 +177,20 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $candidate['pdo']->query('SELECT COUNT(*) FROM users')->fetchColumn();
         info('Candidate database passed post-migration critical-table validation.');
 
-        info('Switching CAS to the verified candidate database...');
-        system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        info('Booting staged target release with the live site config against the candidate database...');
+        runStagedApplicationHealthcheck($download['extract_root'], (string)$candidate['db_name']);
+        info('Staged target release passed application boot validation.');
 
-        $engine->completeRun($run, 'success');
+        info('Candidate is ready. Entering controlled maintenance mode for cutover...');
+        system_backup_manager()->setMaintenanceMode(true, 'upgrade');
+        $maintenanceEnabled = true;
+
+        info('Applying release files while preserving server-local state...');
+        $engine->deployRelease($download['extract_root'], $preservePaths);
+        $liveApplicationChanged = true;
+        info('Release deployed successfully.');
+        upgradeTestFailpoint('after_app_deploy');
+
         upgrade_store_installed_release([
             'tag' => $targetRef,
             'name' => $targetLabel,
@@ -188,6 +199,16 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'installed_at' => date(DATE_ATOM),
         ]);
 
+        info('Switching CAS to the verified candidate database...');
+        system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        $pointerSwitched = true;
+        upgradeTestFailpoint('after_pointer_switch');
+
+        info('Running fresh-process post-cutover application health check...');
+        runPostCutoverHealthcheck((string)$candidate['db_name']);
+        info('Post-cutover application health check passed.');
+
+        $engine->completeRun($run, 'success');
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
         try {
@@ -202,20 +223,26 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
         $rollbackMessage = null;
-        if (is_array($backupSet) && !empty($backupSet['absolute_path'])) {
+        if (is_array($backupSet) && !empty($backupSet['absolute_path']) && ($liveApplicationChanged || $pointerSwitched)) {
             try {
-                info('Upgrade failed. Automatically restoring the verified pre-upgrade backup set...');
-                $rollback = system_backup_manager()->restoreBackupSet(
-                    $pdo,
+                info('Upgrade failed during cutover. Restoring only the previous application and runtime pointers; the original live database is not restored or rewritten.');
+                system_backup_manager()->restoreCutoverState($previousCutoverState);
+                $pointerSwitched = false;
+                system_backup_manager()->restoreApplicationFromBackupSet(
                     (string)$backupSet['absolute_path'],
-                    $preservePaths
+                    $preservePaths,
+                    false
                 );
-                $rollbackMessage = 'Automatic rollback completed using backup ' . (string)($rollback['restored_id'] ?? $run['id']) . '.';
+                $liveApplicationChanged = false;
+                $rollbackMessage = 'Automatic cutover rollback completed using backup ' . (string)($backupSet['id'] ?? $run['id']) . '. Original live database remained untouched.';
                 info($rollbackMessage);
             } catch (Throwable $rollbackError) {
-                $rollbackMessage = 'Automatic rollback failed: ' . $rollbackError->getMessage();
+                $rollbackMessage = 'Automatic cutover rollback failed: ' . $rollbackError->getMessage();
                 fwrite(STDERR, $rollbackMessage . PHP_EOL);
             }
+        } elseif (!$liveApplicationChanged && !$pointerSwitched) {
+            $rollbackMessage = 'No live application or database cutover occurred; original live system remained untouched.';
+            info($rollbackMessage);
         }
 
         $engine->updateRun($run, [
@@ -383,164 +410,203 @@ function info(string $message): void
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
 }
 
-function applyConfigMigrations(UpgradeEngine $engine): void
+function validateReleasePhp(string $sourceRoot): int
 {
-    $configPath = $engine->absoluteFromRoot('config.php');
-    if (!is_file($configPath)) {
-        info('Skipping config.php migrations (config.php not found).');
-        return;
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    if (!is_dir($root)) {
+        throw new RuntimeException('Release package root is missing.');
     }
 
-    $contents = file_get_contents($configPath);
-    if ($contents === false) {
-        info('Skipping config.php migrations (unable to read config.php).');
-        return;
-    }
-
-    if (strpos($contents, 'config.migrations.php') !== false) {
-        info('config.php already references config.migrations.php.');
-        return;
-    }
-
-    $snippet = "\nif (is_readable(__DIR__ . '/config.migrations.php')) {\n    require_once __DIR__ . '/config.migrations.php';\n}\n";
-    $pos = strrpos($contents, '?>');
-    if ($pos !== false) {
-        $contents = substr($contents, 0, $pos) . $snippet . substr($contents, $pos);
-    } else {
-        $contents .= $snippet;
-    }
-
-    $result = file_put_contents($configPath, $contents);
-    if ($result === false) {
-        info('Unable to update config.php to include config.migrations.php.');
-        return;
-    }
-
-    info('Added config.migrations.php include to config.php.');
-}
-
-function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
-{
-    $totalStatements = 0;
-    $candidates = [
-        base_path('upgrade_to_v3.sql'),
-        base_path('migration.sql'),
-    ];
-
-    foreach ($candidates as $path) {
-        if ($path === '' || !is_file($path)) {
-            continue;
-        }
-
-        $statements = readSqlStatements($path);
-        if ($statements === []) {
-            continue;
-        }
-
-        $relative = $engine->relativeToRoot($path);
-        info('Running ' . count($statements) . ' SQL statement' . (count($statements) === 1 ? '' : 's') . ' from ' . $relative . '...');
-        $totalStatements += executeSqlStatements($pdo, $statements, $relative);
-    }
-
-    return $totalStatements;
-}
-
-function readSqlStatements(string $filePath): array
-{
-    $contents = file_get_contents($filePath);
-    if ($contents === false) {
-        throw new RuntimeException('Unable to read SQL file at ' . $filePath);
-    }
-
-    $withoutBlockComments = preg_replace('~/\*.*?\*/~s', '', $contents);
-    if ($withoutBlockComments === null) {
-        $withoutBlockComments = $contents;
-    }
-
-    $lines = [];
-    foreach (preg_split('/\R/', $withoutBlockComments) as $line) {
-        if (preg_match('/^\s*(--|#)/', $line)) {
-            continue;
-        }
-        $lines[] = $line;
-    }
-
-    $sanitized = implode("\n", $lines);
-    return splitSqlStatements($sanitized);
-}
-
-function splitSqlStatements(string $sql): array
-{
-    $statements = [];
-    $buffer = '';
-    $inString = false;
-    $stringChar = '';
-    $length = strlen($sql);
-
-    for ($i = 0; $i < $length; $i++) {
-        $char = $sql[$i];
-
-        if ($inString) {
-            if ($char === $stringChar) {
-                $backslashes = 0;
-                for ($j = $i - 1; $j >= 0 && $sql[$j] === '\\'; $j--) {
-                    $backslashes++;
-                }
-                if ($backslashes % 2 === 0) {
-                    $inString = false;
-                    $stringChar = '';
-                }
-            }
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === '\'' || $char === '"') {
-            $inString = true;
-            $stringChar = $char;
-            $buffer .= $char;
-            continue;
-        }
-
-        if ($char === ';') {
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $statements[] = $statement;
-            }
-            $buffer = '';
-            continue;
-        }
-
-        $buffer .= $char;
-    }
-
-    $statement = trim($buffer);
-    if ($statement !== '') {
-        $statements[] = $statement;
-    }
-
-    return $statements;
-}
-
-function executeSqlStatements(PDO $pdo, array $statements, string $context): int
-{
+    $php = PHP_BINARY ?: 'php';
     $count = 0;
-    foreach ($statements as $statement) {
-        try {
-            $pdo->exec($statement);
-            $count++;
-        } catch (PDOException $e) {
-            if (upgrade_should_ignore_sql_error($e, $statement)) {
-                $preview = trim(preg_replace('/\s+/', ' ', $statement));
-                if (strlen($preview) > 120) {
-                    $preview = substr($preview, 0, 117) . '...';
-                }
-                error_log('Ignored SQL warning from ' . $context . ' while running "' . $preview . '": ' . $e->getMessage());
-                continue;
-            }
-            throw new RuntimeException('Failed to execute statement from ' . $context . ': ' . $e->getMessage(), 0, $e);
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY
+    );
+
+    foreach ($iterator as $fileInfo) {
+        if (!$fileInfo->isFile() || strtolower($fileInfo->getExtension()) !== 'php') {
+            continue;
         }
+        $result = runChildProcess([$php, '-l', $fileInfo->getPathname()], $root);
+        if ($result['exit_code'] !== 0) {
+            throw new RuntimeException(
+                'Release PHP syntax validation failed for '
+                . substr($fileInfo->getPathname(), strlen($root) + 1)
+                . ': ' . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+            );
+        }
+        $count++;
     }
 
+    if ($count < 1) {
+        throw new RuntimeException('Release package contains no PHP files to validate.');
+    }
     return $count;
 }
+
+function runStagedApplicationHealthcheck(string $sourceRoot, string $expectedDb): void
+{
+    if ($expectedDb === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDb) !== 1) {
+        throw new RuntimeException('Invalid candidate database for staged application health check.');
+    }
+
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    $liveConfig = base_path('config.php');
+    $stagedConfig = $root . DIRECTORY_SEPARATOR . 'config.php';
+    if (!is_file($liveConfig) || !is_file($stagedConfig)) {
+        throw new RuntimeException('Live or staged config.php is unavailable for compatibility validation.');
+    }
+
+    // The release package is temporary and config.php is preserved during real
+    // deployment, so replacing only the temporary copy accurately models the
+    // deployed combination without touching the live file.
+    if (!copy($liveConfig, $stagedConfig)) {
+        throw new RuntimeException('Unable to stage the live config.php for compatibility validation.');
+    }
+
+    $environment = getenv();
+    if (!is_array($environment)) {
+        $environment = [];
+    }
+    $environment['DB_NAME'] = $expectedDb;
+
+    $code = <<<'PHP'
+chdir($argv[1]);
+require 'config.php';
+$expected = $argv[2];
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    fwrite(STDERR, "PDO unavailable\n");
+    exit(50);
+}
+$actual = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+if ($actual !== $expected) {
+    fwrite(STDERR, "Wrong staged DB: " . $actual . "\n");
+    exit(51);
+}
+foreach (['users', 'site_config'] as $table) {
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    $stmt->execute([$table]);
+    if ((int)$stmt->fetchColumn() !== 1) {
+        fwrite(STDERR, "Missing staged critical table: " . $table . "\n");
+        exit(52);
+    }
+}
+echo "CAS_STAGED_HEALTHCHECK_OK\n";
+PHP;
+
+    $result = runChildProcess(
+        [PHP_BINARY ?: 'php', '-r', $code, $root, $expectedDb],
+        $root,
+        $environment
+    );
+
+    if ($result['exit_code'] !== 0 || !str_contains($result['stdout'], 'CAS_STAGED_HEALTHCHECK_OK')) {
+        throw new RuntimeException(
+            'Staged application health check failed: '
+            . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+        );
+    }
+}
+
+function runPostCutoverHealthcheck(string $expectedDb): void
+{
+    if ($expectedDb === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDb) !== 1) {
+        throw new RuntimeException('Invalid expected database for post-cutover health check.');
+    }
+
+    $root = base_path('');
+    $code = <<<'PHP'
+chdir($argv[1]);
+require 'config.php';
+$expected = $argv[2];
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    fwrite(STDERR, "PDO unavailable\n");
+    exit(40);
+}
+$actual = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+if ($actual !== $expected) {
+    fwrite(STDERR, "Wrong active DB: " . $actual . "\n");
+    exit(41);
+}
+foreach (['users', 'site_config'] as $table) {
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    $stmt->execute([$table]);
+    if ((int)$stmt->fetchColumn() !== 1) {
+        fwrite(STDERR, "Missing critical table: " . $table . "\n");
+        exit(42);
+    }
+}
+$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+echo "CAS_HEALTHCHECK_OK\n";
+PHP;
+
+    $result = runChildProcess([PHP_BINARY ?: 'php', '-r', $code, $root, $expectedDb], $root);
+    if ($result['exit_code'] !== 0 || !str_contains($result['stdout'], 'CAS_HEALTHCHECK_OK')) {
+        throw new RuntimeException(
+            'Post-cutover application health check failed: '
+            . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+        );
+    }
+}
+
+function runChildProcess(array $command, string $cwd, ?array $environment = null): array
+{
+    $process = proc_open($command, [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes, $cwd, $environment);
+
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start verification process.');
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+
+    return [
+        'exit_code' => is_int($exit) ? $exit : 1,
+        'stdout' => $stdout,
+        'stderr' => $stderr,
+    ];
+}
+
+function applyDatabaseMigration(array $candidate, string $sourceRoot): ?string
+{
+    $dbName = trim((string)($candidate['db_name'] ?? ''));
+    if ($dbName === '') {
+        throw new RuntimeException('Candidate database name is unavailable.');
+    }
+
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    $preferred = $root . DIRECTORY_SEPARATOR . 'migration.sql';
+    $fallback = $root . DIRECTORY_SEPARATOR . 'upgrade_to_v3.sql';
+    $path = is_file($preferred) ? $preferred : (is_file($fallback) ? $fallback : null);
+
+    if ($path === null) {
+        return null;
+    }
+
+    system_backup_manager()->applyNativeSqlFile($dbName, $path);
+    return $path;
+}
+
+function upgradeTestFailpoint(string $name): void
+{
+    if (getenv('CAS_UPGRADE_TEST_MODE') !== '1') {
+        return;
+    }
+    if ((string)getenv('CAS_UPGRADE_FAIL_AT') === $name) {
+        throw new RuntimeException('Injected upgrade failure at ' . $name);
+    }
+}
+

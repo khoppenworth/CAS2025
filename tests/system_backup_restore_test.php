@@ -58,11 +58,26 @@ $removeDirectory = static function (string $path) use (&$removeDirectory): void 
 try {
     mkdir($root, 0755, true);
     mkdir($root . '/lib', 0755, true);
+    mkdir($root . '/admin', 0755, true);
+    mkdir($root . '/scripts', 0755, true);
     mkdir($root . '/assets/uploads', 0755, true);
     mkdir($root . '/storage/upgrades', 0755, true);
 
     file_put_contents($root . '/index.php', "<?php echo 'baseline';\n");
     file_put_contents($root . '/lib/baseline.php', "<?php return 'baseline-lib';\n");
+
+    // Emulate a backup created before the enterprise recovery runtime existed.
+    $legacyRecoveryFiles = [
+        'admin/upgrade.php',
+        'lib/system_backup.php',
+        'lib/upgrade.php',
+        'lib/path.php',
+        'scripts/system_upgrade.php',
+        'scripts/system_job.php',
+    ];
+    foreach ($legacyRecoveryFiles as $legacyPath) {
+        file_put_contents($root . '/' . $legacyPath, "<?php // legacy recovery file: " . $legacyPath . "\n");
+    }
     file_put_contents($root . '/config.php', "<?php return ['env' => 'baseline-config'];\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "baseline upload\n");
     file_put_contents($root . '/storage/runtime.txt', "baseline runtime\n");
@@ -209,6 +224,15 @@ try {
     $unsafeValidation = $manager->validateBackupSet($unsafeZip);
     $assert($unsafeValidation['valid'] === false, 'Unsafe ZIP path traversal was not rejected.');
 
+    // The live system now has a trusted enterprise recovery core. Restore of the
+    // older snapshot must not permanently downgrade these files.
+    $trustedRecoveryFiles = array_merge($legacyRecoveryFiles, ['lib/enterprise_runtime.php']);
+    $trustedRecoveryHashes = [];
+    foreach ($trustedRecoveryFiles as $trustedPath) {
+        file_put_contents($root . '/' . $trustedPath, "<?php // trusted enterprise recovery file: " . $trustedPath . "\n");
+        $trustedRecoveryHashes[$trustedPath] = hash_file('sha256', $root . '/' . $trustedPath);
+    }
+
     // Mutate application state. Files outside preserved paths must roll back exactly.
     file_put_contents($root . '/index.php', "<?php echo 'experimental';\n");
     @unlink($root . '/lib/baseline.php');
@@ -271,6 +295,13 @@ try {
         'Storage runtime data should be preserved across restore.'
     );
 
+    foreach ($trustedRecoveryHashes as $trustedPath => $trustedHash) {
+        $assert(
+            hash_file('sha256', $root . '/' . $trustedPath) === $trustedHash,
+            'Restore downgraded trusted recovery core file ' . $trustedPath
+        );
+    }
+
     $tables = $pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);
     $tableNames = array_map(static fn(array $row): string => (string)$row[0], $tables);
     sort($tableNames);
@@ -311,6 +342,60 @@ try {
     $assert($emergency !== null, 'Emergency pre-restore backup is not retained in the backup catalog.');
     $emergencyValidation = $manager->validateBackupSet((string)$emergency['backup_set_path']);
     $assert($emergencyValidation['valid'] === true, 'Emergency pre-restore backup failed validation.');
+
+    // Inject a failure after DB pointer + installed metadata cutover and prove that
+    // pointer state, installed metadata, application files, config.php and the
+    // previously active database all return exactly to their pre-restore state.
+    file_put_contents($root . '/index.php', "<?php echo 'current-before-failed-restore';\n");
+    $pdo->exec("UPDATE baseline_data SET label='current-before-failed-restore-db' WHERE id=1");
+    file_put_contents(
+        $root . '/storage/upgrades/installed.json',
+        json_encode(['tag' => 'current-before-failed-restore', 'name' => 'Current Before Failed Restore'], JSON_PRETTY_PRINT) . "\n"
+    );
+
+    $pointerBeforeFailedRestore = file_get_contents($root . '/storage/upgrades/active_database.json');
+    $installedBeforeFailedRestore = file_get_contents($root . '/storage/upgrades/installed.json');
+    $configBeforeFailedRestore = file_get_contents($root . '/config.php');
+    $indexBeforeFailedRestore = file_get_contents($root . '/index.php');
+    $dbBeforeFailedRestore = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+
+    putenv('CAS_RESTORE_TEST_MODE=1');
+    putenv('CAS_RESTORE_FAIL_AT=after_installed_metadata');
+    $restoreFailed = false;
+    try {
+        $manager->restoreBackupSet($pdo, $backup['absolute_path']);
+    } catch (RuntimeException $e) {
+        $restoreFailed = str_contains($e->getMessage(), 'Injected restore failure');
+    } finally {
+        putenv('CAS_RESTORE_TEST_MODE');
+        putenv('CAS_RESTORE_FAIL_AT');
+    }
+
+    $assert($restoreFailed, 'Injected restore cutover failure did not fail as expected.');
+    $assert(
+        file_get_contents($root . '/storage/upgrades/active_database.json') === $pointerBeforeFailedRestore,
+        'Failed restore did not restore the exact prior active DB pointer state.'
+    );
+    $assert(
+        file_get_contents($root . '/storage/upgrades/installed.json') === $installedBeforeFailedRestore,
+        'Failed restore did not restore exact prior installed-release metadata.'
+    );
+    $assert(
+        file_get_contents($root . '/config.php') === $configBeforeFailedRestore,
+        'Failed restore changed config.php.'
+    );
+    $assert(
+        file_get_contents($root . '/index.php') === $indexBeforeFailedRestore,
+        'Failed restore did not restore the pre-restore application state.'
+    );
+    $assert(
+        (string)$pdo->query('SELECT DATABASE()')->fetchColumn() === $dbBeforeFailedRestore,
+        'Failed restore changed the existing PDO live database identity.'
+    );
+    $assert(
+        (string)$pdo->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn() === 'current-before-failed-restore-db',
+        'Failed restore modified the previously active database.'
+    );
 
     fwrite(
         STDOUT,

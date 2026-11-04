@@ -170,20 +170,6 @@ $baseUrlEnv = getenv('BASE_URL') ?: '/';
 $normalizedBaseUrl = rtrim($baseUrlEnv, "/\/");
 define('BASE_URL', ($normalizedBaseUrl === '') ? '/' : $normalizedBaseUrl . '/');
 
-if ($isBootstrapRequested && PHP_SAPI !== 'cli') {
-    $maintenanceFlag = __DIR__ . '/storage/upgrades/maintenance.flag';
-    $scriptName = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    $maintenanceExempt = str_ends_with($scriptName, '/admin/upgrade.php');
-    if (is_file($maintenanceFlag) && !$maintenanceExempt) {
-        http_response_code(503);
-        header('Retry-After: 30');
-        echo '<!doctype html><html><head><meta charset="utf-8"><title>Maintenance</title></head><body>';
-        echo '<h1>System maintenance</h1><p>CAS is completing a verified system operation. Please try again shortly.</p>';
-        echo '</body></html>';
-        exit;
-    }
-}
-
 if ($isBootstrapRequested) {
     $scriptPath = trim((string)($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     $isAuthRoute = in_array($scriptPath, ['login.php', 'admin/login.php', 'oauth.php'], true);
@@ -204,19 +190,6 @@ if ($isBootstrapRequested) {
 
     $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
     $dbName = getenv('DB_NAME') ?: 'epss_v300';
-
-    // Recovery hardening: an atomic, server-local database pointer can temporarily
-    // override DB_NAME after a verified staging restore/cutover. This file lives
-    // under storage/upgrades, which is preserved across application releases.
-    $activeDbPointer = __DIR__ . '/storage/upgrades/active_database.json';
-    if (is_readable($activeDbPointer)) {
-        $activeDbRaw = file_get_contents($activeDbPointer);
-        $activeDbData = is_string($activeDbRaw) ? json_decode($activeDbRaw, true) : null;
-        $activeDbName = is_array($activeDbData) ? trim((string)($activeDbData['db_name'] ?? '')) : '';
-        if ($activeDbName !== '' && preg_match('/^[A-Za-z0-9_]+$/', $activeDbName)) {
-            $dbName = $activeDbName;
-        }
-    }
 
     $dbUser = getenv('DB_USER') ?: 'epss_user';
     $dbPass = getenv('DB_PASS') ?: 'StrongPassword123!';

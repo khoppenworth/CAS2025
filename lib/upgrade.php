@@ -561,42 +561,9 @@ final class UpgradeEngine
 
     public function restoreDatabaseFromDump(PDO $pdo, string $dumpPath): void
     {
-        if (!is_file($dumpPath)) {
-            throw new RuntimeException('Database dump not found at ' . $dumpPath);
-        }
-
-        $handle = fopen($dumpPath, 'r');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to open database dump at ' . $dumpPath);
-        }
-
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        try {
-            $buffer = '';
-            while (($line = fgets($handle)) !== false) {
-                $trimmed = trim($line);
-                if ($trimmed === '' || strpos($trimmed, '--') === 0) {
-                    continue;
-                }
-
-                $buffer .= $line;
-                if (substr(rtrim($line), -1) === ';') {
-                    $statement = trim($buffer);
-                    if ($statement !== '') {
-                        $pdo->exec($statement);
-                    }
-                    $buffer = '';
-                }
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                $pdo->exec($statement);
-            }
-        } finally {
-            fclose($handle);
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-        }
+        throw new RuntimeException(
+            'Legacy destructive in-place database restore is disabled. Import or use a verified full backup set so CAS can restore into an isolated candidate database.'
+        );
     }
 
     public function downloadReleaseArchive(string $source, string $reference, ?string $token = null): array
@@ -1012,16 +979,16 @@ final class UpgradeEngine
 
     private function shouldSkip(string $relative, array $exclusions): bool
     {
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
-
-            if (strpos($relative, $entry) === 0) {
+            if ($relative === $entry || str_starts_with($relative, $entry . '/')) {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -1042,8 +1009,14 @@ final class UpgradeEngine
             throw new RuntimeException('Unable to encode JSON for ' . $path);
         }
 
-        if (file_put_contents($path, $json . "\n") === false) {
-            throw new RuntimeException('Unable to write JSON to ' . $path);
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $json . "\n", LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to stage JSON for ' . $path);
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically write JSON to ' . $path);
         }
     }
 
