@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const SYSTEM_BACKUP_FORMAT_VERSION = 3;
+const SYSTEM_BACKUP_FORMAT_VERSION = 2;
 
 final class SystemBackupManager
 {
@@ -44,6 +44,7 @@ final class SystemBackupManager
         return [
             '.git',
             '.env',
+            'config.php',
             '.htaccess',
             '.user.ini',
             '.well-known',
@@ -352,8 +353,7 @@ final class SystemBackupManager
                 if (($manifest['format'] ?? '') !== 'cas-full-backup-set') {
                     $errors[] = 'Unsupported backup set format.';
                 }
-                $formatVersion = (int)($manifest['format_version'] ?? 0);
-                if (!in_array($formatVersion, [2, SYSTEM_BACKUP_FORMAT_VERSION], true)) {
+                if ((int)($manifest['format_version'] ?? 0) !== SYSTEM_BACKUP_FORMAT_VERSION) {
                     $errors[] = 'Unsupported backup set format version.';
                 }
                 if (trim((string)($manifest['id'] ?? '')) === '') {
