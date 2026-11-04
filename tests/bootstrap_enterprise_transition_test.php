@@ -201,31 +201,35 @@ try {
     $assert(!file_exists($modified . '/scripts/system_job.php'), 'Refused bridge left new system_job.php behind.');
     $assert(!file_exists($modified . '/lib/enterprise_runtime.php'), 'Refused bridge left enterprise_runtime.php behind.');
 
-    // 5) Injected mid-install failure must restore exact 0.5.95 files and remove new files.
-    $rollback = $makeFixture('rollback');
-    $original = [];
-    $rollbackConfigBefore = $blob($rollback . '/config.php');
-    foreach (['admin/upgrade.php','lib/system_backup.php','lib/upgrade.php','lib/path.php','scripts/system_upgrade.php'] as $path) {
-        $original[$path] = [
-            'blob' => $blob($rollback . '/' . $path),
-            'mode' => fileperms($rollback . '/' . $path) & 0777,
-        ];
+    // 5) Every installation position must roll back exactly on injected failure.
+    for ($failAfter = 1; $failAfter <= 7; $failAfter++) {
+        $rollback = $makeFixture('rollback-' . $failAfter);
+        $rollbackConfigBefore = $blob($rollback . '/config.php');
+        $original = [];
+        foreach (['admin/upgrade.php','lib/system_backup.php','lib/upgrade.php','lib/path.php','scripts/system_upgrade.php'] as $path) {
+            $original[$path] = [
+                'blob' => $blob($rollback . '/' . $path),
+                'mode' => fileperms($rollback . '/' . $path) & 0777,
+            ];
+        }
+
+        $injected = $run([
+            PHP_BINARY, $script,
+            '--root=' . $rollback,
+            '--source-root=' . $repoRoot,
+            '--apply',
+            '--test-fail-after=' . $failAfter,
+        ], ['CAS_BOOTSTRAP_TEST_MODE' => '1']);
+
+        $assert($injected['exit'] !== 0, 'Injected bridge failure at position ' . $failAfter . ' unexpectedly succeeded.');
+        foreach ($original as $path => $state) {
+            $assert($blob($rollback . '/' . $path) === $state['blob'], 'Rollback hash mismatch for ' . $path . ' at position ' . $failAfter);
+            $assert((fileperms($rollback . '/' . $path) & 0777) === $state['mode'], 'Rollback mode mismatch for ' . $path . ' at position ' . $failAfter);
+        }
+        $assert(!file_exists($rollback . '/scripts/system_job.php'), 'Rollback left system_job.php at position ' . $failAfter);
+        $assert(!file_exists($rollback . '/lib/enterprise_runtime.php'), 'Rollback left enterprise_runtime.php at position ' . $failAfter);
+        $assert($blob($rollback . '/config.php') === $rollbackConfigBefore, 'Injected rollback changed config.php at position ' . $failAfter);
     }
-    $injected = $run([
-        PHP_BINARY, $script,
-        '--root=' . $rollback,
-        '--source-root=' . $repoRoot,
-        '--apply',
-        '--test-fail-after=3',
-    ], ['CAS_BOOTSTRAP_TEST_MODE' => '1']);
-    $assert($injected['exit'] !== 0, 'Injected bridge failure unexpectedly succeeded.');
-    foreach ($original as $path => $state) {
-        $assert($blob($rollback . '/' . $path) === $state['blob'], 'Rollback hash mismatch for ' . $path);
-        $assert((fileperms($rollback . '/' . $path) & 0777) === $state['mode'], 'Rollback mode mismatch for ' . $path);
-    }
-    $assert(!file_exists($rollback . '/scripts/system_job.php'), 'Rollback failed to remove newly created system_job.php.');
-    $assert(!file_exists($rollback . '/lib/enterprise_runtime.php'), 'Rollback failed to remove enterprise_runtime.php.');
-    $assert($blob($rollback . '/config.php') === $rollbackConfigBefore, 'Injected rollback changed config.php.');
 
     echo "Enterprise bootstrap transition test passed.\n";
 } finally {
