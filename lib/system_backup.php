@@ -442,6 +442,7 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $applicationMutationStarted = false;
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
             $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
@@ -463,8 +464,9 @@ final class SystemBackupManager
             $this->setMaintenanceMode(true, 'restore');
             $maintenanceEnabled = true;
 
-            // Application restore is the only live-file mutation. Database cutover happens
+            // Application restore is the first live-file mutation. Database cutover happens
             // only after the application tree has restored and verified successfully.
+            $applicationMutationStarted = true;
             $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
             $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
             if ($expectedTreeHash !== '') {
@@ -508,21 +510,46 @@ final class SystemBackupManager
                 $installedRollbackError = $installedError;
             }
 
-            // Restore application files from the independently verified emergency backup.
+            // Restore application files only if live application mutation actually began.
             $rollbackError = null;
-            try {
-                $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+            if ($applicationMutationStarted) {
                 try {
-                    $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
-                } finally {
-                    $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+                    try {
+                        $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
+                    } finally {
+                        $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    }
+                } catch (Throwable $rollbackFailure) {
+                    $rollbackError = $rollbackFailure;
                 }
-            } catch (Throwable $rollbackFailure) {
-                $rollbackError = $rollbackFailure;
             }
 
-            if ($maintenanceEnabled) {
+            $rollbackHealthError = null;
+            if ($pointerRollbackError === null && $installedRollbackError === null && $rollbackError === null) {
+                try {
+                    $rollbackPdo = $this->connectToDatabase($currentDatabase);
+                    $users = $rollbackPdo->query(
+                        "SELECT COUNT(*) FROM information_schema.tables "
+                        . "WHERE table_schema = DATABASE() AND table_name = 'users'"
+                    );
+                    if (!$users || (int)$users->fetchColumn() !== 1) {
+                        throw new RuntimeException('users table is missing after rollback.');
+                    }
+                    $rollbackPdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+                } catch (Throwable $healthFailure) {
+                    $rollbackHealthError = $healthFailure;
+                }
+            }
+
+            $rollbackComplete = $pointerRollbackError === null
+                && $installedRollbackError === null
+                && $rollbackError === null
+                && $rollbackHealthError === null;
+
+            if ($rollbackComplete && $maintenanceEnabled) {
                 $this->setMaintenanceMode(false);
+                $maintenanceEnabled = false;
             }
 
             $message = 'Restore failed before a verified cutover completed: ' . $restoreError->getMessage();
@@ -532,16 +559,22 @@ final class SystemBackupManager
             if ($installedRollbackError !== null) {
                 $message .= ' Installed-release metadata rollback also failed: ' . $installedRollbackError->getMessage();
             }
-            if ($rollbackError === null) {
-                $message .= ' The original database remained available and application files were rolled back from the emergency backup.';
-            } else {
+            if ($rollbackError !== null) {
                 $message .= ' Application rollback also failed: ' . $rollbackError->getMessage();
+            }
+            if ($rollbackHealthError !== null) {
+                $message .= ' Rollback health verification also failed: ' . $rollbackHealthError->getMessage();
+            }
+            if ($rollbackComplete) {
+                $message .= $applicationMutationStarted
+                    ? ' The original database remained available and application rollback was verified.'
+                    : ' No live application files or live database contents were changed.';
+            } else {
+                $message .= ' CAS remains in maintenance mode because rollback could not be fully verified.';
             }
             throw new RuntimeException($message, 0, $restoreError);
         } finally {
-            if ($maintenanceEnabled) {
-                $this->setMaintenanceMode(false);
-            }
+            // Fail closed: never clear maintenance here after an unverified rollback.
             $this->cleanupPreparedBackupSet($prepared);
         }
     }
