@@ -177,6 +177,10 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $candidate['pdo']->query('SELECT COUNT(*) FROM users')->fetchColumn();
         info('Candidate database passed post-migration critical-table validation.');
 
+        info('Booting staged target release with the live site config against the candidate database...');
+        runStagedApplicationHealthcheck($download['extract_root'], (string)$candidate['db_name']);
+        info('Staged target release passed application boot validation.');
+
         info('Candidate is ready. Entering controlled maintenance mode for cutover...');
         system_backup_manager()->setMaintenanceMode(true, 'upgrade');
         $maintenanceEnabled = true;
@@ -441,6 +445,72 @@ function validateReleasePhp(string $sourceRoot): int
     return $count;
 }
 
+function runStagedApplicationHealthcheck(string $sourceRoot, string $expectedDb): void
+{
+    if ($expectedDb === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDb) !== 1) {
+        throw new RuntimeException('Invalid candidate database for staged application health check.');
+    }
+
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    $liveConfig = base_path('config.php');
+    $stagedConfig = $root . DIRECTORY_SEPARATOR . 'config.php';
+    if (!is_file($liveConfig) || !is_file($stagedConfig)) {
+        throw new RuntimeException('Live or staged config.php is unavailable for compatibility validation.');
+    }
+
+    // The release package is temporary and config.php is preserved during real
+    // deployment, so replacing only the temporary copy accurately models the
+    // deployed combination without touching the live file.
+    if (!copy($liveConfig, $stagedConfig)) {
+        throw new RuntimeException('Unable to stage the live config.php for compatibility validation.');
+    }
+
+    $environment = getenv();
+    if (!is_array($environment)) {
+        $environment = [];
+    }
+    $environment['DB_NAME'] = $expectedDb;
+
+    $code = <<<'PHP'
+chdir($argv[1]);
+require 'config.php';
+$expected = $argv[2];
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    fwrite(STDERR, "PDO unavailable\n");
+    exit(50);
+}
+$actual = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+if ($actual !== $expected) {
+    fwrite(STDERR, "Wrong staged DB: " . $actual . "\n");
+    exit(51);
+}
+foreach (['users', 'site_config'] as $table) {
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    $stmt->execute([$table]);
+    if ((int)$stmt->fetchColumn() !== 1) {
+        fwrite(STDERR, "Missing staged critical table: " . $table . "\n");
+        exit(52);
+    }
+}
+echo "CAS_STAGED_HEALTHCHECK_OK\n";
+PHP;
+
+    $result = runChildProcess(
+        [PHP_BINARY ?: 'php', '-r', $code, $root, $expectedDb],
+        $root,
+        $environment
+    );
+
+    if ($result['exit_code'] !== 0 || !str_contains($result['stdout'], 'CAS_STAGED_HEALTHCHECK_OK')) {
+        throw new RuntimeException(
+            'Staged application health check failed: '
+            . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+        );
+    }
+}
+
 function runPostCutoverHealthcheck(string $expectedDb): void
 {
     if ($expectedDb === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDb) !== 1) {
@@ -484,13 +554,13 @@ PHP;
     }
 }
 
-function runChildProcess(array $command, string $cwd): array
+function runChildProcess(array $command, string $cwd, ?array $environment = null): array
 {
     $process = proc_open($command, [
         0 => ['pipe', 'r'],
         1 => ['pipe', 'w'],
         2 => ['pipe', 'w'],
-    ], $pipes, $cwd);
+    ], $pipes, $cwd, $environment);
 
     if (!is_resource($process)) {
         throw new RuntimeException('Unable to start verification process.');
