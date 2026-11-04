@@ -180,6 +180,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $engine->deployRelease($download['extract_root'], $preservePaths);
         $liveApplicationChanged = true;
         info('Release deployed successfully.');
+        upgradeTestFailpoint('after_app_deploy');
 
         upgrade_store_installed_release([
             'tag' => $targetRef,
@@ -192,6 +193,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         info('Switching CAS to the verified candidate database...');
         system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
         $pointerSwitched = true;
+        upgradeTestFailpoint('after_pointer_switch');
 
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
@@ -422,6 +424,16 @@ function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo, ?string $sourc
     }
 
     return $totalStatements;
+}
+
+function upgradeTestFailpoint(string $name): void
+{
+    if (getenv('CAS_UPGRADE_TEST_MODE') !== '1') {
+        return;
+    }
+    if ((string)getenv('CAS_UPGRADE_FAIL_AT') === $name) {
+        throw new RuntimeException('Injected upgrade failure at ' . $name);
+    }
 }
 
 function captureActiveDatabasePointerState(): array
