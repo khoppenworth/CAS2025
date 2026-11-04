@@ -2064,9 +2064,5 @@ function contrast_color(string $hex): string
             error_log('Database schema initialization failed: ' . $e->getMessage());
         }
     }
-    $configMigrationPath = __DIR__ . '/config.migrations.php';
-    if (is_readable($configMigrationPath)) {
-        require_once $configMigrationPath;
-    }
 }
 ?>
