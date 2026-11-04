@@ -21,8 +21,7 @@ $server = new PDO($dsn, $user, $pass, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 
-$baseDb = 'cas_bridge_' . bin2hex(random_bytes(4));
-$server->exec('CREATE DATABASE `' . $baseDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$fixtureDatabases = [];
 
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
@@ -71,9 +70,17 @@ $remove = static function (string $path) use (&$remove): void {
     }
 };
 
-$makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, $port, $user, $pass, $baseDb, $run): string {
+$makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, $port, $user, $pass, $server, &$fixtureDatabases, $run): string {
     $fixture = $tempRoot . '/' . $name;
     mkdir($fixture, 0750, true);
+
+    // Every simulated CAS server gets its own database. Reusing one database
+    // across fixtures would make the second real 0.5.95 init.sql collide with
+    // objects created by the first fixture and would not model separate servers.
+    $baseDb = 'cas_bridge_' . preg_replace('/[^A-Za-z0-9_]+/', '_', $name)
+        . '_' . bin2hex(random_bytes(4));
+    $server->exec('CREATE DATABASE `' . $baseDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+    $fixtureDatabases[] = $baseDb;
 
     $cmd = 'git -C ' . escapeshellarg($repoRoot)
         . ' archive 0.5.95 | tar -x -C ' . escapeshellarg($fixture);
@@ -266,9 +273,11 @@ try {
 
     echo "Enterprise bootstrap transition test passed with customized config.php preserved.\n";
 } finally {
-    try {
-        $server->exec('DROP DATABASE IF EXISTS `' . $baseDb . '`');
-    } catch (Throwable $e) {
+    foreach ($fixtureDatabases as $fixtureDatabase) {
+        try {
+            $server->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $fixtureDatabase) . '`');
+        } catch (Throwable $e) {
+        }
     }
     $remove($tempRoot);
 }
