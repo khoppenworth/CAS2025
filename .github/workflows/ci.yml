@@ -44,6 +44,17 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/bootstrap_enterprise_transition_test.php
+      - name: Full 0.5.95 enterprise transition E2E x2 (MySQL)
+        env:
+          UPGRADE_E2E_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          UPGRADE_E2E_DB_USER: root
+          UPGRADE_E2E_DB_PASS: root
+        run: |
+          set -e
+          for i in 1 2; do
+            echo "MySQL enterprise transition E2E pass $i/2"
+            UPGRADE_E2E_SUFFIX="$i" php tests/system_upgrade_end_to_end_test.php
+          done
       - name: Demo dataset SQL contract
         run: php tests/demo_dataset_sql_test.php
       - name: MySQL demo number generator regression
@@ -109,6 +120,17 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/bootstrap_enterprise_transition_test.php
+      - name: Full 0.5.95 enterprise transition E2E x2 (MariaDB 10.11)
+        env:
+          UPGRADE_E2E_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
+          UPGRADE_E2E_DB_USER: root
+          UPGRADE_E2E_DB_PASS: root
+        run: |
+          set -e
+          for i in 1 2; do
+            echo "MariaDB enterprise transition E2E pass $i/2"
+            UPGRADE_E2E_SUFFIX="$i" php tests/system_upgrade_end_to_end_test.php
+          done
       - name: MariaDB 10.11 demo number generator regression
         env:
           DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
