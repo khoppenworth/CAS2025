@@ -104,11 +104,17 @@ $makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, 
         . "BASE_URL=/\n"
     );
 
-    file_put_contents(
-        $fixture . '/config.php',
-        "\n// SITE-LOCAL CUSTOMIZATION: must survive every bridge/upgrade operation byte-for-byte.\n",
-        FILE_APPEND
-    );
+    $configPath = $fixture . '/config.php';
+    $configContents = file_get_contents($configPath);
+    if (!is_string($configContents)) {
+        throw new RuntimeException('Unable to read config.php fixture.');
+    }
+    $customization = "\n// SITE-LOCAL CUSTOMIZATION: must survive every bridge/upgrade operation byte-for-byte.\n";
+    $closePos = strrpos($configContents, '?>');
+    $configContents = $closePos === false
+        ? $configContents . $customization
+        : substr($configContents, 0, $closePos) . $customization . substr($configContents, $closePos);
+    file_put_contents($configPath, $configContents);
     chmod($fixture . '/config.php', 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
 
