@@ -23,14 +23,14 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/system_backup.php' => [
-        'target' => '8f6daaa80e18a7cb13f9960a4464487892e51986',
+        'target' => '31962bfc7278f0c2551bad35407c84721dafc7d9',
         'allowed' => [
             // Published 0.5.95, 0.5.97, 0.5.98, 0.5.99-0.5.101.
             '48c85a53283aa515ccce0fa9e84f4e02ef8112e8',
             '705af28f16565dfc97acf0142cefb0daf69419fa',
             '6d24268acba4f40ef3d872a9a3bbffd74e67985a',
             'c42f2659aa4e8e3d3116d0c5159597cc7616124f',
-            '8f6daaa80e18a7cb13f9960a4464487892e51986',
+            '31962bfc7278f0c2551bad35407c84721dafc7d9',
         ],
     ],
     'lib/upgrade.php' => [
