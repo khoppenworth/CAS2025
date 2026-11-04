@@ -108,7 +108,6 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preservePaths = array_values(array_unique(array_merge([
         '.git',
         '.env',
-        'config.php',
         'assets/uploads',
         'storage',
     ], $extraPreserve)));
@@ -339,10 +338,10 @@ function runRestore(UpgradeEngine $engine, PDO $pdo, array $options): void
             $pdo,
             (string)$backupSet['backup_set_path'],
             [
-                'config.php',
+                '.git',
+                '.env',
                 'assets/uploads',
                 'storage',
-                'storage/upgrades',
             ]
         );
         info('Application and database restored and verified successfully.');
