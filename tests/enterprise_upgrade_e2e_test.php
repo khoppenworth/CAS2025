@@ -168,10 +168,18 @@ $createReleaseZip = static function (
         $zip->addFromString($prefix . 'lib/invalid_release_probe.php', "<?php this is invalid syntax !!!\n");
     }
     if ($runtimeFailure) {
-        $zip->addFromString(
-            $prefix . 'lib/path.php',
-            "<?php require_once __DIR__ . '/enterprise_runtime.php'; throw new RuntimeException('Injected deployed runtime boot failure');\n"
-        );
+        $pathContents = file_get_contents($repoRoot . '/lib/path.php');
+        if (!is_string($pathContents)) {
+            throw new RuntimeException('Unable to prepare runtime-failure path.php fixture.');
+        }
+        $injection = "\nif (is_file(dirname(__DIR__) . '/storage/upgrades/maintenance.flag')) {\n"
+            . "    throw new RuntimeException('Injected deployed runtime boot failure');\n"
+            . "}\n";
+        $close = strrpos($pathContents, '?>');
+        $pathContents = $close === false
+            ? $pathContents . $injection
+            : substr($pathContents, 0, $close) . $injection . substr($pathContents, $close);
+        $zip->addFromString($prefix . 'lib/path.php', $pathContents);
     }
     $zip->close();
 };
