@@ -52,6 +52,12 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/enterprise_upgrade_e2e_test.php
+      - name: Real 0.5.95 legacy backup restore E2E (MySQL)
+        env:
+          BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          BACKUP_DB_USER: root
+          BACKUP_DB_PASS: root
+        run: php tests/legacy_restore_e2e_test.php
       - name: Demo dataset SQL contract
         run: php tests/demo_dataset_sql_test.php
       - name: MySQL demo number generator regression
@@ -125,6 +131,12 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/enterprise_upgrade_e2e_test.php
+      - name: Real 0.5.95 legacy backup restore E2E (MariaDB 10.11)
+        env:
+          BACKUP_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
+          BACKUP_DB_USER: root
+          BACKUP_DB_PASS: root
+        run: php tests/legacy_restore_e2e_test.php
       - name: MariaDB 10.11 demo number generator regression
         env:
           DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
