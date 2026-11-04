@@ -134,7 +134,13 @@ $makeFixture = static function (string $name, string $dbName) use (
     return $fixture;
 };
 
-$createReleaseZip = static function (string $filename, string $migrationSql, string $legacySql) use ($repoRoot): void {
+$createReleaseZip = static function (
+    string $filename,
+    string $migrationSql,
+    string $legacySql,
+    bool $invalidPhp = false,
+    bool $runtimeFailure = false
+) use ($repoRoot): void {
     $zip = new ZipArchive();
     if ($zip->open($filename, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         throw new RuntimeException('Unable to create release test ZIP.');
@@ -149,7 +155,8 @@ $createReleaseZip = static function (string $filename, string $migrationSql, str
         $relative = str_replace('\\', '/', substr($absolute, strlen($repoRoot) + 1));
         if ($relative === '' || $relative === '.git' || str_starts_with($relative, '.git/')
             || $relative === 'storage' || str_starts_with($relative, 'storage/')
-            || $relative === 'migration.sql' || $relative === 'upgrade_to_v3.sql') {
+            || $relative === 'migration.sql' || $relative === 'upgrade_to_v3.sql'
+            || ($runtimeFailure && $relative === 'lib/path.php')) {
             continue;
         }
         if ($entry->isDir()) $zip->addEmptyDir($prefix . $relative);
@@ -157,6 +164,15 @@ $createReleaseZip = static function (string $filename, string $migrationSql, str
     }
     $zip->addFromString($prefix . 'migration.sql', $migrationSql);
     $zip->addFromString($prefix . 'upgrade_to_v3.sql', $legacySql);
+    if ($invalidPhp) {
+        $zip->addFromString($prefix . 'lib/invalid_release_probe.php', "<?php this is invalid syntax !!!\n");
+    }
+    if ($runtimeFailure) {
+        $zip->addFromString(
+            $prefix . 'lib/path.php',
+            "<?php require_once __DIR__ . '/enterprise_runtime.php'; throw new RuntimeException('Injected deployed runtime boot failure');\n"
+        );
+    }
     $zip->close();
 };
 
@@ -193,6 +209,8 @@ try {
     mkdir($serverDir, 0750, true);
     $goodZip = $serverDir . '/good.zip';
     $badZip = $serverDir . '/bad.zip';
+    $invalidPhpZip = $serverDir . '/invalid-php.zip';
+    $runtimeFailureZip = $serverDir . '/runtime-failure.zip';
     $legacyMarkerSql = "CREATE TABLE legacy_migration_should_not_run (id INT PRIMARY KEY);\n";
     $createReleaseZip(
         $goodZip,
@@ -204,6 +222,20 @@ try {
         $badZip,
         "THIS IS DELIBERATELY INVALID SQL;\n",
         $legacyMarkerSql
+    );
+    $createReleaseZip(
+        $invalidPhpZip,
+        "CREATE TABLE upgrade_candidate_probe (id INT PRIMARY KEY, marker VARCHAR(50) NOT NULL);\n",
+        $legacyMarkerSql,
+        true,
+        false
+    );
+    $createReleaseZip(
+        $runtimeFailureZip,
+        "CREATE TABLE upgrade_candidate_probe (id INT PRIMARY KEY, marker VARCHAR(50) NOT NULL);\n",
+        $legacyMarkerSql,
+        false,
+        true
     );
 
     $http = $startServer($serverDir);
@@ -308,6 +340,8 @@ try {
 
     $runScenario('success', 'good.zip', null, true);
     $runScenario('candidate_migration_failure', 'bad.zip', null, false);
+    $runScenario('release_php_syntax_failure', 'invalid-php.zip', null, false);
+    $runScenario('post_cutover_runtime_failure', 'runtime-failure.zip', null, false);
     $runScenario('after_app_deploy_failure', 'good.zip', 'after_app_deploy', false);
     $runScenario('after_pointer_switch_failure', 'good.zip', 'after_pointer_switch', false);
 
