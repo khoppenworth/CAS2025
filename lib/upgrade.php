@@ -713,6 +713,7 @@ final class UpgradeEngine
             'lib/system_backup.php',
             'lib/path.php',
             'lib/enterprise_runtime.php',
+            'lib/system_cli_bootstrap.php',
             'scripts/system_upgrade.php',
             'scripts/system_job.php',
             'scripts/system_healthcheck.php',
