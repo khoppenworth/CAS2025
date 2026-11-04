@@ -46,7 +46,6 @@ final class SystemBackupManager
             '.env',
             '.htaccess',
             '.user.ini',
-            'config.php',
             'assets/uploads',
             'storage',
         ];
