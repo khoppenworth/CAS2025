@@ -127,13 +127,15 @@ try {
         $states = inspectLiveFiles($root);
         validateKnownLegacyState($states);
     });
-    check($errors, 'native database tools', static fn() => assertNativeTools());
-    check($errors, 'staging database privileges', static fn() => proveStagingPrivileges($root));
-
     $staging = createTempDirectory($bootstrap, 'target_');
     try {
         check($errors, 'release updater hashes', static fn() => stageTargetFiles($sourceRoot, $staging));
         check($errors, 'release PHP syntax', static fn() => lintPhpFiles($staging, array_keys(BRIDGE_FILES)));
+        check(
+            $errors,
+            'full live backup round-trip',
+            static fn() => verifyFullBackupRoundTrip($root, $staging)
+        );
 
         if (sha256File($root . '/config.php') !== $configBefore) {
             $errors[] = 'config.php changed during preflight even though the bridge never writes it.';
@@ -146,7 +148,7 @@ try {
 
         info('PREFLIGHT PASSED.');
         info('config.php SHA-256: ' . $configBefore . ' (protected; never installed by the bridge)');
-        info('Native DB tools, staging privileges, updater hashes, and PHP syntax all passed.');
+        info('Updater hashes, PHP syntax, and a full native live-DB backup/temporary-restore round-trip all passed.');
 
         if (!$apply) {
             info('CHECK PASSED. No live application files were changed.');
@@ -427,56 +429,67 @@ function assertNoActiveSystemOperation(string $root): void
     }
 }
 
-function assertNativeTools(): void
-{
-    if (findExecutable(['mysqldump', 'mariadb-dump']) === null) throw new RuntimeException('mysqldump or mariadb-dump is not installed.');
-    if (findExecutable(['mysql', 'mariadb']) === null) throw new RuntimeException('mysql or mariadb client is not installed.');
-    if (!function_exists('proc_open')) throw new RuntimeException('PHP proc_open is disabled.');
-}
-
-function proveStagingPrivileges(string $root): void
+function verifyFullBackupRoundTrip(string $root, string $staging): void
 {
     $env = readEnvironment($root . '/.env');
-    $value = static function (string $key, string $default = '') use ($env): string {
+    foreach (['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS', 'DB_ADMIN_USER', 'DB_ADMIN_PASS'] as $key) {
         $runtime = getenv($key);
-        if ($runtime !== false && $runtime !== '') return (string)$runtime;
-        return (string)($env[$key] ?? $default);
-    };
+        if (($runtime === false || $runtime === '') && array_key_exists($key, $env)) {
+            putenv($key . '=' . (string)$env[$key]);
+            $_ENV[$key] = (string)$env[$key];
+        }
+    }
 
-    $host = $value('DB_HOST', '127.0.0.1');
-    $port = (int)$value('DB_PORT', '3306');
-    $db = $value('DB_NAME', 'epss_v300');
-    $appUser = $value('DB_USER');
-    $appPass = $value('DB_PASS');
-    $adminUser = $value('DB_ADMIN_USER', $appUser);
-    $adminPass = $value('DB_ADMIN_PASS', $appPass);
-    if ($appUser === '' || $adminUser === '') throw new RuntimeException('DB_USER/DB_ADMIN_USER is missing.');
+    $host = (string)(getenv('DB_HOST') ?: '127.0.0.1');
+    $port = (int)(getenv('DB_PORT') ?: 3306);
+    $dbName = (string)(getenv('DB_NAME') ?: '');
+    $dbUser = (string)(getenv('DB_USER') ?: '');
+    $dbPass = (string)(getenv('DB_PASS') ?: '');
 
-    $base = 'mysql:host=' . $host . ';port=' . $port . ';charset=utf8mb4';
-    $opts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false];
-    $live = new PDO($base . ';dbname=' . $db, $appUser, $appPass, $opts);
-    $identity = (string)$live->query('SELECT CURRENT_USER()')->fetchColumn();
-    $admin = new PDO($base, $adminUser, $adminPass, $opts);
-    $candidate = 'cas_bridge_preflight_' . bin2hex(random_bytes(4));
-    $quotedDb = chr(96) . $candidate . chr(96);
+    if ($dbName === '' || preg_match('/^[A-Za-z0-9_]+$/', $dbName) !== 1 || $dbUser === '') {
+        throw new RuntimeException('DB_NAME/DB_USER is missing or unsafe in the server environment.');
+    }
+
+    require_once $staging . '/lib/system_backup.php';
+
+    $pdo = new PDO(
+        sprintf(
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+            $host,
+            $port > 0 ? $port : 3306,
+            $dbName
+        ),
+        $dbUser,
+        $dbPass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]
+    );
+
+    $manager = new SystemBackupManager($root);
+    $target = $root . '/storage/upgrades/bootstrap/preflight-roundtrip-'
+        . gmdate('Ymd_His') . '-' . bin2hex(random_bytes(3)) . '.zip';
 
     try {
-        $admin->exec('CREATE DATABASE ' . $quotedDb . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-        try {
-            $candidatePdo = new PDO($base . ';dbname=' . $candidate, $appUser, $appPass, $opts);
-        } catch (Throwable $e) {
-            if (!preg_match('/^([^@]+)@(.+)$/', $identity, $m)) throw $e;
-            $admin->exec('GRANT ALL PRIVILEGES ON ' . $quotedDb . '.* TO '
-                . $admin->quote($m[1]) . '@' . $admin->quote($m[2]));
-            $candidatePdo = new PDO($base . ';dbname=' . $candidate, $appUser, $appPass, $opts);
-        }
-        $candidatePdo->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY)');
-        $candidatePdo->exec('INSERT INTO bridge_probe VALUES (1)');
-        if ((int)$candidatePdo->query('SELECT COUNT(*) FROM bridge_probe')->fetchColumn() !== 1) {
-            throw new RuntimeException('Application account cannot use a candidate database.');
+        $backup = $manager->createBackupSet(
+            $pdo,
+            'preflight',
+            $target,
+            [
+                'id' => 'bridge_preflight_' . gmdate('Ymd_His') . '_' . bin2hex(random_bytes(3)),
+                'label' => 'One-time enterprise transition preflight',
+            ]
+        );
+
+        if (!is_file((string)$backup['absolute_path']) || empty($backup['manifest']['database']['verified_restore'])) {
+            throw new RuntimeException('Full preflight backup did not prove a native staging restore.');
         }
     } finally {
-        $admin->exec('DROP DATABASE IF EXISTS ' . $quotedDb);
+        if (is_file($target)) {
+            @unlink($target);
+        }
     }
 }
 
@@ -520,17 +533,6 @@ function runCommand(array $command): string
     $exit = proc_close($process);
     if ($exit !== 0) throw new RuntimeException(trim($stderr !== '' ? $stderr : $stdout));
     return $stdout;
-}
-
-function findExecutable(array $names): ?string
-{
-    foreach ($names as $name) {
-        foreach (explode(PATH_SEPARATOR, (string)(getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin')) as $dir) {
-            $file = rtrim($dir, '/') . '/' . $name;
-            if (is_file($file) && is_executable($file)) return $file;
-        }
-    }
-    return null;
 }
 
 function atomicJsonWrite(string $path, array $payload): void
