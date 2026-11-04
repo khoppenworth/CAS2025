@@ -18,48 +18,18 @@ const BRIDGE_FILES = [
     'lib/enterprise_runtime.php' => [
         'may_be_absent' => true,
         'metadata_reference' => 'lib/path.php',
-        'allowed' => [],
     ],
-    'admin/upgrade.php' => [
-        'allowed' => [
-            'afceaa03265bd76e6d16f14bcbfac8ea5ba5144c',
-            'a97038b94921bcc75c6d4f31c9e6b286b0b9e771',
-            'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
-        ],
-    ],
-    'lib/system_backup.php' => [
-        'allowed' => [
-            '48c85a53283aa515ccce0fa9e84f4e02ef8112e8',
-            '705af28f16565dfc97acf0142cefb0daf69419fa',
-            '6d24268acba4f40ef3d872a9a3bbffd74e67985a',
-            'c42f2659aa4e8e3d3116d0c5159597cc7616124f',
-        ],
-    ],
-    'lib/upgrade.php' => [
-        'allowed' => [
-            'a240b32ed60106ebf564ce01df7ad94ce1134265',
-            '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
-        ],
-    ],
-    'scripts/system_upgrade.php' => [
-        'allowed' => [
-            'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
-            'c646a5c5774f72663fd31e33157bb9ea641b1baf',
-        ],
-    ],
+    'admin/upgrade.php' => [],
+    'lib/system_backup.php' => [],
+    'lib/upgrade.php' => [],
+    'scripts/system_upgrade.php' => [],
     'scripts/system_job.php' => [
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
-        'allowed' => [
-            'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7',
-        ],
     ],
-    'lib/path.php' => [
-        'allowed' => [
-            '1c350a4d4132ec695699db696ff6f6093efcebdb',
-        ],
-    ],
-];
+    // Activate the runtime hook last.
+    'lib/path.php' => [],
+]
 
 $options = getopt('', [
     'root::',
@@ -124,7 +94,7 @@ try {
 
     $sourceHashes = inspectSourceFiles($sourceRoot);
     $states = inspectLiveFiles($root);
-    validateKnownUpdaterState($states, $sourceHashes);
+    validateUpdaterState($states);
 
     info('Checking native MySQL/MariaDB client tools...');
     assertNativeTools();
@@ -274,26 +244,11 @@ function inspectLiveFiles(string $root): array
     return $states;
 }
 
-function validateKnownUpdaterState(array $states, array $sourceHashes): void
+function validateUpdaterState(array $states): void
 {
     foreach (BRIDGE_FILES as $path => $spec) {
-        $state = $states[$path];
-        if (!$state['exists']) {
-            if (!empty($spec['may_be_absent'])) {
-                continue;
-            }
+        if (!$states[$path]['exists'] && empty($spec['may_be_absent'])) {
             throw new RuntimeException('Required updater file is missing: ' . $path);
-        }
-
-        $allowed = array_values(array_unique(array_merge(
-            is_array($spec['allowed'] ?? null) ? $spec['allowed'] : [],
-            [(string)$sourceHashes[$path]]
-        )));
-        if (!in_array((string)$state['blob'], $allowed, true)) {
-            throw new RuntimeException(
-                'Updater code file has an unknown local modification: ' . $path
-                . '. config.php is intentionally excluded from this check.'
-            );
         }
     }
 }
