@@ -506,34 +506,48 @@ final class SystemBackupManager
                 $rollbackError = $rollbackFailure;
             }
 
+            $cleanupError = null;
             if (is_array($candidate) && !empty($candidate['db_name'])) {
                 try {
                     $this->dropCandidateDatabase((string)$candidate['db_name']);
                 } catch (Throwable $cleanupFailure) {
-                    error_log('Unable to remove failed restore candidate: ' . $cleanupFailure->getMessage());
+                    $cleanupError = $cleanupFailure;
                 }
             }
 
-            if ($maintenanceEnabled) {
-                $this->setMaintenanceMode(false);
+            $rollbackComplete = $stateRollbackError === null && $rollbackError === null;
+            if ($rollbackComplete && $maintenanceEnabled) {
+                try {
+                    $this->setMaintenanceMode(false);
+                    $maintenanceEnabled = false;
+                } catch (Throwable $maintenanceFailure) {
+                    $rollbackComplete = false;
+                    $stateRollbackError = $maintenanceFailure;
+                }
             }
 
             $message = 'Restore failed before a verified cutover completed: ' . $restoreError->getMessage();
-            if ($stateRollbackError === null && $rollbackError === null) {
+            if ($rollbackComplete) {
                 $message .= ' The previous database pointer, release metadata, and application files were restored exactly.';
+                if ($cleanupError !== null) {
+                    $message .= ' Candidate cleanup warning: ' . $cleanupError->getMessage();
+                }
             } else {
+                $message .= ' CAS remains in maintenance mode because rollback did not complete.';
                 if ($stateRollbackError !== null) {
-                    $message .= ' Runtime-state rollback also failed: ' . $stateRollbackError->getMessage();
+                    $message .= ' Runtime-state rollback: ' . $stateRollbackError->getMessage();
                 }
                 if ($rollbackError !== null) {
-                    $message .= ' Application rollback also failed: ' . $rollbackError->getMessage();
+                    $message .= ' Application rollback: ' . $rollbackError->getMessage();
+                }
+                if ($cleanupError !== null) {
+                    $message .= ' Candidate cleanup: ' . $cleanupError->getMessage();
                 }
             }
             throw new RuntimeException($message, 0, $restoreError);
         } finally {
-            if ($maintenanceEnabled) {
-                $this->setMaintenanceMode(false);
-            }
+            // Never clear maintenance here. Success and a fully verified rollback
+            // are the only paths allowed to reopen CAS.
             $this->cleanupPreparedBackupSet($prepared);
         }
     }
