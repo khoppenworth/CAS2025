@@ -152,6 +152,11 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $engine->updateRun($run, [
             'package_path' => $engine->relativeToRoot($download['archive']),
         ]);
+
+        info('Validating release PHP syntax before touching live application files...');
+        $lintedFiles = validateReleasePhp($download['extract_root']);
+        info('Release syntax validation passed for ' . $lintedFiles . ' PHP file(s).');
+
         info('Checking for database migrations against the isolated candidate database before touching live application files...');
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
             throw new RuntimeException('Verified candidate database connection is unavailable.');
@@ -195,9 +200,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $pointerSwitched = true;
         upgradeTestFailpoint('after_pointer_switch');
 
+        info('Running fresh-process post-cutover application health check...');
+        runPostCutoverHealthcheck((string)$candidate['db_name']);
+        info('Post-cutover application health check passed.');
+
+        $engine->completeRun($run, 'success');
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
-        $engine->completeRun($run, 'success');
         try {
             $removed = system_backup_manager()->cleanupRetention();
             if ($removed !== []) {
@@ -395,6 +404,110 @@ USAGE;
 function info(string $message): void
 {
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
+}
+
+function validateReleasePhp(string $sourceRoot): int
+{
+    $root = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+    if (!is_dir($root)) {
+        throw new RuntimeException('Release package root is missing.');
+    }
+
+    $php = PHP_BINARY ?: 'php';
+    $count = 0;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY
+    );
+
+    foreach ($iterator as $fileInfo) {
+        if (!$fileInfo->isFile() || strtolower($fileInfo->getExtension()) !== 'php') {
+            continue;
+        }
+        $result = runChildProcess([$php, '-l', $fileInfo->getPathname()], $root);
+        if ($result['exit_code'] !== 0) {
+            throw new RuntimeException(
+                'Release PHP syntax validation failed for '
+                . substr($fileInfo->getPathname(), strlen($root) + 1)
+                . ': ' . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+            );
+        }
+        $count++;
+    }
+
+    if ($count < 1) {
+        throw new RuntimeException('Release package contains no PHP files to validate.');
+    }
+    return $count;
+}
+
+function runPostCutoverHealthcheck(string $expectedDb): void
+{
+    if ($expectedDb === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDb) !== 1) {
+        throw new RuntimeException('Invalid expected database for post-cutover health check.');
+    }
+
+    $root = base_path('');
+    $code = <<<'PHP'
+chdir($argv[1]);
+require 'config.php';
+$expected = $argv[2];
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    fwrite(STDERR, "PDO unavailable\n");
+    exit(40);
+}
+$actual = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+if ($actual !== $expected) {
+    fwrite(STDERR, "Wrong active DB: " . $actual . "\n");
+    exit(41);
+}
+foreach (['users', 'site_config'] as $table) {
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    $stmt->execute([$table]);
+    if ((int)$stmt->fetchColumn() !== 1) {
+        fwrite(STDERR, "Missing critical table: " . $table . "\n");
+        exit(42);
+    }
+}
+$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+echo "CAS_HEALTHCHECK_OK\n";
+PHP;
+
+    $result = runChildProcess([PHP_BINARY ?: 'php', '-r', $code, $root, $expectedDb], $root);
+    if ($result['exit_code'] !== 0 || !str_contains($result['stdout'], 'CAS_HEALTHCHECK_OK')) {
+        throw new RuntimeException(
+            'Post-cutover application health check failed: '
+            . trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout'])
+        );
+    }
+}
+
+function runChildProcess(array $command, string $cwd): array
+{
+    $process = proc_open($command, [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes, $cwd);
+
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start verification process.');
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+
+    return [
+        'exit_code' => is_int($exit) ? $exit : 1,
+        'stdout' => $stdout,
+        'stderr' => $stderr,
+    ];
 }
 
 function applyDatabaseMigration(array $candidate, string $sourceRoot): ?string
