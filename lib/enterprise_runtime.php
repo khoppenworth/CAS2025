@@ -29,8 +29,38 @@ if (is_file($casPointerPath)) {
         exit;
     }
 
+    // putenv() changes the process environment, and PHP-FPM workers are reused.
+    // Scope the override to this request/process execution and restore the prior
+    // value at shutdown so a later request cannot inherit a stale candidate DB.
+    $casPreviousDbName = getenv('DB_NAME');
+    $casPreviousEnvDbNameExists = array_key_exists('DB_NAME', $_ENV);
+    $casPreviousEnvDbName = $_ENV['DB_NAME'] ?? null;
+
     putenv('DB_NAME=' . $casDatabase);
     $_ENV['DB_NAME'] = $casDatabase;
+
+    $casRestoreDbEnvironment = static function () use (
+        $casPreviousDbName,
+        $casPreviousEnvDbNameExists,
+        $casPreviousEnvDbName
+    ): void {
+        if ($casPreviousDbName === false) {
+            putenv('DB_NAME');
+        } else {
+            putenv('DB_NAME=' . (string)$casPreviousDbName);
+        }
+
+        if ($casPreviousEnvDbNameExists) {
+            $_ENV['DB_NAME'] = $casPreviousEnvDbName;
+        } else {
+            unset($_ENV['DB_NAME']);
+        }
+    };
+
+    // Expose the exact restore closure for deterministic regression testing and
+    // register the same closure for real request shutdown.
+    $GLOBALS['CAS_ENTERPRISE_DB_ENV_RESTORE'] = $casRestoreDbEnvironment;
+    register_shutdown_function($casRestoreDbEnvironment);
 }
 
 if (PHP_SAPI !== 'cli') {
@@ -55,5 +85,9 @@ unset(
     $casPointerRaw,
     $casPointer,
     $casDatabase,
-    $casMaintenancePath
+    $casMaintenancePath,
+    $casPreviousDbName,
+    $casPreviousEnvDbNameExists,
+    $casPreviousEnvDbName,
+    $casRestoreDbEnvironment
 );
