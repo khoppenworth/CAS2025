@@ -91,6 +91,8 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preserveInput = (string)($options['preserve'] ?? '');
     $extraPreserve = array_filter(array_map('trim', explode(',', $preserveInput)));
     $preservePaths = array_values(array_unique(array_merge([
+        '.git',
+        '.env',
         'config.php',
         'assets/uploads',
         'storage',
@@ -109,6 +111,9 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $candidate = null;
     $tempDir = null;
     $maintenanceEnabled = false;
+    $liveApplicationChanged = false;
+    $pointerSwitched = false;
+    $previousPointerState = captureActiveDatabasePointerState();
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -147,20 +152,11 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $engine->updateRun($run, [
             'package_path' => $engine->relativeToRoot($download['archive']),
         ]);
-        info('Package downloaded. Entering controlled maintenance mode...');
-        system_backup_manager()->setMaintenanceMode(true, 'upgrade');
-        $maintenanceEnabled = true;
-
-        info('Applying release files...');
-        $engine->deployRelease($download['extract_root'], $preservePaths);
-        info('Release deployed successfully.');
-        applyConfigMigrations($engine);
-
-        info('Checking for database migrations against the isolated candidate database...');
+        info('Checking for database migrations against the isolated candidate database before touching live application files...');
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
             throw new RuntimeException('Verified candidate database connection is unavailable.');
         }
-        $appliedMigrations = applyDatabaseMigrations($engine, $candidate['pdo']);
+        $appliedMigrations = applyDatabaseMigrations($engine, $candidate['pdo'], $download['extract_root']);
         if ($appliedMigrations === 0) {
             info('No migration scripts were executed.');
         } else {
@@ -176,10 +172,15 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $candidate['pdo']->query('SELECT COUNT(*) FROM users')->fetchColumn();
         info('Candidate database passed post-migration critical-table validation.');
 
-        info('Switching CAS to the verified candidate database...');
-        system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        info('Candidate is ready. Entering controlled maintenance mode for cutover...');
+        system_backup_manager()->setMaintenanceMode(true, 'upgrade');
+        $maintenanceEnabled = true;
 
-        $engine->completeRun($run, 'success');
+        info('Applying release files while preserving server-local state...');
+        $engine->deployRelease($download['extract_root'], $preservePaths);
+        $liveApplicationChanged = true;
+        info('Release deployed successfully.');
+
         upgrade_store_installed_release([
             'tag' => $targetRef,
             'name' => $targetLabel,
@@ -188,8 +189,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'installed_at' => date(DATE_ATOM),
         ]);
 
+        info('Switching CAS to the verified candidate database...');
+        system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        $pointerSwitched = true;
+
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
+        $engine->completeRun($run, 'success');
         try {
             $removed = system_backup_manager()->cleanupRetention();
             if ($removed !== []) {
@@ -202,20 +208,28 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
         $rollbackMessage = null;
-        if (is_array($backupSet) && !empty($backupSet['absolute_path'])) {
+        if (is_array($backupSet) && !empty($backupSet['absolute_path']) && ($liveApplicationChanged || $pointerSwitched)) {
             try {
-                info('Upgrade failed. Automatically restoring the verified pre-upgrade backup set...');
-                $rollback = system_backup_manager()->restoreBackupSet(
-                    $pdo,
+                info('Upgrade failed during cutover. Restoring only the previous application and runtime pointers; the original live database is not restored or rewritten.');
+                if ($pointerSwitched) {
+                    restoreActiveDatabasePointerState($previousPointerState);
+                    $pointerSwitched = false;
+                }
+                system_backup_manager()->restoreApplicationFromBackupSet(
                     (string)$backupSet['absolute_path'],
-                    $preservePaths
+                    $preservePaths,
+                    true
                 );
-                $rollbackMessage = 'Automatic rollback completed using backup ' . (string)($rollback['restored_id'] ?? $run['id']) . '.';
+                $liveApplicationChanged = false;
+                $rollbackMessage = 'Automatic cutover rollback completed using backup ' . (string)($backupSet['id'] ?? $run['id']) . '. Original live database remained untouched.';
                 info($rollbackMessage);
             } catch (Throwable $rollbackError) {
-                $rollbackMessage = 'Automatic rollback failed: ' . $rollbackError->getMessage();
+                $rollbackMessage = 'Automatic cutover rollback failed: ' . $rollbackError->getMessage();
                 fwrite(STDERR, $rollbackMessage . PHP_EOL);
             }
+        } elseif (!$liveApplicationChanged && !$pointerSwitched) {
+            $rollbackMessage = 'No live application or database cutover occurred; original live system remained untouched.';
+            info($rollbackMessage);
         }
 
         $engine->updateRun($run, [
@@ -383,48 +397,13 @@ function info(string $message): void
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
 }
 
-function applyConfigMigrations(UpgradeEngine $engine): void
-{
-    $configPath = $engine->absoluteFromRoot('config.php');
-    if (!is_file($configPath)) {
-        info('Skipping config.php migrations (config.php not found).');
-        return;
-    }
-
-    $contents = file_get_contents($configPath);
-    if ($contents === false) {
-        info('Skipping config.php migrations (unable to read config.php).');
-        return;
-    }
-
-    if (strpos($contents, 'config.migrations.php') !== false) {
-        info('config.php already references config.migrations.php.');
-        return;
-    }
-
-    $snippet = "\nif (is_readable(__DIR__ . '/config.migrations.php')) {\n    require_once __DIR__ . '/config.migrations.php';\n}\n";
-    $pos = strrpos($contents, '?>');
-    if ($pos !== false) {
-        $contents = substr($contents, 0, $pos) . $snippet . substr($contents, $pos);
-    } else {
-        $contents .= $snippet;
-    }
-
-    $result = file_put_contents($configPath, $contents);
-    if ($result === false) {
-        info('Unable to update config.php to include config.migrations.php.');
-        return;
-    }
-
-    info('Added config.migrations.php include to config.php.');
-}
-
-function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
+function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo, ?string $sourceRoot = null): int
 {
     $totalStatements = 0;
+    $root = $sourceRoot !== null && $sourceRoot !== '' ? rtrim($sourceRoot, DIRECTORY_SEPARATOR) : base_path('');
     $candidates = [
-        base_path('upgrade_to_v3.sql'),
-        base_path('migration.sql'),
+        $root . DIRECTORY_SEPARATOR . 'upgrade_to_v3.sql',
+        $root . DIRECTORY_SEPARATOR . 'migration.sql',
     ];
 
     foreach ($candidates as $path) {
@@ -443,6 +422,41 @@ function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int
     }
 
     return $totalStatements;
+}
+
+function captureActiveDatabasePointerState(): array
+{
+    $path = base_path('storage/upgrades/active_database.json');
+    if (!is_file($path)) {
+        return ['exists' => false, 'contents' => null];
+    }
+    $contents = file_get_contents($path);
+    if (!is_string($contents)) {
+        throw new RuntimeException('Unable to read existing active database pointer safely.');
+    }
+    return ['exists' => true, 'contents' => $contents];
+}
+
+function restoreActiveDatabasePointerState(array $state): void
+{
+    $path = base_path('storage/upgrades/active_database.json');
+    if (empty($state['exists'])) {
+        if (is_file($path) && !@unlink($path)) {
+            throw new RuntimeException('Unable to restore the previous absence of active database pointer.');
+        }
+        return;
+    }
+
+    $contents = $state['contents'] ?? null;
+    if (!is_string($contents)) {
+        throw new RuntimeException('Previous active database pointer state is invalid.');
+    }
+
+    $tmp = $path . '.rollback-' . bin2hex(random_bytes(4));
+    if (file_put_contents($tmp, $contents, LOCK_EX) === false || !@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('Unable to restore previous active database pointer atomically.');
+    }
 }
 
 function readSqlStatements(string $filePath): array
