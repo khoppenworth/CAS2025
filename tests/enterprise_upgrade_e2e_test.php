@@ -219,6 +219,7 @@ try {
     $badZip = $serverDir . '/bad.zip';
     $invalidPhpZip = $serverDir . '/invalid-php.zip';
     $runtimeFailureZip = $serverDir . '/runtime-failure.zip';
+    $realReleaseZip = $serverDir . '/real-release.zip';
     $legacyMarkerSql = "CREATE TABLE legacy_migration_should_not_run (id INT PRIMARY KEY);\n";
     $createReleaseZip(
         $goodZip,
@@ -246,13 +247,25 @@ try {
         true
     );
 
+    $realMigration = file_get_contents($repoRoot . '/migration.sql');
+    $realLegacyMigration = file_get_contents($repoRoot . '/upgrade_to_v3.sql');
+    if (!is_string($realMigration) || !is_string($realLegacyMigration)) {
+        throw new RuntimeException('Unable to read real release migration files.');
+    }
+    $createReleaseZip(
+        $realReleaseZip,
+        $realMigration,
+        $realLegacyMigration
+    );
+
     $http = $startServer($serverDir);
 
     $runScenario = static function (
         string $name,
         string $zipName,
         ?string $failpoint,
-        bool $expectSuccess
+        bool $expectSuccess,
+        bool $expectSyntheticMigration = true
     ) use (
         $repoRoot, $tempRoot, $host, $port, $user, $pass, $server, $makeFixture, $run, $sha, $assert, $http, &$dbNames
     ): void {
@@ -321,16 +334,25 @@ try {
                 'mysql:host=' . $host . ';port=' . $port . ';dbname=' . $candidateDb . ';charset=utf8mb4',
                 $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
             );
-            $assert(
-                (string)$candidate->query('SELECT marker FROM upgrade_candidate_probe WHERE id=1')->fetchColumn() === 'candidate-only',
-                $name . ': canonical migration.sql did not execute on candidate DB.'
-            );
-            $assert(
-                (int)$candidate->query(
-                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='legacy_migration_should_not_run'"
-                )->fetchColumn() === 0,
-                $name . ': legacy upgrade_to_v3.sql ran even though migration.sql was present.'
-            );
+            if ($expectSyntheticMigration) {
+                $assert(
+                    (string)$candidate->query('SELECT marker FROM upgrade_candidate_probe WHERE id=1')->fetchColumn() === 'candidate-only',
+                    $name . ': canonical migration.sql did not execute on candidate DB.'
+                );
+                $assert(
+                    (int)$candidate->query(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='legacy_migration_should_not_run'"
+                    )->fetchColumn() === 0,
+                    $name . ': legacy upgrade_to_v3.sql ran even though migration.sql was present.'
+                );
+            } else {
+                $assert(
+                    (int)$candidate->query(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='users'"
+                    )->fetchColumn() === 1,
+                    $name . ': real migrated candidate lost critical users table.'
+                );
+            }
             $installed = json_decode((string)$installedAfter, true);
             $assert(($installed['tag'] ?? '') === '0.5.e2e', $name . ': installed release metadata not updated.');
 
@@ -347,6 +369,7 @@ try {
     };
 
     $runScenario('success', 'good.zip', null, true);
+    $runScenario('real_release_migration_success', 'real-release.zip', null, true, false);
     $runScenario('candidate_migration_failure', 'bad.zip', null, false);
     $runScenario('release_php_syntax_failure', 'invalid-php.zip', null, false);
     $runScenario('post_cutover_runtime_failure', 'runtime-failure.zip', null, false);
