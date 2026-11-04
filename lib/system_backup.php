@@ -651,6 +651,41 @@ final class SystemBackupManager
         }
     }
 
+    public function waitForApplicationConnectionsToDrain(PDO $currentPdo, int $timeoutSeconds = 30): void
+    {
+        $timeoutSeconds = max(1, min(300, $timeoutSeconds));
+        $app = $this->databaseConnectionSettings(false);
+        $admin = $this->adminConnection();
+
+        $currentId = (int)$currentPdo->query('SELECT CONNECTION_ID()')->fetchColumn();
+        $adminId = (int)$admin->query('SELECT CONNECTION_ID()')->fetchColumn();
+        $deadline = microtime(true) + $timeoutSeconds;
+
+        do {
+            $rows = $admin->query('SHOW PROCESSLIST')->fetchAll(PDO::FETCH_ASSOC);
+            $active = [];
+            foreach ($rows as $row) {
+                $id = (int)($row['Id'] ?? 0);
+                $user = (string)($row['User'] ?? '');
+                if ($id === $currentId || $id === $adminId || $user !== $app['user']) {
+                    continue;
+                }
+                $active[] = $id;
+            }
+
+            if ($active === []) {
+                return;
+            }
+
+            usleep(250000);
+        } while (microtime(true) < $deadline);
+
+        throw new RuntimeException(
+            'Maintenance mode is active but existing application database connections did not drain within '
+            . $timeoutSeconds . ' seconds. Refusing to snapshot/cut over while old application sessions remain.'
+        );
+    }
+
     public function setMaintenanceMode(bool $enabled, string $reason = ''): void
     {
         $flag = $this->storageDirectory . DIRECTORY_SEPARATOR . 'maintenance.flag';
