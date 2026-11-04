@@ -7,10 +7,15 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
-$options = getopt('', ['expect-db:']);
+$options = getopt('', ['expect-db:', 'full']);
 $expectedDb = trim((string)($options['expect-db'] ?? ''));
+$full = isset($options['full']);
 
-require_once __DIR__ . '/../config.php';
+if ($full) {
+    require_once __DIR__ . '/../config.php';
+} else {
+    require_once __DIR__ . '/../lib/system_cli_bootstrap.php';
+}
 
 if (!isset($pdo) || !$pdo instanceof PDO) {
     fwrite(STDERR, "CAS health check could not establish the application database connection.\n");
@@ -35,4 +40,4 @@ if (!$usersTable || (int)$usersTable->fetchColumn() !== 1) {
 
 $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
-fwrite(STDOUT, 'CAS_HEALTHCHECK_OK database=' . $actualDb . PHP_EOL);
+fwrite(STDOUT, 'CAS_HEALTHCHECK_OK database=' . $actualDb . ($full ? ' mode=full' : ' mode=db-only') . PHP_EOL);
