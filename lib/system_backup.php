@@ -478,6 +478,7 @@ final class SystemBackupManager
             if (is_array($installed) && $installed !== []) {
                 $this->writeInstalledRelease($installed);
             }
+            $this->restoreTestFailpoint('after_installed_metadata');
 
             $this->setMaintenanceMode(false);
             $maintenanceEnabled = false;
@@ -714,6 +715,16 @@ final class SystemBackupManager
         }
 
         return $removed;
+    }
+
+    private function restoreTestFailpoint(string $name): void
+    {
+        if (getenv('CAS_RESTORE_TEST_MODE') !== '1') {
+            return;
+        }
+        if ((string)getenv('CAS_RESTORE_FAIL_AT') === $name) {
+            throw new RuntimeException('Injected restore failure at ' . $name);
+        }
     }
 
     private function captureFileState(string $path): array
