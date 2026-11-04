@@ -73,7 +73,7 @@ const BRIDGE_FILES = [
         'metadata_reference' => 'lib/path.php',
     ],
     'scripts/system_upgrade.php' => [
-        'target' => '7057716437de5db83a83d14b3725f1ccf011a852',
+        'target' => '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
         'allowed' => [
             'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
             'c646a5c5774f72663fd31e33157bb9ea641b1baf',
@@ -85,6 +85,7 @@ const BRIDGE_FILES = [
             'e5055de45acf6af9bb5449fdae88b3ab446d7803',
             '4c2e328ada59ac858d1a9269816c01b00f5cc359',
             '7057716437de5db83a83d14b3725f1ccf011a852',
+            '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
         ],
     ],
     'scripts/system_job.php' => [
