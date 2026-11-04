@@ -95,6 +95,7 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         '.env',
         '.htaccess',
         '.user.ini',
+        '.well-known',
         'assets/uploads',
         'storage',
     ], $extraPreserve)));
