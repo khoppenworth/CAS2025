@@ -91,10 +91,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $preserveInput = (string)($options['preserve'] ?? '');
     $extraPreserve = array_filter(array_map('trim', explode(',', $preserveInput)));
     $preservePaths = array_values(array_unique(array_merge([
-        'config.php',
+        '.git',
+        '.env',
+        '.htaccess',
+        '.user.ini',
+        '.well-known',
         'assets/uploads',
         'storage',
-        'storage/upgrades',
     ], $extraPreserve)));
 
     $run = $engine->beginRun('upgrade', [
@@ -109,6 +112,9 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
     $candidate = null;
     $tempDir = null;
     $maintenanceEnabled = false;
+    $applicationMutated = false;
+    $cutoverMutated = false;
+    $cutoverState = system_backup_manager()->captureCutoverState();
 
     info('Starting upgrade run ' . $run['id']);
     info('Source repository: ' . $repo . ' @ ' . $targetRef);
@@ -151,10 +157,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         system_backup_manager()->setMaintenanceMode(true, 'upgrade');
         $maintenanceEnabled = true;
 
-        info('Applying release files...');
+        info('Applying exact release files while preserving site-owned runtime paths...');
+        // deployRelease can fail after partially changing live files, so rollback
+        // responsibility begins before the first deployment mutation.
+        $applicationMutated = true;
         $engine->deployRelease($download['extract_root'], $preservePaths);
-        info('Release deployed successfully.');
-        applyConfigMigrations($engine);
+        info('Release deployed successfully. Server-owned runtime files were preserved.');
+        upgradeTestFailurePoint('after-deploy');
 
         info('Checking for database migrations against the isolated candidate database...');
         if (!is_array($candidate) || !($candidate['pdo'] ?? null) instanceof PDO) {
@@ -178,8 +187,13 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Switching CAS to the verified candidate database...');
         system_backup_manager()->switchActiveDatabase((string)$candidate['db_name']);
+        $cutoverMutated = true;
+        upgradeTestFailurePoint('after-pointer');
 
-        $engine->completeRun($run, 'success');
+        // Prove a fresh PHP process resolves the new runtime pointer through the
+        // preserved site config before users are allowed back in.
+        verifyRuntimeDatabase((string)$candidate['db_name']);
+
         upgrade_store_installed_release([
             'tag' => $targetRef,
             'name' => $targetLabel,
@@ -187,9 +201,17 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
             'url' => $releaseUrl,
             'installed_at' => date(DATE_ATOM),
         ]);
+        upgradeTestFailurePoint('after-installed');
 
         system_backup_manager()->setMaintenanceMode(false);
         $maintenanceEnabled = false;
+
+        try {
+            $engine->completeRun($run, 'success');
+        } catch (Throwable $runLogError) {
+            info('Upgrade completed, but run-status logging failed: ' . $runLogError->getMessage());
+        }
+
         try {
             $removed = system_backup_manager()->cleanupRetention();
             if ($removed !== []) {
@@ -201,40 +223,81 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
 
         info('Upgrade completed successfully.');
     } catch (Throwable $e) {
-        $rollbackMessage = null;
-        if (is_array($backupSet) && !empty($backupSet['absolute_path'])) {
+        $rollbackErrors = [];
+
+        // Once live files may have changed, keep users out until every rollback
+        // component has been verified. A failed rollback intentionally leaves
+        // maintenance mode enabled rather than exposing a mixed state.
+        if ($applicationMutated && !$maintenanceEnabled) {
             try {
-                info('Upgrade failed. Automatically restoring the verified pre-upgrade backup set...');
-                $rollback = system_backup_manager()->restoreBackupSet(
-                    $pdo,
-                    (string)$backupSet['absolute_path'],
-                    $preservePaths
-                );
-                $rollbackMessage = 'Automatic rollback completed using backup ' . (string)($rollback['restored_id'] ?? $run['id']) . '.';
-                info($rollbackMessage);
-            } catch (Throwable $rollbackError) {
-                $rollbackMessage = 'Automatic rollback failed: ' . $rollbackError->getMessage();
-                fwrite(STDERR, $rollbackMessage . PHP_EOL);
+                system_backup_manager()->setMaintenanceMode(true, 'upgrade-rollback');
+                $maintenanceEnabled = true;
+            } catch (Throwable $maintenanceError) {
+                $rollbackErrors[] = 'unable to enable rollback maintenance: ' . $maintenanceError->getMessage();
             }
         }
 
-        $engine->updateRun($run, [
-            'rollback_status' => $rollbackMessage,
-        ]);
-        $engine->completeRun($run, 'failed', $e->getMessage());
+        if ($cutoverMutated) {
+            try {
+                system_backup_manager()->restoreCutoverState($cutoverState);
+            } catch (Throwable $stateError) {
+                $rollbackErrors[] = 'runtime state: ' . $stateError->getMessage();
+            }
+        }
+
+        if ($applicationMutated && is_array($backupSet) && !empty($backupSet['absolute_path'])) {
+            try {
+                info('Upgrade failed. Restoring the previous application snapshot only; the original database is not rewritten...');
+                system_backup_manager()->restoreApplicationFromBackupSet(
+                    (string)$backupSet['absolute_path'],
+                    $preservePaths
+                );
+            } catch (Throwable $applicationRollbackError) {
+                $rollbackErrors[] = 'application files: ' . $applicationRollbackError->getMessage();
+            }
+        }
+
+        if (is_array($candidate) && !empty($candidate['db_name'])) {
+            try {
+                system_backup_manager()->dropCandidateDatabase((string)$candidate['db_name']);
+            } catch (Throwable $candidateCleanupError) {
+                $rollbackErrors[] = 'candidate cleanup: ' . $candidateCleanupError->getMessage();
+            }
+        }
+
+        $rollbackMessage = '';
+        if ($rollbackErrors === []) {
+            if ($maintenanceEnabled) {
+                try {
+                    system_backup_manager()->setMaintenanceMode(false);
+                    $maintenanceEnabled = false;
+                } catch (Throwable $maintenanceError) {
+                    $rollbackErrors[] = 'unable to leave maintenance mode: ' . $maintenanceError->getMessage();
+                }
+            }
+        }
+
+        if ($rollbackErrors === []) {
+            $rollbackMessage = 'Automatic rollback completed: previous application files, database pointer, and release metadata were restored; the original database was never rewritten.';
+            info($rollbackMessage);
+        } else {
+            $rollbackMessage = 'Automatic rollback is incomplete; CAS remains in maintenance mode. ' . implode(' | ', $rollbackErrors);
+            fwrite(STDERR, $rollbackMessage . PHP_EOL);
+        }
+
+        try {
+            $engine->updateRun($run, ['rollback_status' => $rollbackMessage]);
+            $engine->completeRun($run, 'failed', $e->getMessage());
+        } catch (Throwable $runLogError) {
+            fwrite(STDERR, 'Unable to record failed upgrade run: ' . $runLogError->getMessage() . PHP_EOL);
+        }
+
         fwrite(STDERR, 'Upgrade failed: ' . $e->getMessage() . PHP_EOL);
         if (is_array($backupSet)) {
             fwrite(STDERR, 'Verified backup set: ' . (string)$backupSet['relative_path'] . PHP_EOL);
         }
         exit(1);
     } finally {
-        if ($maintenanceEnabled) {
-            try {
-                system_backup_manager()->setMaintenanceMode(false);
-            } catch (Throwable $maintenanceError) {
-                fwrite(STDERR, 'Unable to disable maintenance mode: ' . $maintenanceError->getMessage() . PHP_EOL);
-            }
-        }
         if ($tempDir !== null) {
             $engine->removeDirectory($tempDir);
         }
@@ -383,40 +446,57 @@ function info(string $message): void
     fwrite(STDOUT, '[INFO] ' . $message . PHP_EOL);
 }
 
-function applyConfigMigrations(UpgradeEngine $engine): void
+function upgradeTestFailurePoint(string $stage): void
 {
-    $configPath = $engine->absoluteFromRoot('config.php');
-    if (!is_file($configPath)) {
-        info('Skipping config.php migrations (config.php not found).');
-        return;
+    if (getenv('CAS_UPGRADE_TEST_MODE') === '1'
+        && trim((string)(getenv('CAS_UPGRADE_TEST_FAIL_STAGE') ?: '')) === $stage
+    ) {
+        throw new RuntimeException('Injected upgrade failure at ' . $stage);
+    }
+}
+
+function verifyRuntimeDatabase(string $expectedDatabase): void
+{
+    if ($expectedDatabase === '' || preg_match('/^[A-Za-z0-9_]+$/', $expectedDatabase) !== 1) {
+        throw new RuntimeException('Runtime database verification received an unsafe database name.');
     }
 
-    $contents = file_get_contents($configPath);
-    if ($contents === false) {
-        info('Skipping config.php migrations (unable to read config.php).');
-        return;
+    $php = PHP_BINARY ?: 'php';
+    $config = base_path('config.php');
+    $code = 'require ' . var_export($config, true)
+        . '; $name=(string)$pdo->query("SELECT DATABASE()")->fetchColumn();'
+        . ' $users=(int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();'
+        . ' echo $name, "\\n", $users, "\\n";';
+
+    $process = proc_open([$php, '-r', $code], [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes, base_path(''));
+
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start post-cutover runtime verification.');
     }
 
-    if (strpos($contents, 'config.migrations.php') !== false) {
-        info('config.php already references config.migrations.php.');
-        return;
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+
+    $lines = preg_split('/\\R/', trim($stdout)) ?: [];
+    $actualDatabase = trim((string)($lines[0] ?? ''));
+
+    if ($exit !== 0 || $actualDatabase !== $expectedDatabase) {
+        throw new RuntimeException(
+            'Fresh-process runtime verification failed'
+            . ($stderr !== '' ? ': ' . trim($stderr) : '')
+            . ($actualDatabase !== '' ? ' (resolved database ' . $actualDatabase . ')' : '')
+        );
     }
 
-    $snippet = "\nif (is_readable(__DIR__ . '/config.migrations.php')) {\n    require_once __DIR__ . '/config.migrations.php';\n}\n";
-    $pos = strrpos($contents, '?>');
-    if ($pos !== false) {
-        $contents = substr($contents, 0, $pos) . $snippet . substr($contents, $pos);
-    } else {
-        $contents .= $snippet;
-    }
-
-    $result = file_put_contents($configPath, $contents);
-    if ($result === false) {
-        info('Unable to update config.php to include config.migrations.php.');
-        return;
-    }
-
-    info('Added config.migrations.php include to config.php.');
+    info('Fresh-process runtime verification passed for ' . $expectedDatabase . '.');
 }
 
 function applyDatabaseMigrations(UpgradeEngine $engine, PDO $pdo): int

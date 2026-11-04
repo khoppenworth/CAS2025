@@ -44,7 +44,9 @@ final class SystemBackupManager
         return [
             '.git',
             '.env',
-            'config.php',
+            '.htaccess',
+            '.user.ini',
+            '.well-known',
             'assets/uploads',
             'storage',
         ];
@@ -416,6 +418,7 @@ final class SystemBackupManager
         $preservePaths = $this->normalizePreservePaths($preserve);
         $prepared = $this->prepareBackupSet($archivePath);
         $targetManifest = $prepared['manifest'];
+        $cutoverState = $this->captureCutoverState();
         $currentDatabase = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
         if ($currentDatabase === '' || !preg_match('/^[A-Za-z0-9_]+$/', $currentDatabase)) {
             $this->cleanupPreparedBackupSet($prepared);
@@ -432,6 +435,8 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $applicationMutated = false;
+        $cutoverMutated = false;
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
             $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
@@ -452,8 +457,9 @@ final class SystemBackupManager
             $this->setMaintenanceMode(true, 'restore');
             $maintenanceEnabled = true;
 
-            // Application restore is the only live-file mutation. Database cutover happens
-            // only after the application tree has restored and verified successfully.
+            // Application rollback responsibility begins before the first live-file
+            // mutation because an exact restore can fail part-way through.
+            $applicationMutated = true;
             $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
             $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
             if ($expectedTreeHash !== '') {
@@ -464,6 +470,7 @@ final class SystemBackupManager
             }
 
             $this->switchActiveDatabase($candidate['db_name']);
+            $cutoverMutated = true;
 
             $installed = $targetManifest['installed_release'] ?? null;
             if (is_array($installed) && $installed !== []) {
@@ -481,42 +488,76 @@ final class SystemBackupManager
                 'active_database' => $candidate['db_name'],
             ];
         } catch (Throwable $restoreError) {
-            // Database pointer is switched only at the very end. If anything failed before
-            // then, the original live database is still active and untouched.
-            try {
-                $this->switchActiveDatabase($currentDatabase);
-            } catch (Throwable $pointerError) {
-                // Preserve original failure as primary; append pointer rollback details below.
-            }
-
-            // Restore application files from the independently verified emergency backup.
-            $rollbackError = null;
-            try {
-                $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+            // Restore the exact pre-operation pointer and installed-release metadata.
+            // The original live database itself is never rewritten.
+            $stateRollbackError = null;
+            if ($cutoverMutated) {
                 try {
-                    $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
-                } finally {
-                    $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    $this->restoreCutoverState($cutoverState);
+                } catch (Throwable $stateFailure) {
+                    $stateRollbackError = $stateFailure;
                 }
-            } catch (Throwable $rollbackFailure) {
-                $rollbackError = $rollbackFailure;
             }
 
-            if ($maintenanceEnabled) {
-                $this->setMaintenanceMode(false);
+            // Restore application files only if live application mutation had started.
+            $rollbackError = null;
+            if ($applicationMutated) {
+                try {
+                    $rollbackPrepared = $this->prepareBackupSet($emergency['absolute_path']);
+                    try {
+                        $this->restoreApplicationExact($rollbackPrepared['application_path'], $preservePaths);
+                    } finally {
+                        $this->cleanupPreparedBackupSet($rollbackPrepared);
+                    }
+                } catch (Throwable $rollbackFailure) {
+                    $rollbackError = $rollbackFailure;
+                }
+            }
+
+            $cleanupError = null;
+            if (is_array($candidate) && !empty($candidate['db_name'])) {
+                try {
+                    $this->dropCandidateDatabase((string)$candidate['db_name']);
+                } catch (Throwable $cleanupFailure) {
+                    $cleanupError = $cleanupFailure;
+                }
+            }
+
+            $rollbackComplete = $stateRollbackError === null && $rollbackError === null;
+            if ($rollbackComplete && $maintenanceEnabled) {
+                try {
+                    $this->setMaintenanceMode(false);
+                    $maintenanceEnabled = false;
+                } catch (Throwable $maintenanceFailure) {
+                    $rollbackComplete = false;
+                    $stateRollbackError = $maintenanceFailure;
+                }
             }
 
             $message = 'Restore failed before a verified cutover completed: ' . $restoreError->getMessage();
-            if ($rollbackError === null) {
-                $message .= ' The original database remained available and application files were rolled back from the emergency backup.';
+            if ($rollbackComplete) {
+                $message .= $applicationMutated
+                    ? ' The previous database pointer, release metadata, and application files were restored exactly.'
+                    : ' No live application or database state was changed.';
+                if ($cleanupError !== null) {
+                    $message .= ' Candidate cleanup warning: ' . $cleanupError->getMessage();
+                }
             } else {
-                $message .= ' Application rollback also failed: ' . $rollbackError->getMessage();
+                $message .= ' CAS remains in maintenance mode because rollback did not complete.';
+                if ($stateRollbackError !== null) {
+                    $message .= ' Runtime-state rollback: ' . $stateRollbackError->getMessage();
+                }
+                if ($rollbackError !== null) {
+                    $message .= ' Application rollback: ' . $rollbackError->getMessage();
+                }
+                if ($cleanupError !== null) {
+                    $message .= ' Candidate cleanup: ' . $cleanupError->getMessage();
+                }
             }
             throw new RuntimeException($message, 0, $restoreError);
         } finally {
-            if ($maintenanceEnabled) {
-                $this->setMaintenanceMode(false);
-            }
+            // Never clear maintenance here. Success and a fully verified rollback
+            // are the only paths allowed to reopen CAS.
             $this->cleanupPreparedBackupSet($prepared);
         }
     }
@@ -621,6 +662,64 @@ final class SystemBackupManager
         if (file_put_contents($flag, $payload) === false) {
             throw new RuntimeException('Unable to enable maintenance mode.');
         }
+    }
+
+    public function captureCutoverState(): array
+    {
+        return [
+            'active_database' => $this->captureFileState(
+                $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json'
+            ),
+            'installed_release' => $this->captureFileState($this->installedFile),
+        ];
+    }
+
+    public function restoreCutoverState(array $state): void
+    {
+        if (!isset($state['active_database'], $state['installed_release'])
+            || !is_array($state['active_database'])
+            || !is_array($state['installed_release'])
+        ) {
+            throw new RuntimeException('Cutover rollback state is incomplete.');
+        }
+
+        $this->restoreFileState(
+            $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json',
+            $state['active_database']
+        );
+        $this->restoreFileState($this->installedFile, $state['installed_release']);
+    }
+
+    public function restoreApplicationFromBackupSet(string $archivePath, array $preserve = []): void
+    {
+        $preservePaths = $this->normalizePreservePaths($preserve);
+        $prepared = $this->prepareBackupSet($archivePath);
+        try {
+            $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
+            $expectedTreeHash = (string)($prepared['manifest']['application']['tree_hash'] ?? '');
+            if ($expectedTreeHash !== '') {
+                $current = $this->applicationTreeMetadata($preservePaths);
+                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
+                    throw new RuntimeException('Application rollback verification failed.');
+                }
+            }
+        } finally {
+            $this->cleanupPreparedBackupSet($prepared);
+        }
+    }
+
+    public function dropCandidateDatabase(string $dbName): void
+    {
+        if (preg_match('/^cas_(restore|verify|upgrade)_/', $dbName) !== 1) {
+            throw new RuntimeException('Refusing to drop a database outside the CAS candidate namespace.');
+        }
+
+        $active = $this->readActiveDatabaseName();
+        if ($active !== '' && $active === $dbName) {
+            throw new RuntimeException('Refusing to drop the currently active CAS database.');
+        }
+
+        $this->adminConnection()->exec('DROP DATABASE IF EXISTS ' . $this->quoteIdentifier($dbName));
     }
 
     public function cleanupRetention(int $keepRuns = 5, int $keepEmergency = 3, int $keepCandidates = 3): array
@@ -865,6 +964,69 @@ final class SystemBackupManager
         }
     }
 
+    private function captureFileState(string $path): array
+    {
+        if (!file_exists($path)) {
+            return ['exists' => false, 'contents' => null, 'mode' => null];
+        }
+        if (!is_file($path)) {
+            throw new RuntimeException('Expected runtime state path to be a regular file: ' . $path);
+        }
+
+        $contents = file_get_contents($path);
+        $stat = stat($path);
+        if (!is_string($contents) || $stat === false) {
+            throw new RuntimeException('Unable to capture runtime state file: ' . $path);
+        }
+
+        return [
+            'exists' => true,
+            'contents' => $contents,
+            'mode' => $stat['mode'] & 0777,
+            'uid' => $stat['uid'],
+            'gid' => $stat['gid'],
+        ];
+    }
+
+    private function restoreFileState(string $path, array $state): void
+    {
+        $exists = (bool)($state['exists'] ?? false);
+        if (!$exists) {
+            if (file_exists($path) && !@unlink($path)) {
+                throw new RuntimeException('Unable to remove runtime state file during rollback: ' . $path);
+            }
+            return;
+        }
+
+        $contents = $state['contents'] ?? null;
+        if (!is_string($contents)) {
+            throw new RuntimeException('Runtime rollback contents are invalid for ' . $path);
+        }
+
+        $tmp = $path . '.rollback-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $contents, LOCK_EX) === false) {
+            throw new RuntimeException('Unable to prepare runtime state rollback for ' . $path);
+        }
+
+        $mode = isset($state['mode']) ? (int)$state['mode'] : 0640;
+        if (!@chmod($tmp, $mode)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state mode: ' . $path);
+        }
+        if (isset($state['uid']) && function_exists('chown') && !@chown($tmp, (int)$state['uid'])) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state owner: ' . $path);
+        }
+        if (isset($state['gid']) && function_exists('chgrp') && !@chgrp($tmp, (int)$state['gid'])) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state group: ' . $path);
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically restore runtime state file: ' . $path);
+        }
+    }
+
     public function relativeToRoot(string $path): string
     {
         $root = $this->root . DIRECTORY_SEPARATOR;
@@ -873,33 +1035,6 @@ final class SystemBackupManager
         }
 
         return $path;
-    }
-
-    private function restorePreparedBackupSet(PDO $pdo, array $prepared, array $preservePaths): void
-    {
-        $manifest = $prepared['manifest'];
-        $dbPath = $prepared['database_path'];
-        $appPath = $prepared['application_path'];
-
-        $this->restoreDatabaseExact($pdo, $dbPath);
-        $this->verifyDatabaseState($pdo, is_array($manifest['database']['objects'] ?? null)
-            ? $manifest['database']['objects']
-            : []);
-
-        $this->restoreApplicationExact($appPath, $preservePaths);
-
-        $expectedTreeHash = (string)($manifest['application']['tree_hash'] ?? '');
-        if ($expectedTreeHash !== '') {
-            $current = $this->applicationTreeMetadata($preservePaths);
-            if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
-                throw new RuntimeException('Application verification failed after restore.');
-            }
-        }
-
-        $installed = $manifest['installed_release'] ?? null;
-        if (is_array($installed) && $installed !== []) {
-            $this->writeInstalledRelease($installed);
-        }
     }
 
     private function prepareBackupSet(string $archivePath): array
@@ -1236,13 +1371,6 @@ final class SystemBackupManager
         return $objects;
     }
 
-    private function restoreDatabaseExact(PDO $pdo, string $dumpPath): void
-    {
-        throw new RuntimeException(
-            'Destructive in-place database restore is disabled. Restore must use a verified staging database and atomic database pointer cutover.'
-        );
-    }
-
     private function verifyDatabaseState(PDO $pdo, array $expectedObjects): void
     {
         $actual = $this->databaseObjects($pdo, true);
@@ -1267,116 +1395,6 @@ final class SystemBackupManager
 
         if ($normalize($expectedObjects) !== $normalize($actual)) {
             throw new RuntimeException('Database verification failed after restore: schema or row counts do not match the backup.');
-        }
-    }
-
-    private function executeSqlFile(?PDO $pdo, string $path, bool $validateOnly = false): int
-    {
-        $handle = fopen($path, 'rb');
-        if ($handle === false) {
-            throw new RuntimeException('Unable to open database SQL snapshot.');
-        }
-
-        $buffer = '';
-        $quote = null;
-        $count = 0;
-
-        try {
-            while (($line = fgets($handle)) !== false) {
-                if ($quote === null && trim($buffer) === '') {
-                    $trimmed = ltrim($line);
-                    if (str_starts_with($trimmed, '-- ') || str_starts_with($trimmed, '#')) {
-                        continue;
-                    }
-                }
-
-                $length = strlen($line);
-                for ($i = 0; $i < $length; $i++) {
-                    $char = $line[$i];
-
-                    if ($quote !== null) {
-                        $buffer .= $char;
-
-                        if ($char === $quote) {
-                            // MySQL can escape string delimiters either with a backslash
-                            // (for example: 'text\\'' when the value ends in an apostrophe)
-                            // or by doubling the delimiter. Check backslash escaping first;
-                            // otherwise the escaped apostrophe plus the real closing quote
-                            // can be misread as a doubled-quote pair.
-                            if ($quote !== '`') {
-                                $backslashes = 0;
-                                for ($j = strlen($buffer) - 2; $j >= 0 && $buffer[$j] === '\\'; $j--) {
-                                    $backslashes++;
-                                }
-                                if ($backslashes % 2 === 1) {
-                                    continue;
-                                }
-                            }
-
-                            if ($i + 1 < $length && $line[$i + 1] === $quote) {
-                                $buffer .= $line[$i + 1];
-                                $i++;
-                                continue;
-                            }
-
-                            $quote = null;
-                        }
-                        continue;
-                    }
-
-                    if ($char === "'" || $char === '"' || $char === '`') {
-                        $quote = $char;
-                        $buffer .= $char;
-                        continue;
-                    }
-
-                    if ($char === ';') {
-                        $statement = trim($buffer);
-                        $buffer = '';
-                        if ($statement === '') {
-                            continue;
-                        }
-
-                        if (!$validateOnly) {
-                            if (!$pdo instanceof PDO) {
-                                throw new RuntimeException('Database connection is required to execute SQL.');
-                            }
-                            $pdo->exec($statement);
-                        }
-                        $count++;
-                        continue;
-                    }
-
-                    $buffer .= $char;
-                }
-            }
-
-            if ($quote !== null) {
-                throw new RuntimeException('Database SQL snapshot contains an unterminated quoted value.');
-            }
-
-            $statement = trim($buffer);
-            if ($statement !== '') {
-                if (!$validateOnly) {
-                    if (!$pdo instanceof PDO) {
-                        throw new RuntimeException('Database connection is required to execute SQL.');
-                    }
-                    $pdo->exec($statement);
-                }
-                $count++;
-            }
-        } finally {
-            fclose($handle);
-        }
-
-        return $count;
-    }
-
-    private function validateSqlDumpStructure(string $path): void
-    {
-        $count = $this->executeSqlFile(null, $path, true);
-        if ($count < 1) {
-            throw new RuntimeException('Database SQL snapshot contains no executable statements.');
         }
     }
 
@@ -1477,8 +1495,14 @@ final class SystemBackupManager
     private function writeInstalledRelease(array $release): void
     {
         $this->ensureDirectory(dirname($this->installedFile));
-        if (file_put_contents($this->installedFile, $this->encodeJson($release)) === false) {
-            throw new RuntimeException('Unable to restore installed release metadata.');
+        $tmp = $this->installedFile . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $this->encodeJson($release), LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to prepare installed release metadata.');
+        }
+        if (!@rename($tmp, $this->installedFile)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically restore installed release metadata.');
         }
     }
 

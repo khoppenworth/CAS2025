@@ -64,6 +64,9 @@ try {
     file_put_contents($root . '/index.php', "<?php echo 'baseline';\n");
     file_put_contents($root . '/lib/baseline.php', "<?php return 'baseline-lib';\n");
     file_put_contents($root . '/config.php', "<?php return ['env' => 'baseline-config'];\n");
+    file_put_contents($root . '/.env', "LOCAL_ENV=baseline\n");
+    file_put_contents($root . '/.htaccess', "RewriteEngine On\n# local\n");
+    file_put_contents($root . '/.user.ini', "upload_max_filesize=64M\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "baseline upload\n");
     file_put_contents($root . '/storage/runtime.txt', "baseline runtime\n");
     file_put_contents(
@@ -214,8 +217,12 @@ try {
     @unlink($root . '/lib/baseline.php');
     file_put_contents($root . '/experimental.php', "<?php echo 'remove me';\n");
 
-    // Preserved environment/runtime data should survive restore.
-    file_put_contents($root . '/config.php', "<?php return ['env' => 'production-secret-change'];\n");
+    // config.php is versioned application code and should restore from the backup.
+    // Server-owned environment/runtime files should survive restore unchanged.
+    file_put_contents($root . '/config.php', "<?php return ['env' => 'post-backup-config-change'];\n");
+    file_put_contents($root . '/.env', "LOCAL_ENV=production-secret-change\n");
+    file_put_contents($root . '/.htaccess', "RewriteEngine On\n# changed-local\n");
+    file_put_contents($root . '/.user.ini', "upload_max_filesize=96M\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "new upload retained\n");
     file_put_contents($root . '/storage/runtime.txt', "new runtime retained\n");
 
@@ -259,8 +266,20 @@ try {
     $assert(!file_exists($root . '/experimental.php'), 'New experimental application file survived exact restore.');
 
     $assert(
-        file_get_contents($root . '/config.php') === "<?php return ['env' => 'production-secret-change'];\n",
-        'config.php should be preserved across restore.'
+        file_get_contents($root . '/config.php') === "<?php return ['env' => 'baseline-config'];\n",
+        'Versioned config.php was not restored from the backup.'
+    );
+    $assert(
+        file_get_contents($root . '/.env') === "LOCAL_ENV=production-secret-change\n",
+        '.env should be preserved across restore.'
+    );
+    $assert(
+        file_get_contents($root . '/.htaccess') === "RewriteEngine On\n# changed-local\n",
+        '.htaccess should be preserved across restore.'
+    );
+    $assert(
+        file_get_contents($root . '/.user.ini') === "upload_max_filesize=96M\n",
+        '.user.ini should be preserved across restore.'
     );
     $assert(
         file_get_contents($root . '/assets/uploads/keep.txt') === "new upload retained\n",
