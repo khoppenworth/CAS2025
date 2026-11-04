@@ -29,7 +29,7 @@ const BRIDGE_FILES = [
     ],
     // Activate the runtime hook last.
     'lib/path.php' => [],
-]
+];
 
 $options = getopt('', [
     'root::',
