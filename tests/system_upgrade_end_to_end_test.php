@@ -73,6 +73,21 @@ $sha256 = static function (string $path): string {
     return $hash;
 };
 
+$findDbClient = static function (): string {
+    foreach (['/usr/bin/mysql', '/usr/bin/mariadb', '/usr/local/bin/mysql', '/usr/local/bin/mariadb'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) return $candidate;
+    }
+
+    foreach (['mysql', 'mariadb'] as $name) {
+        $output = [];
+        $code = 1;
+        @exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null', $output, $code);
+        if ($code === 0 && !empty($output[0])) return (string)$output[0];
+    }
+
+    throw new RuntimeException('No native mysql/mariadb client is available for the E2E fixture.');
+};
+
 $extractGitTree = static function (string $ref, string $destination) use ($repoRoot, $run): void {
     mkdir($destination, 0750, true);
     $cmd = 'git -C ' . escapeshellarg($repoRoot)
@@ -114,7 +129,8 @@ $writeEnv = static function (string $fixture, string $dbName) use ($host, $port,
 };
 
 $prepareFixture = static function (string $name, string $dbName) use (
-    $server, $extractGitTree, $customizeConfig, $writeEnv, $run, $repoRoot, $tempRoot, $assert
+    $server, $extractGitTree, $customizeConfig, $writeEnv, $run, $repoRoot, $tempRoot, $assert,
+    $findDbClient, $host, $port, $user, $pass
 ): array {
     $quoted = chr(96) . $dbName . chr(96);
     $server->exec('DROP DATABASE IF EXISTS ' . $quoted);
@@ -135,7 +151,32 @@ $prepareFixture = static function (string $name, string $dbName) use (
     $writeEnv($fixture, $dbName);
     $configHash = $customizeConfig($fixture);
 
-    // One normal 0.5.95 application bootstrap initializes the fixture schema.
+    // Build the fixture from the actual 0.5.95 bootstrap schema rather than
+    // inventing a minimal database. This mirrors a deployed 0.5.95 database.
+    $schemaPath = $fixture . '/init.sql';
+    if (!is_file($schemaPath)) {
+        throw new RuntimeException('0.5.95 fixture is missing init.sql.');
+    }
+    $client = $findDbClient();
+    $command = 'exec ' . escapeshellarg($client)
+        . ' --host=' . escapeshellarg($host)
+        . ' --port=' . escapeshellarg((string)$port)
+        . ' --user=' . escapeshellarg($user)
+        . ' --default-character-set=utf8mb4 '
+        . escapeshellarg($dbName)
+        . ' < ' . escapeshellarg($schemaPath);
+    $schemaImport = $run(
+        ['/bin/bash', '-lc', $command],
+        $fixture,
+        ['MYSQL_PWD' => $pass]
+    );
+    $assert(
+        $schemaImport['exit'] === 0,
+        '0.5.95 init.sql import failed: ' . $schemaImport['stderr'] . $schemaImport['stdout']
+    );
+
+    // One normal 0.5.95 application bootstrap must connect successfully against
+    // the real bootstrap schema before the enterprise bridge is introduced.
     $bootstrap = $run([
         PHP_BINARY,
         '-r',
