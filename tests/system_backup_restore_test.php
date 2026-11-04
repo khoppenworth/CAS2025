@@ -58,11 +58,26 @@ $removeDirectory = static function (string $path) use (&$removeDirectory): void 
 try {
     mkdir($root, 0755, true);
     mkdir($root . '/lib', 0755, true);
+    mkdir($root . '/admin', 0755, true);
+    mkdir($root . '/scripts', 0755, true);
     mkdir($root . '/assets/uploads', 0755, true);
     mkdir($root . '/storage/upgrades', 0755, true);
 
     file_put_contents($root . '/index.php', "<?php echo 'baseline';\n");
     file_put_contents($root . '/lib/baseline.php', "<?php return 'baseline-lib';\n");
+
+    // Emulate a backup created before the enterprise recovery runtime existed.
+    $legacyRecoveryFiles = [
+        'admin/upgrade.php',
+        'lib/system_backup.php',
+        'lib/upgrade.php',
+        'lib/path.php',
+        'scripts/system_upgrade.php',
+        'scripts/system_job.php',
+    ];
+    foreach ($legacyRecoveryFiles as $legacyPath) {
+        file_put_contents($root . '/' . $legacyPath, "<?php // legacy recovery file: " . $legacyPath . "\n");
+    }
     file_put_contents($root . '/config.php', "<?php return ['env' => 'baseline-config'];\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "baseline upload\n");
     file_put_contents($root . '/storage/runtime.txt', "baseline runtime\n");
@@ -209,6 +224,15 @@ try {
     $unsafeValidation = $manager->validateBackupSet($unsafeZip);
     $assert($unsafeValidation['valid'] === false, 'Unsafe ZIP path traversal was not rejected.');
 
+    // The live system now has a trusted enterprise recovery core. Restore of the
+    // older snapshot must not permanently downgrade these files.
+    $trustedRecoveryFiles = array_merge($legacyRecoveryFiles, ['lib/enterprise_runtime.php']);
+    $trustedRecoveryHashes = [];
+    foreach ($trustedRecoveryFiles as $trustedPath) {
+        file_put_contents($root . '/' . $trustedPath, "<?php // trusted enterprise recovery file: " . $trustedPath . "\n");
+        $trustedRecoveryHashes[$trustedPath] = hash_file('sha256', $root . '/' . $trustedPath);
+    }
+
     // Mutate application state. Files outside preserved paths must roll back exactly.
     file_put_contents($root . '/index.php', "<?php echo 'experimental';\n");
     @unlink($root . '/lib/baseline.php');
@@ -270,6 +294,13 @@ try {
         file_get_contents($root . '/storage/runtime.txt') === "new runtime retained\n",
         'Storage runtime data should be preserved across restore.'
     );
+
+    foreach ($trustedRecoveryHashes as $trustedPath => $trustedHash) {
+        $assert(
+            hash_file('sha256', $root . '/' . $trustedPath) === $trustedHash,
+            'Restore downgraded trusted recovery core file ' . $trustedPath
+        );
+    }
 
     $tables = $pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);
     $tableNames = array_map(static fn(array $row): string => (string)$row[0], $tables);
