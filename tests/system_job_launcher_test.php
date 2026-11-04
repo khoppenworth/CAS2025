@@ -23,6 +23,48 @@ putenv('DB_ADMIN_PASS=' . $pass);
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../lib/upgrade.php';
 
+// Regression: an older running job must not be hidden by a newer completed job.
+$hiddenRunningId = 'hidden_running_' . bin2hex(random_bytes(3));
+$hiddenCompletedId = 'hidden_completed_' . bin2hex(random_bytes(3));
+upgrade_write_job([
+    'id' => $hiddenRunningId,
+    'type' => 'upgrade',
+    'status' => 'running',
+    'created_at' => date(DATE_ATOM, time() - 60),
+    'started_at' => date(DATE_ATOM, time() - 60),
+    'completed_at' => null,
+    'exit_code' => null,
+    'message' => 'running test fixture',
+    'stdout' => '',
+    'stderr' => '',
+    'arguments' => [],
+]);
+upgrade_write_job([
+    'id' => $hiddenCompletedId,
+    'type' => 'backup',
+    'status' => 'completed',
+    'created_at' => date(DATE_ATOM),
+    'started_at' => date(DATE_ATOM),
+    'completed_at' => date(DATE_ATOM),
+    'exit_code' => 0,
+    'message' => 'completed test fixture',
+    'stdout' => '',
+    'stderr' => '',
+    'arguments' => [],
+]);
+
+$blocked = false;
+try {
+    upgrade_start_cli_job(['--action=list-backups'], 'must-be-blocked');
+} catch (RuntimeException $e) {
+    $blocked = str_contains($e->getMessage(), 'already running');
+}
+if (!$blocked) {
+    throw new RuntimeException('A hidden older running system job did not block a new launch.');
+}
+@unlink(upgrade_job_path($hiddenRunningId));
+@unlink(upgrade_job_path($hiddenCompletedId));
+
 $startedAt = microtime(true);
 $job = upgrade_start_cli_job(['--action=list-backups'], 'launcher-test');
 $elapsed = microtime(true) - $startedAt;
@@ -56,5 +98,6 @@ try {
     fwrite(STDOUT, "Detached system job launcher returned immediately and completed successfully.\n");
 } finally {
     @unlink(upgrade_job_path($jobId));
+    @unlink(upgrade_job_directory() . DIRECTORY_SEPARATOR . '.launch.lock');
     $server->exec('DROP DATABASE IF EXISTS `' . $safeDb . '`');
 }
