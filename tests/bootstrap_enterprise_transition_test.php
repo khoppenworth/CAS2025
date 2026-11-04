@@ -162,6 +162,7 @@ try {
         'lib/upgrade.php',
         'lib/path.php',
         'lib/enterprise_runtime.php',
+        'lib/system_cli_bootstrap.php',
         'scripts/system_upgrade.php',
         'scripts/system_job.php',
         'scripts/system_healthcheck.php',
@@ -237,6 +238,7 @@ try {
     $assert(!file_exists($rollback . '/scripts/system_job.php'), 'Rollback failed to remove newly created system_job.php.');
     $assert(!file_exists($rollback . '/scripts/system_healthcheck.php'), 'Rollback failed to remove new healthcheck script.');
     $assert(!file_exists($rollback . '/lib/enterprise_runtime.php'), 'Rollback failed to remove new runtime hook.');
+    $assert(!file_exists($rollback . '/lib/system_cli_bootstrap.php'), 'Rollback failed to remove new CLI bootstrap.');
     $assert($blob($rollback . '/config.php') === $rollbackConfigBefore, 'Rollback changed customized config.php.');
 
     echo "Enterprise bootstrap transition test passed with customized config.php preserved.\n";
