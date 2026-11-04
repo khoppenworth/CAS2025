@@ -32,13 +32,14 @@ const BRIDGE_FILES = [
         ],
     ],
     'lib/upgrade.php' => [
-        'target' => '0e16902b865a95fba2fa833896a966fb9592c344',
+        'target' => 'b02513ea8042e5543912bc6d1df58c3ce946c15a',
         'allowed' => [
             'a240b32ed60106ebf564ce01df7ad94ce1134265',
             '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
             'f0d50481c0a80c474117c5a990401940b330607e',
             '2fe2499b10fec014cadafa7938a5dea89f878eb9',
             '0e16902b865a95fba2fa833896a966fb9592c344',
+            'b02513ea8042e5543912bc6d1df58c3ce946c15a',
         ],
     ],
     'lib/path.php' => [
