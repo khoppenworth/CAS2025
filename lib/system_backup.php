@@ -422,7 +422,24 @@ final class SystemBackupManager
         $manifestPreserve = is_array($targetManifest['preserve_paths'] ?? null)
             ? $targetManifest['preserve_paths']
             : [];
-        $preservePaths = $this->normalizeExplicitPreservePaths(array_merge($manifestPreserve, $preserve));
+
+        // User restore may roll application/business code back, but it must not
+        // downgrade the verified recovery control plane that selects the restored
+        // candidate database and performs the next safe system operation.
+        $recoveryControlPlane = [
+            'admin/upgrade.php',
+            'lib/upgrade.php',
+            'lib/system_backup.php',
+            'lib/path.php',
+            'lib/enterprise_runtime.php',
+            'lib/system_cli_bootstrap.php',
+            'scripts/system_upgrade.php',
+            'scripts/system_job.php',
+            'scripts/system_healthcheck.php',
+        ];
+        $preservePaths = $this->normalizeExplicitPreservePaths(
+            array_merge($manifestPreserve, $preserve, $recoveryControlPlane)
+        );
         $currentDatabase = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
         if ($currentDatabase === '' || !preg_match('/^[A-Za-z0-9_]+$/', $currentDatabase)) {
             $this->cleanupPreparedBackupSet($prepared);
