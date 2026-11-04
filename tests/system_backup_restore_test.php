@@ -36,6 +36,111 @@ $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-test-' . bin2hex(
 $externalBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-import-' . bin2hex(random_bytes(5)) . '.zip';
 $unsafeZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-unsafe-' . bin2hex(random_bytes(5)) . '.zip';
 $downloadedCopy = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-downloaded-' . bin2hex(random_bytes(5)) . '.zip';
+$badContractBackup = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-bad-contract-' . bin2hex(random_bytes(5)) . '.zip';
+
+$convertBackupToLegacyV2 = static function (string $source, string $target): void {
+    if (!copy($source, $target)) {
+        throw new RuntimeException('Unable to copy backup for legacy-v2 compatibility test.');
+    }
+
+    $outer = new ZipArchive();
+    if ($outer->open($target) !== true) {
+        throw new RuntimeException('Unable to open legacy-v2 compatibility backup.');
+    }
+
+    $tempApp = tempnam(sys_get_temp_dir(), 'cas-v2-app-');
+    if ($tempApp === false) {
+        $outer->close();
+        throw new RuntimeException('Unable to create temporary legacy application archive.');
+    }
+
+    try {
+        $manifestRaw = $outer->getFromName('manifest.json');
+        $appRaw = $outer->getFromName('application.zip');
+        $manifest = is_string($manifestRaw) ? json_decode($manifestRaw, true) : null;
+        if (!is_array($manifest) || !is_string($appRaw)) {
+            throw new RuntimeException('Source backup is missing its manifest/application archive.');
+        }
+        if (file_put_contents($tempApp, $appRaw) === false) {
+            throw new RuntimeException('Unable to materialize application archive for v2 conversion.');
+        }
+
+        $inner = new ZipArchive();
+        if ($inner->open($tempApp) !== true) {
+            throw new RuntimeException('Unable to open inner application archive for v2 conversion.');
+        }
+        if ($inner->locateName('config.php') !== false && !$inner->deleteName('config.php')) {
+            $inner->close();
+            throw new RuntimeException('Unable to remove config.php from synthetic v2 application snapshot.');
+        }
+        if (!$inner->close()) {
+            throw new RuntimeException('Unable to finalize synthetic v2 application snapshot.');
+        }
+
+        // Recompute the exact application tree metadata used by SystemBackupManager.
+        $inner = new ZipArchive();
+        if ($inner->open($tempApp, ZipArchive::CHECKCONS) !== true) {
+            throw new RuntimeException('Synthetic v2 application ZIP failed integrity check.');
+        }
+        $files = [];
+        try {
+            for ($i = 0; $i < $inner->numFiles; $i++) {
+                $name = $inner->getNameIndex($i);
+                if (!is_string($name) || $name === '' || str_ends_with($name, '/')) {
+                    continue;
+                }
+                $bytes = $inner->getFromIndex($i);
+                if (!is_string($bytes)) {
+                    throw new RuntimeException('Unable to read synthetic v2 application entry ' . $name);
+                }
+                $files[$name] = hash('sha256', $bytes);
+            }
+        } finally {
+            $inner->close();
+        }
+        ksort($files, SORT_STRING);
+        $tree = hash_init('sha256');
+        foreach ($files as $relative => $fileHash) {
+            hash_update($tree, $relative . "\0" . $fileHash . "\n");
+        }
+
+        $manifest['format_version'] = 2;
+        $manifest['preserve_paths'] = array_values(array_unique(array_merge(
+            is_array($manifest['preserve_paths'] ?? null) ? $manifest['preserve_paths'] : [],
+            ['config.php']
+        )));
+        $legacyObjects = array_values(array_filter(
+            is_array($manifest['database']['objects'] ?? null) ? $manifest['database']['objects'] : [],
+            static fn(array $object): bool => in_array(
+                (string)($object['type'] ?? ''),
+                ['BASE TABLE', 'VIEW'],
+                true
+            )
+        ));
+        $manifest['database']['objects'] = $legacyObjects;
+        $manifest['database']['object_count'] = count($legacyObjects);
+        $manifest['application']['file_count'] = count($files);
+        $manifest['application']['tree_hash'] = hash_final($tree);
+        $manifest['checksums']['application.zip'] = hash_file('sha256', $tempApp);
+
+        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            throw new RuntimeException('Unable to encode synthetic v2 manifest.');
+        }
+
+        $outer->deleteName('application.zip');
+        $outer->deleteName('manifest.json');
+        if (!$outer->addFile($tempApp, 'application.zip')) {
+            throw new RuntimeException('Unable to replace synthetic v2 application archive.');
+        }
+        if (!$outer->addFromString('manifest.json', $json . "\n")) {
+            throw new RuntimeException('Unable to replace synthetic v2 manifest.');
+        }
+    } finally {
+        $outer->close();
+        @unlink($tempApp);
+    }
+};
 
 $removeDirectory = static function (string $path) use (&$removeDirectory): void {
     if (!is_dir($path)) {
@@ -63,6 +168,7 @@ try {
 
     file_put_contents($root . '/index.php', "<?php echo 'baseline';\n");
     file_put_contents($root . '/lib/baseline.php', "<?php return 'baseline-lib';\n");
+    file_put_contents($root . '/lib/path.php', "<?php // old pre-enterprise path runtime\n");
     file_put_contents($root . '/config.php', "<?php return ['env' => 'baseline-config'];\n");
     file_put_contents($root . '/assets/uploads/keep.txt', "baseline upload\n");
     file_put_contents($root . '/storage/runtime.txt', "baseline runtime\n");
@@ -150,6 +256,26 @@ try {
     $pdo->exec("INSERT INTO related_data (baseline_id, value_text) VALUES (1, 'child value')");
     $pdo->exec("CREATE VIEW baseline_view AS SELECT id, CONCAT(label, ';quoted''value') AS decorated FROM baseline_data");
 
+    // Enterprise DB-object contract: routines, functions, triggers and events
+    // must survive the same verified native dump/restore round-trip as tables/views.
+    $pdo->exec(
+        'CREATE PROCEDURE backup_probe_procedure() '
+        . 'READS SQL DATA SELECT COUNT(*) AS c FROM baseline_data'
+    );
+    $pdo->exec(
+        'CREATE FUNCTION backup_probe_function(input_value INT) RETURNS INT '
+        . 'DETERMINISTIC NO SQL RETURN input_value + 1'
+    );
+    $pdo->exec(
+        'CREATE TRIGGER backup_probe_trigger BEFORE INSERT ON baseline_data '
+        . 'FOR EACH ROW SET NEW.label = TRIM(NEW.label)'
+    );
+    $pdo->exec(
+        'CREATE EVENT backup_probe_event '
+        . 'ON SCHEDULE EVERY 1 DAY STARTS CURRENT_TIMESTAMP + INTERVAL 1 DAY '
+        . 'DO UPDATE baseline_data SET label = label WHERE id = -1'
+    );
+
     $manager = new SystemBackupManager($root);
 
     $backupTarget = $root . '/storage/upgrades/manual/roundtrip.zip';
@@ -189,6 +315,112 @@ try {
         'Downloaded/copied backup bytes differ from the validated server backup.'
     );
 
+    // Failure before maintenance/cutover must be non-invasive. Change only the
+    // manifest contract so candidate verification fails after the emergency backup
+    // is created, but before any live application mutation can begin.
+    $assert(copy((string)$listedBackup['backup_set_path'], $badContractBackup),
+        'Unable to create candidate-verification failure fixture.');
+    $badZip = new ZipArchive();
+    $assert($badZip->open($badContractBackup) === true, 'Unable to open failure fixture.');
+    try {
+        $badManifestRaw = $badZip->getFromName('manifest.json');
+        $badManifest = is_string($badManifestRaw) ? json_decode($badManifestRaw, true) : null;
+        $assert(is_array($badManifest), 'Failure fixture manifest is invalid.');
+        $changedContract = false;
+        foreach ($badManifest['database']['objects'] as &$badObject) {
+            if (($badObject['type'] ?? '') === 'BASE TABLE' && ($badObject['name'] ?? '') === 'baseline_data') {
+                $badObject['row_count'] = (int)($badObject['row_count'] ?? 0) + 1;
+                $changedContract = true;
+                break;
+            }
+        }
+        unset($badObject);
+        $assert($changedContract, 'Unable to alter failure fixture database contract.');
+        $badManifestJson = json_encode($badManifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $assert(is_string($badManifestJson), 'Unable to encode failure fixture manifest.');
+        $badZip->deleteName('manifest.json');
+        $assert($badZip->addFromString('manifest.json', $badManifestJson . "\n"),
+            'Unable to replace failure fixture manifest.');
+    } finally {
+        $badZip->close();
+    }
+
+    $beforeFailedRestoreIndex = hash_file('sha256', $root . '/index.php');
+    $beforeFailedRestoreConfig = hash_file('sha256', $root . '/config.php');
+    $beforeFailedRestoreInstalled = hash_file('sha256', $root . '/storage/upgrades/installed.json');
+    $pointerPathBeforeFailure = $root . '/storage/upgrades/active_database.json';
+    $pointerExistedBeforeFailure = is_file($pointerPathBeforeFailure);
+    $pointerBytesBeforeFailure = $pointerExistedBeforeFailure
+        ? file_get_contents($pointerPathBeforeFailure)
+        : null;
+
+    $candidateFailureSeen = false;
+    try {
+        $manager->restoreBackupSet($pdo, $badContractBackup);
+    } catch (RuntimeException $e) {
+        $candidateFailureSeen = str_contains($e->getMessage(), 'Database verification failed');
+    }
+    $assert($candidateFailureSeen, 'Candidate-verification failure was not surfaced.');
+    $assert(hash_file('sha256', $root . '/index.php') === $beforeFailedRestoreIndex,
+        'Pre-cutover restore failure changed live application files.');
+    $assert(hash_file('sha256', $root . '/config.php') === $beforeFailedRestoreConfig,
+        'Pre-cutover restore failure changed config.php.');
+    $assert(hash_file('sha256', $root . '/storage/upgrades/installed.json') === $beforeFailedRestoreInstalled,
+        'Pre-cutover restore failure changed installed-release metadata.');
+    $assert(is_file($pointerPathBeforeFailure) === $pointerExistedBeforeFailure,
+        'Pre-cutover restore failure changed DB-pointer existence.');
+    if ($pointerExistedBeforeFailure) {
+        $assert(file_get_contents($pointerPathBeforeFailure) === $pointerBytesBeforeFailure,
+            'Pre-cutover restore failure changed DB-pointer contents.');
+    }
+    $assert(!is_file($root . '/storage/upgrades/maintenance.flag'),
+        'Pre-cutover restore failure left maintenance enabled.');
+    $assert((string)$pdo->query('SELECT label FROM baseline_data WHERE id=1')->fetchColumn() === 'alpha;beta',
+        'Pre-cutover restore failure changed live database contents.');
+
+    // Legacy v2 compatibility: manifests created by 0.5.101 list only
+    // tables/views. They must remain restorable across release metadata changes,
+    // while deployment-local config.php remains byte-identical.
+    $legacyV2 = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cas-backup-v2-' . bin2hex(random_bytes(5)) . '.zip';
+    $convertBackupToLegacyV2(
+        (string)$listedBackup['backup_set_path'],
+        $legacyV2
+    );
+    $legacyValidation = $manager->validateBackupSet($legacyV2);
+    $assert($legacyValidation['valid'] === true, 'Synthetic legacy v2 backup failed validation.');
+
+    file_put_contents($root . '/config.php', "<?php return ['env' => 'legacy-v2-preserved'];\n");
+    $legacyConfigHash = hash_file('sha256', $root . '/config.php');
+    file_put_contents(
+        $root . '/storage/upgrades/installed.json',
+        json_encode([
+            'tag' => 'v0.test.newer',
+            'name' => 'Newer Test Release',
+            'repo' => 'test/repo',
+            'url' => 'https://example.invalid/test/repo',
+            'installed_at' => '2026-11-03T12:00:00-05:00',
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
+    );
+
+    $legacyRestore = $manager->restoreBackupSet($pdo, $legacyV2);
+    $assert(
+        hash_file('sha256', $root . '/config.php') === $legacyConfigHash,
+        'Cross-version legacy v2 restore changed deployment-local config.php.'
+    );
+    $legacyActiveDb = (string)($legacyRestore['active_database'] ?? '');
+    $assert($legacyActiveDb !== '' && $legacyActiveDb !== $safeDb,
+        'Legacy v2 restore did not cut over to an isolated candidate database.');
+    $legacyInstalled = json_decode((string)file_get_contents($root . '/storage/upgrades/installed.json'), true);
+    $assert(($legacyInstalled['tag'] ?? '') === 'v0.test.baseline',
+        'Legacy v2 restore did not restore backup release metadata.');
+
+    $pdo = new PDO(
+        preg_replace('/dbname=[^;]+;?/', '', $dsn) . ';dbname=' . $legacyActiveDb,
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
+
     // Create an external backup and prove that a downloaded set can be imported.
     $external = $manager->createBackupSet($pdo, 'manual', $externalBackup, [
         'id' => 'import_test',
@@ -213,6 +445,14 @@ try {
     file_put_contents($root . '/index.php', "<?php echo 'experimental';\n");
     @unlink($root . '/lib/baseline.php');
     file_put_contents($root . '/experimental.php', "<?php echo 'remove me';\n");
+
+    // Simulate a current enterprise recovery control plane restoring an older
+    // pre-bridge application backup. These files must survive the restore even
+    // though the backup contains an older lib/path.php and no enterprise runtime.
+    file_put_contents($root . '/lib/path.php', "<?php // current enterprise-aware path runtime\n");
+    file_put_contents($root . '/lib/enterprise_runtime.php', "<?php // current enterprise runtime\n");
+    $enterprisePathHash = hash_file('sha256', $root . '/lib/path.php');
+    $enterpriseRuntimeHash = hash_file('sha256', $root . '/lib/enterprise_runtime.php');
 
     // Preserved environment/runtime data should survive restore.
     file_put_contents($root . '/config.php', "<?php return ['env' => 'production-secret-change'];\n");
@@ -257,6 +497,14 @@ try {
     $assert(file_get_contents($root . '/index.php') === "<?php echo 'baseline';\n", 'Changed application file was not restored.');
     $assert(is_file($root . '/lib/baseline.php'), 'Deleted baseline application file was not restored.');
     $assert(!file_exists($root . '/experimental.php'), 'New experimental application file survived exact restore.');
+    $assert(
+        hash_file('sha256', $root . '/lib/path.php') === $enterprisePathHash,
+        'Restore downgraded the enterprise-aware lib/path.php control-plane hook.'
+    );
+    $assert(
+        hash_file('sha256', $root . '/lib/enterprise_runtime.php') === $enterpriseRuntimeHash,
+        'Restore removed or downgraded the enterprise runtime control plane.'
+    );
 
     $assert(
         file_get_contents($root . '/config.php') === "<?php return ['env' => 'production-secret-change'];\n",
@@ -307,6 +555,47 @@ try {
         'Database view with semicolon and quoted literal was not restored correctly.'
     );
 
+    $routineRows = $pdo->query(
+        "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES "
+        . "WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME IN "
+        . "('backup_probe_procedure','backup_probe_function')"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    $routineMap = [];
+    foreach ($routineRows as $routineRow) {
+        $routineMap[(string)$routineRow['ROUTINE_NAME']] = strtoupper((string)$routineRow['ROUTINE_TYPE']);
+    }
+    $assert(
+        ($routineMap['backup_probe_procedure'] ?? '') === 'PROCEDURE',
+        'Stored procedure was not restored.'
+    );
+    $assert(
+        ($routineMap['backup_probe_function'] ?? '') === 'FUNCTION',
+        'Stored function was not restored.'
+    );
+    $assert(
+        (int)$pdo->query('SELECT backup_probe_function(41)')->fetchColumn() === 42,
+        'Restored stored function is not executable.'
+    );
+
+    $procedure = $pdo->query('CALL backup_probe_procedure()');
+    $procedureCount = $procedure ? (int)$procedure->fetchColumn() : -1;
+    if ($procedure) {
+        $procedure->closeCursor();
+    }
+    $assert($procedureCount === count($edgeValues) + 2, 'Restored stored procedure returned the wrong result.');
+
+    $triggerCount = (int)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TRIGGERS "
+        . "WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'backup_probe_trigger'"
+    )->fetchColumn();
+    $assert($triggerCount === 1, 'Database trigger was not restored.');
+
+    $eventCount = (int)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.EVENTS "
+        . "WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = 'backup_probe_event'"
+    )->fetchColumn();
+    $assert($eventCount === 1, 'Scheduled database event was not restored.');
+
     $emergency = $manager->findBackupSet((string)$restore['emergency_backup_id']);
     $assert($emergency !== null, 'Emergency pre-restore backup is not retained in the backup catalog.');
     $emergencyValidation = $manager->validateBackupSet((string)$emergency['backup_set_path']);
@@ -341,4 +630,6 @@ try {
     @unlink($externalBackup);
     @unlink($unsafeZip);
     @unlink($downloadedCopy);
+    @unlink($badContractBackup);
+    if (isset($legacyV2)) @unlink($legacyV2);
 }

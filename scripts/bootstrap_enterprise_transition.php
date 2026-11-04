@@ -3,204 +3,194 @@
 declare(strict_types=1);
 
 /**
- * One-time, fail-closed bridge from the legacy CAS updater (0.5.95-0.5.98)
- * to the enterprise-safe updater core shipped in 0.5.99.
+ * One-time bridge from the legacy 0.5.95-0.5.101 updater to the simplified
+ * enterprise updater. It never installs, patches, or hash-requires config.php.
  *
- * This script:
- * - never modifies the live application database;
- * - proves staging DB privileges using a throwaway database only;
- * - verifies every source and target updater file by Git blob SHA;
- * - preserves owner/group/mode for every replaced live file;
- * - installs files atomically and rolls all of them back on any failed check;
- * - leaves storage/upgrades/installed.json unchanged.
- *
- * Default mode is check-only. Use --apply only after the check succeeds.
+ * Default mode is --check. --source-root must be the extracted official release.
  */
 
-const BRIDGE_TARGET_REF = '0.5.99';
-const BRIDGE_TARGET_COMMIT = 'e04e675857b4a175444c275a4846a481a9947792';
+const BRIDGE_TARGET_REF = '0.5.102';
 
 const BRIDGE_FILES = [
     'admin/upgrade.php' => [
-        'target' => 'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
+        'target' => 'e728cf5262452782cb18ddb9e6f28d3015f66207',
         'allowed' => [
-            'afceaa03265bd76e6d16f14bcbfac8ea5ba5144c', // 0.5.95/0.5.97
-            'a97038b94921bcc75c6d4f31c9e6b286b0b9e771', // 0.5.98
-            'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f', // target/idempotent
-        ],
-    ],
-    'config.php' => [
-        'target' => '2a8cd5c4925774a53175ed8311df87abdc388494',
-        'allowed' => [
-            'f763808df8080d4a1a414c7ea7de899b801619eb', // 0.5.95-0.5.98
-            '2a8cd5c4925774a53175ed8311df87abdc388494', // target/idempotent
+            // Published 0.5.95/0.5.97, 0.5.98, 0.5.99-0.5.101.
+            'afceaa03265bd76e6d16f14bcbfac8ea5ba5144c',
+            'a97038b94921bcc75c6d4f31c9e6b286b0b9e771',
+            'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
+            'e728cf5262452782cb18ddb9e6f28d3015f66207',
         ],
     ],
     'lib/system_backup.php' => [
-        'target' => 'c42f2659aa4e8e3d3116d0c5159597cc7616124f',
+        'target' => '31962bfc7278f0c2551bad35407c84721dafc7d9',
         'allowed' => [
-            '48c85a53283aa515ccce0fa9e84f4e02ef8112e8', // 0.5.95
-            '705af28f16565dfc97acf0142cefb0daf69419fa', // 0.5.97 parser hotfix
-            '6d24268acba4f40ef3d872a9a3bbffd74e67985a', // 0.5.98
-            'c42f2659aa4e8e3d3116d0c5159597cc7616124f', // target/idempotent
+            // Published 0.5.95, 0.5.97, 0.5.98, 0.5.99-0.5.101.
+            '48c85a53283aa515ccce0fa9e84f4e02ef8112e8',
+            '705af28f16565dfc97acf0142cefb0daf69419fa',
+            '6d24268acba4f40ef3d872a9a3bbffd74e67985a',
+            'c42f2659aa4e8e3d3116d0c5159597cc7616124f',
+            '31962bfc7278f0c2551bad35407c84721dafc7d9',
         ],
     ],
     'lib/upgrade.php' => [
-        'target' => '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
+        'target' => '3f7d9418ab253eb8ea278aaec04762a52858bbce',
         'allowed' => [
-            'a240b32ed60106ebf564ce01df7ad94ce1134265', // 0.5.95-0.5.98
-            '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b', // target/idempotent
+            // Published 0.5.95-0.5.98 and 0.5.99-0.5.101.
+            'a240b32ed60106ebf564ce01df7ad94ce1134265',
+            '96993ce9de7f1d9c4a896ae9453dbc909bc5ee8b',
+            '3f7d9418ab253eb8ea278aaec04762a52858bbce',
         ],
     ],
-    'scripts/system_upgrade.php' => [
-        'target' => 'c646a5c5774f72663fd31e33157bb9ea641b1baf',
+    'lib/path.php' => [
+        'target' => '0d253ad666db3882bf7c1445c1f8e27183f141cf',
         'allowed' => [
-            'c0a445961b73086b5e8534eb0da3fa830de6d4cc', // 0.5.95-0.5.98
-            'c646a5c5774f72663fd31e33157bb9ea641b1baf', // target/idempotent
+            // Published 0.5.95-0.5.101.
+            '1c350a4d4132ec695699db696ff6f6093efcebdb',
+            '0d253ad666db3882bf7c1445c1f8e27183f141cf',
+        ],
+    ],
+    'lib/enterprise_runtime.php' => [
+        'target' => '2d70e359d50b9d324fd7534463c8f9140f858772',
+        'allowed' => ['2d70e359d50b9d324fd7534463c8f9140f858772'],
+        'may_be_absent' => true,
+        'metadata_reference' => 'lib/path.php',
+    ],
+    'lib/system_cli_bootstrap.php' => [
+        'target' => 'b3f79991c7cd17a7b35b90c5eb91afb67d36d4bf',
+        'allowed' => ['b3f79991c7cd17a7b35b90c5eb91afb67d36d4bf'],
+        'may_be_absent' => true,
+        'metadata_reference' => 'lib/path.php',
+    ],
+    'scripts/system_upgrade.php' => [
+        'target' => '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
+        'allowed' => [
+            // Published 0.5.95-0.5.98 and 0.5.99-0.5.101.
+            'c0a445961b73086b5e8534eb0da3fa830de6d4cc',
+            'c646a5c5774f72663fd31e33157bb9ea641b1baf',
+            '73fa8ed8ae1ea3d6f476ea6eaa63ba1cb9bd34ee',
         ],
     ],
     'scripts/system_job.php' => [
-        'target' => 'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7',
+        'target' => '0e69795a74dc23bb0745c1dffb46795b3b5ca13e',
         'allowed' => [
-            'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7', // target/idempotent
+            // Published 0.5.99-0.5.101 plus the final target.
+            'b54dc2d0c46c765490ac8af8b30ceaf05371d3a7',
+            '0e69795a74dc23bb0745c1dffb46795b3b5ca13e',
         ],
+        'may_be_absent' => true,
+        'metadata_reference' => 'scripts/system_upgrade.php',
+    ],
+    'scripts/system_healthcheck.php' => [
+        'target' => 'e47e40d7113f070a9b80c0978923c2d28149fb4b',
+        'allowed' => ['e47e40d7113f070a9b80c0978923c2d28149fb4b'],
         'may_be_absent' => true,
         'metadata_reference' => 'scripts/system_upgrade.php',
     ],
 ];
 
-$options = getopt('', [
-    'root::',
-    'source-root::',
-    'check',
-    'apply',
-    'skip-db-preflight',
-    'test-fail-after::',
-]);
-
+$options = getopt('', ['root::', 'source-root:', 'check', 'apply', 'test-fail-after::']);
 $apply = isset($options['apply']);
-if (isset($options['check']) && $apply) {
-    fail('Choose either --check or --apply, not both.');
-}
+if ($apply && isset($options['check'])) fail('Choose either --check or --apply.');
 
 $root = realpath((string)($options['root'] ?? getcwd()));
-if ($root === false || !is_dir($root)) {
-    fail('CAS root directory does not exist.');
-}
+$sourceRoot = realpath((string)($options['source-root'] ?? ''));
+if ($root === false || !is_dir($root)) fail('CAS root does not exist.');
+if ($sourceRoot === false || !is_dir($sourceRoot)) fail('--source-root must be the extracted official release.');
 $root = rtrim($root, DIRECTORY_SEPARATOR);
+$sourceRoot = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
 
-$sourceRoot = null;
-if (isset($options['source-root']) && trim((string)$options['source-root']) !== '') {
-    $sourceRoot = realpath((string)$options['source-root']);
-    if ($sourceRoot === false || !is_dir($sourceRoot)) {
-        fail('--source-root does not exist.');
-    }
-    $sourceRoot = rtrim($sourceRoot, DIRECTORY_SEPARATOR);
+foreach (['config.php', 'admin/upgrade.php', 'lib/path.php', 'scripts/system_upgrade.php'] as $required) {
+    if (!is_file($root . '/' . $required)) fail('Not a CAS root; missing ' . $required);
 }
 
-$testFailAfter = isset($options['test-fail-after']) ? (int)$options['test-fail-after'] : 0;
-if ($testFailAfter > 0 && getenv('CAS_BOOTSTRAP_TEST_MODE') !== '1') {
-    fail('--test-fail-after is available only in CAS_BOOTSTRAP_TEST_MODE.');
-}
-
-$requiredRootFiles = ['config.php', 'admin/upgrade.php', 'lib/upgrade.php', 'scripts/system_upgrade.php'];
-foreach ($requiredRootFiles as $path) {
-    if (!is_file($root . DIRECTORY_SEPARATOR . $path)) {
-        fail('Not a CAS application root; missing ' . $path);
-    }
-}
+$configBefore = sha256File($root . '/config.php');
+$installedBefore = is_file($root . '/storage/upgrades/installed.json')
+    ? sha256File($root . '/storage/upgrades/installed.json')
+    : null;
 
 $storage = $root . '/storage/upgrades';
-$bootstrapDir = $storage . '/bootstrap';
-if (!is_dir($bootstrapDir) && !mkdir($bootstrapDir, 0750, true) && !is_dir($bootstrapDir)) {
-    fail('Unable to create ' . $bootstrapDir);
-}
+$bootstrap = $storage . '/bootstrap';
+ensureDirectory($bootstrap);
+$lock = fopen($bootstrap . '/enterprise-transition.lock', 'c+');
+if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) fail('Another enterprise transition is active.');
 
-$lockPath = $bootstrapDir . '/enterprise-transition.lock';
-$lockHandle = fopen($lockPath, 'c+');
-if ($lockHandle === false || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
-    fail('Another enterprise transition is already active.');
-}
+$testFailAfter = isset($options['test-fail-after']) ? (int)$options['test-fail-after'] : 0;
+if ($testFailAfter > 0 && getenv('CAS_BOOTSTRAP_TEST_MODE') !== '1') fail('--test-fail-after is test-only.');
 
 try {
-    assertNoActiveSystemOperation($root);
+    $errors = [];
+    $states = [];
 
-    $states = inspectLiveFiles($root);
-    validateKnownLegacyState($states);
-
-    $version = readInstalledVersion($root);
-    if ($version !== '') {
-        info('Installed release metadata reports ' . $version . '.');
-    }
-    if ($version !== '' && version_compare(ltrim($version, 'vV'), '0.5.99', '>=')) {
-        info('Enterprise updater is already installed; bridge is idempotent.');
-    }
-
-    info('Checking native database client prerequisites...');
-    assertNativeTools();
-
-    if (!isset($options['skip-db-preflight'])) {
-        info('Proving staging database privileges using an isolated throwaway database...');
-        proveStagingPrivileges($root);
-        info('Staging database privilege check passed; live database was not modified.');
-    } else {
-        info('Database privilege preflight skipped by explicit option.');
-    }
-
-    $staging = createTempDirectory($bootstrapDir, 'target_');
+    check($errors, 'active operation state', static fn() => assertNoActiveSystemOperation($root));
+    check($errors, 'legacy updater files', function () use ($root, &$states): void {
+        $states = inspectLiveFiles($root);
+        validateKnownLegacyState($states);
+    });
+    $staging = createTempDirectory($bootstrap, 'target_');
     try {
-        info('Acquiring exact enterprise updater files from immutable target ' . BRIDGE_TARGET_COMMIT . '...');
-        stageTargetFiles($staging, $sourceRoot);
-        lintPhpFiles($staging);
-        info('Target updater file hashes and PHP syntax are valid.');
+        check($errors, 'release updater hashes', static fn() => stageTargetFiles($sourceRoot, $staging));
+        check($errors, 'release PHP syntax', static fn() => lintPhpFiles($staging, array_keys(BRIDGE_FILES)));
+        check(
+            $errors,
+            'full live backup round-trip',
+            static fn() => verifyFullBackupRoundTrip($root, $staging)
+        );
+
+        if (sha256File($root . '/config.php') !== $configBefore) {
+            $errors[] = 'config.php changed during preflight even though the bridge never writes it.';
+        }
+
+        if ($errors !== []) {
+            foreach ($errors as $error) fwrite(STDERR, '[ERROR] ' . $error . PHP_EOL);
+            fail('PREFLIGHT FAILED with ' . count($errors) . ' issue(s). No updater files were changed.');
+        }
+
+        info('PREFLIGHT PASSED.');
+        info('config.php SHA-256: ' . $configBefore . ' (protected; never installed by the bridge)');
+        info('Updater hashes, PHP syntax, and a full native live-DB backup/temporary-restore round-trip all passed.');
 
         if (!$apply) {
             info('CHECK PASSED. No live application files were changed.');
-            info('Run this same command with --apply to perform the atomic bridge installation.');
             exit(0);
         }
 
-        $snapshot = createSnapshot($root, $bootstrapDir, $states);
-        info('Rollback snapshot created at ' . $snapshot);
+        $snapshot = createSnapshot($root, $bootstrap, $states, $configBefore, $installedBefore);
+        info('Rollback snapshot: ' . $snapshot);
 
-        $changed = [];
         try {
             $index = 0;
             foreach (BRIDGE_FILES as $path => $spec) {
                 $index++;
                 installOne($root, $staging, $path, $states);
-                $changed[] = $path;
-
                 if ($testFailAfter > 0 && $index === $testFailAfter) {
-                    throw new RuntimeException('Injected bootstrap failure after file ' . $path);
+                    throw new RuntimeException('Injected bridge failure after ' . $path);
                 }
             }
 
-            verifyInstalledFiles($root, $states);
+            verifyInstalledFiles($root);
             lintPhpFiles($root, array_keys(BRIDGE_FILES));
             verifyRuntimeLoads($root);
 
-            $success = [
-                'status' => 'completed',
-                'completed_at' => date(DATE_ATOM),
-                'target_ref' => BRIDGE_TARGET_REF,
-                'target_commit' => BRIDGE_TARGET_COMMIT,
-                'previous_release_metadata' => $version,
-                'rollback_snapshot' => $snapshot,
-                'files' => array_keys(BRIDGE_FILES),
-            ];
-            atomicJsonWrite($bootstrapDir . '/enterprise-transition-success.json', $success);
+            if (sha256File($root . '/config.php') !== $configBefore) {
+                throw new RuntimeException('Protected config.php changed during bridge installation.');
+            }
+            $installedAfter = is_file($root . '/storage/upgrades/installed.json')
+                ? sha256File($root . '/storage/upgrades/installed.json')
+                : null;
+            if ($installedAfter !== $installedBefore) {
+                throw new RuntimeException('Installed-release metadata changed during bridge installation.');
+            }
 
             info('BRIDGE INSTALLATION PASSED.');
-            info('The CAS application database and installed-release metadata were not changed.');
-            info('The updater core is now the enterprise 0.5.99 implementation and can perform the normal verified upgrade.');
-        } catch (Throwable $installError) {
-            fwrite(STDERR, '[ERROR] Bridge installation failed: ' . $installError->getMessage() . PHP_EOL);
-            fwrite(STDERR, '[INFO] Rolling all updater files back from ' . $snapshot . PHP_EOL);
+            info('config.php remained byte-identical: ' . $configBefore);
+            info('The live database and installed release metadata were not changed.');
+        } catch (Throwable $e) {
+            fwrite(STDERR, '[ERROR] ' . $e->getMessage() . PHP_EOL);
             rollbackSnapshot($root, $snapshot);
-            verifyRollback($root, $states);
-            fwrite(STDERR, '[INFO] Rollback verification passed; the pre-bridge updater files were restored exactly.' . PHP_EOL);
-            throw $installError;
+            verifyRollback($root, $states, $configBefore, $installedBefore);
+            fwrite(STDERR, '[INFO] Exact bridge rollback verified.' . PHP_EOL);
+            throw $e;
         }
     } finally {
         removeDirectory($staging);
@@ -208,30 +198,28 @@ try {
 } catch (Throwable $e) {
     fail($e->getMessage());
 } finally {
-    flock($lockHandle, LOCK_UN);
-    fclose($lockHandle);
+    flock($lock, LOCK_UN);
+    fclose($lock);
+}
+
+function check(array &$errors, string $label, callable $fn): void
+{
+    try { $fn(); } catch (Throwable $e) { $errors[] = $label . ': ' . $e->getMessage(); }
 }
 
 function inspectLiveFiles(string $root): array
 {
     $states = [];
     foreach (BRIDGE_FILES as $path => $spec) {
-        $absolute = $root . DIRECTORY_SEPARATOR . $path;
-        if (!file_exists($absolute)) {
-            $states[$path] = ['exists' => false, 'blob' => null, 'mode' => null, 'uid' => null, 'gid' => null];
+        $file = $root . '/' . $path;
+        if (!file_exists($file)) {
+            $states[$path] = ['exists' => false];
             continue;
         }
-        if (!is_file($absolute) || is_link($absolute)) {
-            throw new RuntimeException('Refusing to bridge non-regular file: ' . $path);
-        }
-        $stat = stat($absolute);
-        if ($stat === false) {
-            throw new RuntimeException('Unable to stat ' . $path);
-        }
-        $content = file_get_contents($absolute);
-        if (!is_string($content)) {
-            throw new RuntimeException('Unable to read ' . $path);
-        }
+        if (!is_file($file) || is_link($file)) throw new RuntimeException('Refusing non-regular updater file ' . $path);
+        $stat = stat($file);
+        $content = file_get_contents($file);
+        if ($stat === false || !is_string($content)) throw new RuntimeException('Unable to inspect ' . $path);
         $states[$path] = [
             'exists' => true,
             'blob' => gitBlobSha($content),
@@ -246,205 +234,110 @@ function inspectLiveFiles(string $root): array
 function validateKnownLegacyState(array $states): void
 {
     foreach (BRIDGE_FILES as $path => $spec) {
-        $state = $states[$path];
-        if (!$state['exists']) {
-            if (!empty($spec['may_be_absent'])) {
-                continue;
-            }
+        $state = $states[$path] ?? ['exists' => false];
+        if (empty($state['exists'])) {
+            if (!empty($spec['may_be_absent'])) continue;
             throw new RuntimeException('Required updater file is missing: ' . $path);
         }
-
-        if (!in_array($state['blob'], $spec['allowed'], true)) {
-            throw new RuntimeException(
-                'Refusing to overwrite locally modified or unknown updater file ' . $path
-                . ' (Git blob ' . $state['blob'] . '). No files were changed.'
-            );
+        if (!in_array((string)$state['blob'], $spec['allowed'], true)) {
+            throw new RuntimeException('Unknown/local modification in updater code: ' . $path
+                . ' (' . $state['blob'] . '). config.php is intentionally exempt; updater code is not.');
         }
     }
 }
 
-function assertNoActiveSystemOperation(string $root): void
-{
-    foreach ([
-        $root . '/storage/upgrades/maintenance.flag',
-        $root . '/storage/upgrades/active_database.json',
-    ] as $path) {
-        if (is_file($path)) {
-            throw new RuntimeException(
-                'Refusing legacy bridge because enterprise runtime state already exists: '
-                . substr($path, strlen($root) + 1)
-            );
-        }
-    }
-
-    foreach (glob($root . '/storage/upgrades/jobs/*.json') ?: [] as $jobFile) {
-        $job = json_decode((string)file_get_contents($jobFile), true);
-        if (is_array($job) && in_array((string)($job['status'] ?? ''), ['queued', 'running'], true)) {
-            throw new RuntimeException('Refusing bridge while a system job is active: ' . basename($jobFile));
-        }
-    }
-
-    foreach (glob($root . '/storage/upgrades/runs/*/manifest.json') ?: [] as $manifestFile) {
-        $run = json_decode((string)file_get_contents($manifestFile), true);
-        if (is_array($run) && in_array((string)($run['status'] ?? ''), ['pending', 'running'], true)) {
-            throw new RuntimeException('Refusing bridge while an upgrade run is active: ' . basename(dirname($manifestFile)));
-        }
-    }
-}
-
-function stageTargetFiles(string $staging, ?string $sourceRoot): void
+function stageTargetFiles(string $sourceRoot, string $staging): void
 {
     foreach (BRIDGE_FILES as $path => $spec) {
-        $target = $staging . DIRECTORY_SEPARATOR . $path;
+        $source = $sourceRoot . '/' . $path;
+        if (!is_file($source)) throw new RuntimeException('Release is missing ' . $path);
+        $content = file_get_contents($source);
+        if (!is_string($content)) throw new RuntimeException('Unable to read release file ' . $path);
+        $actual = gitBlobSha($content);
+        if (!hash_equals((string)$spec['target'], $actual)) {
+            throw new RuntimeException('Release hash mismatch for ' . $path
+                . '; expected ' . $spec['target'] . ', got ' . $actual);
+        }
+        $target = $staging . '/' . $path;
         ensureDirectory(dirname($target));
-
-        if ($sourceRoot !== null) {
-            $source = $sourceRoot . DIRECTORY_SEPARATOR . $path;
-            if (!is_file($source)) {
-                throw new RuntimeException('Source root is missing target file ' . $path);
-            }
-            $content = file_get_contents($source);
-        } else {
-            $url = 'https://raw.githubusercontent.com/khoppenworth/CAS2025/'
-                . BRIDGE_TARGET_COMMIT . '/' . str_replace('%2F', '/', rawurlencode($path));
-            $content = downloadText($url);
-        }
-
-        if (!is_string($content)) {
-            throw new RuntimeException('Unable to obtain target file ' . $path);
-        }
-
-        $blob = gitBlobSha($content);
-        if (!hash_equals((string)$spec['target'], $blob)) {
-            throw new RuntimeException(
-                'Target file integrity mismatch for ' . $path
-                . '; expected Git blob ' . $spec['target'] . ', got ' . $blob
-            );
-        }
-
-        if (file_put_contents($target, $content, LOCK_EX) === false) {
-            throw new RuntimeException('Unable to stage target file ' . $path);
-        }
+        if (file_put_contents($target, $content, LOCK_EX) === false) throw new RuntimeException('Unable to stage ' . $path);
     }
 }
 
-function createSnapshot(string $root, string $bootstrapDir, array $states): string
+function createSnapshot(string $root, string $bootstrap, array $states, string $configHash, ?string $installedHash): string
 {
-    $snapshot = $bootstrapDir . '/snapshot-' . gmdate('Ymd_His') . '-' . bin2hex(random_bytes(3));
-    ensureDirectory($snapshot);
-
-    $manifest = [
-        'created_at' => date(DATE_ATOM),
-        'target_ref' => BRIDGE_TARGET_REF,
-        'target_commit' => BRIDGE_TARGET_COMMIT,
-        'files' => $states,
-    ];
+    $snapshot = $bootstrap . '/snapshot-' . gmdate('Ymd_His') . '-' . bin2hex(random_bytes(3));
+    ensureDirectory($snapshot . '/original');
 
     foreach ($states as $path => $state) {
-        if (!$state['exists']) {
-            continue;
-        }
-        $source = $root . DIRECTORY_SEPARATOR . $path;
-        $target = $snapshot . DIRECTORY_SEPARATOR . 'original' . DIRECTORY_SEPARATOR . $path;
+        if (empty($state['exists'])) continue;
+        $target = $snapshot . '/original/' . $path;
         ensureDirectory(dirname($target));
-        if (!copy($source, $target)) {
-            throw new RuntimeException('Unable to snapshot ' . $path);
-        }
-        @chmod($target, (int)$state['mode']);
+        if (!copy($root . '/' . $path, $target)) throw new RuntimeException('Unable to snapshot ' . $path);
     }
 
-    atomicJsonWrite($snapshot . '/manifest.json', $manifest);
+    ensureDirectory($snapshot . '/protected');
+    if (!copy($root . '/config.php', $snapshot . '/protected/config.php')) {
+        throw new RuntimeException('Unable to snapshot protected config.php');
+    }
+    if (is_file($root . '/storage/upgrades/installed.json')) {
+        if (!copy($root . '/storage/upgrades/installed.json', $snapshot . '/protected/installed.json')) {
+            throw new RuntimeException('Unable to snapshot installed release metadata.');
+        }
+    }
+
+    atomicJsonWrite($snapshot . '/manifest.json', [
+        'created_at' => date(DATE_ATOM),
+        'target' => BRIDGE_TARGET_REF,
+        'files' => $states,
+        'config_sha256' => $configHash,
+        'installed_sha256' => $installedHash,
+    ]);
     return $snapshot;
 }
 
 function installOne(string $root, string $staging, string $path, array $states): void
 {
-    $source = $staging . DIRECTORY_SEPARATOR . $path;
-    $destination = $root . DIRECTORY_SEPARATOR . $path;
+    $source = $staging . '/' . $path;
+    $destination = $root . '/' . $path;
     ensureDirectory(dirname($destination));
 
-    $state = $states[$path];
-    if ($state['exists']) {
-        $mode = (int)$state['mode'];
-        $uid = (int)$state['uid'];
-        $gid = (int)$state['gid'];
+    $state = $states[$path] ?? ['exists' => false];
+    if (!empty($state['exists'])) {
+        $reference = $state;
     } else {
-        $reference = BRIDGE_FILES[$path]['metadata_reference'] ?? null;
-        if (!is_string($reference) || !isset($states[$reference]) || !$states[$reference]['exists']) {
-            throw new RuntimeException('No safe metadata reference exists for new file ' . $path);
+        $referencePath = (string)(BRIDGE_FILES[$path]['metadata_reference'] ?? '');
+        $reference = $states[$referencePath] ?? null;
+        if (!is_array($reference) || empty($reference['exists'])) {
+            throw new RuntimeException('No metadata reference for new file ' . $path);
         }
-        $mode = (int)$states[$reference]['mode'];
-        $uid = (int)$states[$reference]['uid'];
-        $gid = (int)$states[$reference]['gid'];
     }
 
     $temp = dirname($destination) . '/.' . basename($destination) . '.bridge-' . bin2hex(random_bytes(4));
-    $content = file_get_contents($source);
-    if (!is_string($content) || file_put_contents($temp, $content, LOCK_EX) === false) {
-        @unlink($temp);
-        throw new RuntimeException('Unable to create atomic replacement for ' . $path);
-    }
+    if (!copy($source, $temp)) throw new RuntimeException('Unable to prepare ' . $path);
 
     try {
-        if (!chmod($temp, $mode)) {
-            throw new RuntimeException('Unable to preserve permissions for ' . $path);
-        }
-
-        $tempStat = stat($temp);
-        if ($tempStat === false) {
-            throw new RuntimeException('Unable to inspect replacement metadata for ' . $path);
-        }
-
-        if ((int)$tempStat['uid'] !== $uid && (!function_exists('chown') || !@chown($temp, $uid))) {
+        if (!chmod($temp, (int)$reference['mode'])) throw new RuntimeException('Unable to preserve mode for ' . $path);
+        $stat = stat($temp);
+        if ($stat === false) throw new RuntimeException('Unable to stat staged ' . $path);
+        if ((int)$stat['uid'] !== (int)$reference['uid'] && !@chown($temp, (int)$reference['uid'])) {
             throw new RuntimeException('Unable to preserve owner for ' . $path);
         }
-        if ((int)$tempStat['gid'] !== $gid && (!function_exists('chgrp') || !@chgrp($temp, $gid))) {
+        if ((int)$stat['gid'] !== (int)$reference['gid'] && !@chgrp($temp, (int)$reference['gid'])) {
             throw new RuntimeException('Unable to preserve group for ' . $path);
         }
-
-        clearstatcache(true, $temp);
-        $verified = stat($temp);
-        if ($verified === false
-            || (($verified['mode'] & 0777) !== $mode)
-            || ((int)$verified['uid'] !== $uid)
-            || ((int)$verified['gid'] !== $gid)
-        ) {
-            throw new RuntimeException('Replacement metadata verification failed for ' . $path);
-        }
-
-        if (!rename($temp, $destination)) {
-            throw new RuntimeException('Atomic replacement failed for ' . $path);
-        }
+        if (!rename($temp, $destination)) throw new RuntimeException('Atomic replacement failed for ' . $path);
     } finally {
-        if (is_file($temp)) {
-            @unlink($temp);
-        }
+        if (is_file($temp)) @unlink($temp);
     }
 }
 
-function verifyInstalledFiles(string $root, array $states): void
+function verifyInstalledFiles(string $root): void
 {
     foreach (BRIDGE_FILES as $path => $spec) {
-        $absolute = $root . DIRECTORY_SEPARATOR . $path;
-        $content = file_get_contents($absolute);
+        $content = file_get_contents($root . '/' . $path);
         if (!is_string($content) || !hash_equals((string)$spec['target'], gitBlobSha($content))) {
-            throw new RuntimeException('Installed target hash verification failed for ' . $path);
-        }
-
-        $stat = stat($absolute);
-        if ($stat === false) {
-            throw new RuntimeException('Unable to stat installed file ' . $path);
-        }
-
-        $reference = $states[$path]['exists']
-            ? $states[$path]
-            : $states[(string)(BRIDGE_FILES[$path]['metadata_reference'] ?? '')];
-
-        if (($stat['mode'] & 0777) !== (int)$reference['mode']
-            || (int)$stat['uid'] !== (int)$reference['uid']
-            || (int)$stat['gid'] !== (int)$reference['gid']
-        ) {
-            throw new RuntimeException('Installed ownership/permission verification failed for ' . $path);
+            throw new RuntimeException('Installed hash mismatch for ' . $path);
         }
     }
 }
@@ -452,204 +345,177 @@ function verifyInstalledFiles(string $root, array $states): void
 function rollbackSnapshot(string $root, string $snapshot): void
 {
     $manifest = json_decode((string)file_get_contents($snapshot . '/manifest.json'), true);
-    if (!is_array($manifest) || !is_array($manifest['files'] ?? null)) {
-        throw new RuntimeException('Rollback snapshot manifest is unreadable.');
-    }
+    if (!is_array($manifest) || !is_array($manifest['files'] ?? null)) throw new RuntimeException('Rollback manifest is invalid.');
 
     foreach (array_reverse(array_keys(BRIDGE_FILES)) as $path) {
-        $state = $manifest['files'][$path] ?? null;
-        if (!is_array($state)) {
-            throw new RuntimeException('Rollback metadata missing for ' . $path);
-        }
-        $destination = $root . DIRECTORY_SEPARATOR . $path;
-
+        $state = $manifest['files'][$path] ?? ['exists' => false];
+        $destination = $root . '/' . $path;
         if (empty($state['exists'])) {
-            if (file_exists($destination) && !@unlink($destination)) {
-                throw new RuntimeException('Unable to remove bridge-created file during rollback: ' . $path);
-            }
+            if (file_exists($destination) && !@unlink($destination)) throw new RuntimeException('Unable to remove ' . $path);
             continue;
         }
-
         $source = $snapshot . '/original/' . $path;
-        if (!is_file($source)) {
-            throw new RuntimeException('Rollback copy missing for ' . $path);
-        }
-
         $temp = dirname($destination) . '/.' . basename($destination) . '.rollback-' . bin2hex(random_bytes(4));
-        if (!copy($source, $temp)) {
-            throw new RuntimeException('Unable to prepare rollback for ' . $path);
-        }
+        if (!copy($source, $temp)) throw new RuntimeException('Unable to prepare rollback for ' . $path);
         @chmod($temp, (int)$state['mode']);
-        if (function_exists('chown')) @chown($temp, (int)$state['uid']);
-        if (function_exists('chgrp')) @chgrp($temp, (int)$state['gid']);
+        @chown($temp, (int)$state['uid']);
+        @chgrp($temp, (int)$state['gid']);
         if (!rename($temp, $destination)) {
             @unlink($temp);
             throw new RuntimeException('Unable to restore ' . $path);
         }
     }
+
+    if (sha256File($root . '/config.php') !== (string)($manifest['config_sha256'] ?? '')) {
+        if (!copy($snapshot . '/protected/config.php', $root . '/config.php')) {
+            throw new RuntimeException('Unable to restore protected config.php after invariant violation.');
+        }
+    }
+
+    $installedOriginal = $snapshot . '/protected/installed.json';
+    if (is_file($installedOriginal)) {
+        if (!copy($installedOriginal, $root . '/storage/upgrades/installed.json')) {
+            throw new RuntimeException('Unable to restore installed release metadata.');
+        }
+    } elseif (is_file($root . '/storage/upgrades/installed.json')) {
+        @unlink($root . '/storage/upgrades/installed.json');
+    }
 }
 
-function verifyRollback(string $root, array $states): void
+function verifyRollback(string $root, array $states, string $configHash, ?string $installedHash): void
 {
     foreach ($states as $path => $state) {
-        $absolute = $root . DIRECTORY_SEPARATOR . $path;
-        if (!$state['exists']) {
-            if (file_exists($absolute)) {
-                throw new RuntimeException('Rollback left bridge-created file behind: ' . $path);
-            }
+        $file = $root . '/' . $path;
+        if (empty($state['exists'])) {
+            if (file_exists($file)) throw new RuntimeException('Rollback left new file ' . $path);
             continue;
         }
-
-        $content = file_get_contents($absolute);
-        $stat = stat($absolute);
-        if (!is_string($content) || $stat === false
-            || gitBlobSha($content) !== $state['blob']
-            || (($stat['mode'] & 0777) !== (int)$state['mode'])
-            || (int)$stat['uid'] !== (int)$state['uid']
-            || (int)$stat['gid'] !== (int)$state['gid']
-        ) {
-            throw new RuntimeException('Rollback verification failed for ' . $path);
+        $content = file_get_contents($file);
+        if (!is_string($content) || gitBlobSha($content) !== (string)$state['blob']) {
+            throw new RuntimeException('Rollback hash mismatch for ' . $path);
         }
     }
-}
-
-function lintPhpFiles(string $root, ?array $paths = null): void
-{
-    $paths = $paths ?? array_keys(BRIDGE_FILES);
-    foreach ($paths as $path) {
-        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) !== 'php') {
-            continue;
-        }
-        $file = $root . DIRECTORY_SEPARATOR . $path;
-        if (!is_file($file)) {
-            throw new RuntimeException('PHP lint target is missing: ' . $path);
-        }
-        runCommand([PHP_BINARY ?: 'php', '-l', $file]);
-    }
+    if (sha256File($root . '/config.php') !== $configHash) throw new RuntimeException('config.php was not restored byte-identically.');
+    $actualInstalled = is_file($root . '/storage/upgrades/installed.json')
+        ? sha256File($root . '/storage/upgrades/installed.json')
+        : null;
+    if ($actualInstalled !== $installedHash) throw new RuntimeException('Installed release metadata was not restored exactly.');
 }
 
 function verifyRuntimeLoads(string $root): void
 {
+    // Load the actual deployment-specific config.php without running its normal
+    // request/bootstrap path. This proves the local config still reaches lib/path.php
+    // and therefore the enterprise runtime, without opening/mutating the database.
     $code = 'define("APP_BOOTSTRAPPED", true);'
         . 'require ' . var_export($root . '/config.php', true) . ';'
+        . 'if(!function_exists("base_path")) exit(10);'
         . 'require ' . var_export($root . '/lib/upgrade.php', true) . ';'
-        . 'if (!function_exists("upgrade_start_cli_job")) exit(11);'
-        . 'if (!class_exists("SystemBackupManager")) exit(12);'
-        . 'echo "enterprise-updater-ok\\n";';
-
-    $output = runCommand([PHP_BINARY ?: 'php', '-r', $code]);
-    if (strpos($output, 'enterprise-updater-ok') === false) {
-        throw new RuntimeException('Enterprise updater runtime verification failed.');
+        . '$e=new UpgradeEngine(' . var_export($root, true) . ');'
+        . 'if(!function_exists("upgrade_start_cli_job")) exit(11);'
+        . 'if(!class_exists("SystemBackupManager")) exit(12);'
+        . 'echo "ENTERPRISE_RUNTIME_OK\\n";';
+    $result = runCommand([PHP_BINARY ?: 'php', '-r', $code]);
+    if (strpos($result, 'ENTERPRISE_RUNTIME_OK') === false) {
+        throw new RuntimeException('Deployment config could not load the enterprise runtime safely.');
     }
 }
 
-function assertNativeTools(): void
+function assertNoActiveSystemOperation(string $root): void
 {
-    if (findExecutable(['mysqldump', 'mariadb-dump']) === null) {
-        throw new RuntimeException('Native dump utility is missing (mysqldump or mariadb-dump).');
+    foreach (['maintenance.flag', 'active_database.json'] as $name) {
+        if (is_file($root . '/storage/upgrades/' . $name)) {
+            throw new RuntimeException('Existing enterprise runtime state requires review: storage/upgrades/' . $name);
+        }
     }
-    if (findExecutable(['mysql', 'mariadb']) === null) {
-        throw new RuntimeException('Native restore utility is missing (mysql or mariadb).');
-    }
-    if (!function_exists('proc_open')) {
-        throw new RuntimeException('PHP proc_open is required for detached enterprise system jobs.');
+    foreach (glob($root . '/storage/upgrades/jobs/*.json') ?: [] as $file) {
+        $job = json_decode((string)file_get_contents($file), true);
+        if (is_array($job) && in_array((string)($job['status'] ?? ''), ['queued', 'running'], true)) {
+            throw new RuntimeException('System job is active: ' . basename($file));
+        }
     }
 }
 
-function proveStagingPrivileges(string $root): void
+function verifyFullBackupRoundTrip(string $root, string $staging): void
 {
-    if (!extension_loaded('pdo_mysql')) {
-        throw new RuntimeException('PDO MySQL extension is required.');
-    }
-
     $env = readEnvironment($root . '/.env');
-    $get = static function (string $name, string $default = '') use ($env): string {
-        $runtime = getenv($name);
-        if ($runtime !== false && $runtime !== '') return (string)$runtime;
-        return isset($env[$name]) && $env[$name] !== '' ? (string)$env[$name] : $default;
-    };
-
-    $host = $get('DB_HOST', '127.0.0.1');
-    $port = (int)$get('DB_PORT', '3306');
-    $dbName = $get('DB_NAME', 'epss_v300');
-    $appUser = $get('DB_USER');
-    $appPass = $get('DB_PASS');
-    $adminUser = $get('DB_ADMIN_USER', $appUser);
-    $adminPass = $get('DB_ADMIN_PASS', $appPass);
-
-    if ($appUser === '' || $adminUser === '') {
-        throw new RuntimeException('DB_USER and DB_ADMIN_USER (or a privileged DB_USER fallback) are required.');
+    foreach (['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS', 'DB_ADMIN_USER', 'DB_ADMIN_PASS'] as $key) {
+        $runtime = getenv($key);
+        if (($runtime === false || $runtime === '') && array_key_exists($key, $env)) {
+            putenv($key . '=' . (string)$env[$key]);
+            $_ENV[$key] = (string)$env[$key];
+        }
     }
 
-    $dsnBase = 'mysql:host=' . $host . ';port=' . $port . ';charset=utf8mb4';
-    $options = [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ];
+    $host = (string)(getenv('DB_HOST') ?: '127.0.0.1');
+    $port = (int)(getenv('DB_PORT') ?: 3306);
+    $dbName = (string)(getenv('DB_NAME') ?: '');
+    $dbUser = (string)(getenv('DB_USER') ?: '');
+    $dbPass = (string)(getenv('DB_PASS') ?: '');
 
-    $appLive = new PDO($dsnBase . ';dbname=' . $dbName, $appUser, $appPass, $options);
-    $currentUser = (string)$appLive->query('SELECT CURRENT_USER()')->fetchColumn();
-    if ($currentUser === '' || strpos($currentUser, '@') === false) {
-        throw new RuntimeException('Unable to determine application MySQL account.');
+    if ($dbName === '' || preg_match('/^[A-Za-z0-9_]+$/', $dbName) !== 1 || $dbUser === '') {
+        throw new RuntimeException('DB_NAME/DB_USER is missing or unsafe in the server environment.');
     }
 
-    $admin = new PDO($dsnBase, $adminUser, $adminPass, $options);
-    $candidate = 'cas_bridge_preflight_' . bin2hex(random_bytes(5));
-    $quotedDb = '`' . str_replace('`', '``', $candidate) . '`';
+    require_once $staging . '/lib/system_backup.php';
+
+    $pdo = new PDO(
+        sprintf(
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+            $host,
+            $port > 0 ? $port : 3306,
+            $dbName
+        ),
+        $dbUser,
+        $dbPass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]
+    );
+
+    $manager = new SystemBackupManager($root);
+    $target = $root . '/storage/upgrades/bootstrap/preflight-roundtrip-'
+        . gmdate('Ymd_His') . '-' . bin2hex(random_bytes(3)) . '.zip';
 
     try {
-        $admin->exec('CREATE DATABASE ' . $quotedDb . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        $backup = $manager->createBackupSet(
+            $pdo,
+            'preflight',
+            $target,
+            [
+                'id' => 'bridge_preflight_' . gmdate('Ymd_His') . '_' . bin2hex(random_bytes(3)),
+                'label' => 'One-time enterprise transition preflight',
+            ]
+        );
 
-        $appCandidate = null;
-        try {
-            $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $options);
-            $appCandidate->query('SELECT 1')->fetchColumn();
-        } catch (Throwable $initialAccessError) {
-            [$accountUser, $accountHost] = explode('@', $currentUser, 2);
-            $account = $admin->quote($accountUser) . '@' . $admin->quote($accountHost);
-            $admin->exec('GRANT ALL PRIVILEGES ON ' . $quotedDb . '.* TO ' . $account);
-            $appCandidate = new PDO($dsnBase . ';dbname=' . $candidate, $appUser, $appPass, $options);
+        if (!is_file((string)$backup['absolute_path']) || empty($backup['manifest']['database']['verified_restore'])) {
+            throw new RuntimeException('Full preflight backup did not prove a native staging restore.');
         }
-
-        $appCandidate->exec('CREATE TABLE bridge_probe (id INT PRIMARY KEY)');
-        $appCandidate->exec('INSERT INTO bridge_probe (id) VALUES (1)');
-        $value = (int)$appCandidate->query('SELECT COUNT(*) FROM bridge_probe')->fetchColumn();
-        if ($value !== 1) {
-            throw new RuntimeException('Application account staging write verification failed.');
-        }
-        $appCandidate->exec('DROP TABLE bridge_probe');
     } finally {
-        try {
-            $admin->exec('DROP DATABASE IF EXISTS ' . $quotedDb);
-        } catch (Throwable $dropError) {
-            throw new RuntimeException(
-                'Staging privilege preflight could not remove throwaway database ' . $candidate
-                . ': ' . $dropError->getMessage(),
-                0,
-                $dropError
-            );
+        if (is_file($target)) {
+            @unlink($target);
         }
     }
 }
 
-function readInstalledVersion(string $root): string
+function lintPhpFiles(string $root, array $paths): void
 {
-    $path = $root . '/storage/upgrades/installed.json';
-    if (!is_file($path)) return '';
-    $data = json_decode((string)file_get_contents($path), true);
-    return is_array($data) ? trim((string)($data['tag'] ?? $data['name'] ?? '')) : '';
+    foreach ($paths as $path) {
+        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) !== 'php') continue;
+        runCommand([PHP_BINARY ?: 'php', '-l', $root . '/' . $path]);
+    }
 }
 
 function readEnvironment(string $path): array
 {
-    if (!is_file($path)) return [];
     $result = [];
+    if (!is_file($path)) return $result;
     foreach (file($path, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
-        $trimmed = trim($line);
-        if ($trimmed === '' || str_starts_with($trimmed, '#') || strpos($trimmed, '=') === false) continue;
-        [$key, $value] = explode('=', $trimmed, 2);
-        $key = trim($key);
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) continue;
+        [$key, $value] = explode('=', $line, 2);
         $value = trim($value);
         if (strlen($value) >= 2
             && (($value[0] === '"' && $value[strlen($value)-1] === '"')
@@ -657,96 +523,30 @@ function readEnvironment(string $path): array
         ) {
             $value = substr($value, 1, -1);
         }
-        if ($key !== '') $result[$key] = $value;
+        $result[trim($key)] = $value;
     }
     return $result;
 }
 
-function downloadText(string $url): string
-{
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_FAILONERROR => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_USERAGENT => 'CAS-enterprise-bootstrap/1.0',
-        ]);
-        $body = curl_exec($ch);
-        $error = curl_error($ch);
-        curl_close($ch);
-        if (is_string($body)) return $body;
-        throw new RuntimeException('Unable to download updater file: ' . $error);
-    }
-
-    if ((bool)ini_get('allow_url_fopen')) {
-        $context = stream_context_create(['http' => [
-            'timeout' => 120,
-            'header' => "User-Agent: CAS-enterprise-bootstrap/1.0\r\n",
-        ]]);
-        $body = @file_get_contents($url, false, $context);
-        if (is_string($body)) return $body;
-    }
-
-    $curl = findExecutable(['curl']);
-    if ($curl !== null) {
-        return runCommand([$curl, '-fsSL', '--connect-timeout', '15', '--max-time', '120', $url]);
-    }
-
-    throw new RuntimeException('No HTTPS download method is available (PHP cURL, allow_url_fopen, or curl binary).');
-}
-
-function gitBlobSha(string $content): string
-{
-    return sha1('blob ' . strlen($content) . "\0" . $content);
-}
-
 function runCommand(array $command): string
 {
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-    $process = proc_open($command, $descriptors, $pipes);
-    if (!is_resource($process)) {
-        throw new RuntimeException('Unable to start command.');
-    }
+    $process = proc_open($command, [0 => ['pipe','r'],1 => ['pipe','w'],2 => ['pipe','w']], $pipes);
+    if (!is_resource($process)) throw new RuntimeException('Unable to start command.');
     fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]) ?: '';
     $stderr = stream_get_contents($pipes[2]) ?: '';
     fclose($pipes[1]);
     fclose($pipes[2]);
     $exit = proc_close($process);
-    if ($exit !== 0) {
-        throw new RuntimeException('Command failed: ' . implode(' ', array_map('strval', $command))
-            . ($stderr !== '' ? ' :: ' . trim($stderr) : ''));
-    }
+    if ($exit !== 0) throw new RuntimeException(trim($stderr !== '' ? $stderr : $stdout));
     return $stdout;
-}
-
-function findExecutable(array $names): ?string
-{
-    foreach ($names as $name) {
-        foreach (['/usr/bin', '/usr/local/bin', '/bin'] as $directory) {
-            $candidate = $directory . '/' . $name;
-            if (is_file($candidate) && is_executable($candidate)) return $candidate;
-        }
-        $output = [];
-        $code = 1;
-        @exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null', $output, $code);
-        if ($code === 0 && !empty($output[0])) return (string)$output[0];
-    }
-    return null;
 }
 
 function atomicJsonWrite(string $path, array $payload): void
 {
     ensureDirectory(dirname($path));
     $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    if (!is_string($json)) throw new RuntimeException('Unable to encode bootstrap JSON.');
+    if (!is_string($json)) throw new RuntimeException('Unable to encode JSON.');
     $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
     if (file_put_contents($tmp, $json . PHP_EOL, LOCK_EX) === false || !rename($tmp, $path)) {
         @unlink($tmp);
@@ -756,30 +556,37 @@ function atomicJsonWrite(string $path, array $payload): void
 
 function createTempDirectory(string $parent, string $prefix): string
 {
-    $path = $parent . DIRECTORY_SEPARATOR . $prefix . bin2hex(random_bytes(6));
+    $path = $parent . '/' . $prefix . bin2hex(random_bytes(5));
     ensureDirectory($path);
     return $path;
 }
 
 function ensureDirectory(string $path): void
 {
-    if (!is_dir($path) && !mkdir($path, 0750, true) && !is_dir($path)) {
-        throw new RuntimeException('Unable to create directory ' . $path);
-    }
+    if (!is_dir($path) && !mkdir($path, 0750, true) && !is_dir($path)) throw new RuntimeException('Unable to create ' . $path);
 }
 
 function removeDirectory(string $path): void
 {
     if (!is_dir($path)) return;
-    $iterator = new RecursiveIteratorIterator(
+    $it = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
         RecursiveIteratorIterator::CHILD_FIRST
     );
-    foreach ($iterator as $entry) {
-        if ($entry->isDir()) @rmdir($entry->getPathname());
-        else @unlink($entry->getPathname());
-    }
+    foreach ($it as $entry) $entry->isDir() ? @rmdir($entry->getPathname()) : @unlink($entry->getPathname());
     @rmdir($path);
+}
+
+function gitBlobSha(string $content): string
+{
+    return sha1('blob ' . strlen($content) . "\0" . $content);
+}
+
+function sha256File(string $path): string
+{
+    $hash = hash_file('sha256', $path);
+    if (!is_string($hash)) throw new RuntimeException('Unable to hash ' . $path);
+    return $hash;
 }
 
 function info(string $message): void

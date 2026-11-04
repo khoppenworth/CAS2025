@@ -147,6 +147,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $flashType = 'info';
 
+    // The Upgrade page remains readable during a controlled maintenance window
+    // so the operator can monitor progress, but it must be read-only. This
+    // prevents a late admin POST from creating writes after the authoritative
+    // pre-upgrade snapshot has frozen application state.
+    if (is_file(base_path('storage/upgrades/maintenance.flag'))) {
+        $_SESSION['admin_upgrade_state'] = $upgradeState;
+        $_SESSION['admin_dashboard_flash'] = t(
+            $t,
+            'system_operation_in_progress',
+            'A verified system operation is in progress. This page is read-only until it completes.'
+        );
+        $_SESSION['admin_dashboard_flash_type'] = 'warning';
+        header('Location: ' . url_for('admin/upgrade.php'));
+        exit;
+    }
+
     switch ($action) {
         case 'update_upgrade_repo':
             $rawRepo = (string)($_POST['upgrade_repo'] ?? '');

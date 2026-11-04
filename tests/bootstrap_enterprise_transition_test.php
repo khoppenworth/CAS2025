@@ -21,8 +21,7 @@ $server = new PDO($dsn, $user, $pass, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 
-$baseDb = 'cas_bridge_' . bin2hex(random_bytes(4));
-$server->exec('CREATE DATABASE `' . $baseDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$fixtureDatabases = [];
 
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
@@ -71,9 +70,17 @@ $remove = static function (string $path) use (&$remove): void {
     }
 };
 
-$makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, $port, $user, $pass, $baseDb, $run): string {
+$makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, $port, $user, $pass, $server, &$fixtureDatabases, $run): string {
     $fixture = $tempRoot . '/' . $name;
     mkdir($fixture, 0750, true);
+
+    // Every simulated CAS server gets its own database. Reusing one database
+    // across fixtures would make the second real 0.5.95 init.sql collide with
+    // objects created by the first fixture and would not model separate servers.
+    $baseDb = 'cas_bridge_' . preg_replace('/[^A-Za-z0-9_]+/', '_', $name)
+        . '_' . bin2hex(random_bytes(4));
+    $server->exec('CREATE DATABASE `' . $baseDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+    $fixtureDatabases[] = $baseDb;
 
     $cmd = 'git -C ' . escapeshellarg($repoRoot)
         . ' archive 0.5.95 | tar -x -C ' . escapeshellarg($fixture);
@@ -103,6 +110,42 @@ $makeFixture = static function (string $name) use ($repoRoot, $tempRoot, $host, 
         . "DB_ADMIN_PASS={$pass}\n"
         . "BASE_URL=/\n"
     );
+
+    // Use the actual 0.5.95 bootstrap schema so bridge preflight performs
+    // a real dump/temporary-restore round-trip against a representative database.
+    $client = is_executable('/usr/bin/mysql')
+        ? '/usr/bin/mysql'
+        : (is_executable('/usr/bin/mariadb') ? '/usr/bin/mariadb' : '');
+    if ($client === '') {
+        throw new RuntimeException('Native mysql/mariadb client is unavailable in bridge fixture.');
+    }
+    $schemaCommand = 'exec ' . escapeshellarg($client)
+        . ' --host=' . escapeshellarg($host)
+        . ' --port=' . escapeshellarg((string)$port)
+        . ' --user=' . escapeshellarg($user)
+        . ' --default-character-set=utf8mb4 '
+        . escapeshellarg($baseDb)
+        . ' < ' . escapeshellarg($fixture . '/init.sql');
+    $schema = $run(
+        ['/bin/bash', '-lc', $schemaCommand],
+        ['MYSQL_PWD' => $pass]
+    );
+    if ($schema['exit'] !== 0) {
+        throw new RuntimeException('Unable to initialize bridge fixture from 0.5.95 init.sql: ' . $schema['stderr']);
+    }
+
+    // Simulate a real deployed server where config.php has legitimate local changes.
+    $configPath = $fixture . '/config.php';
+    $configContents = file_get_contents($configPath);
+    if (!is_string($configContents)) {
+        throw new RuntimeException('Unable to customize fixture config.php.');
+    }
+    $marker = "\n// DEPLOYMENT-SPECIFIC LOCAL CONFIG MARKER - MUST NEVER BE OVERWRITTEN\n";
+    $closing = strrpos($configContents, '?>');
+    $configContents = $closing === false
+        ? $configContents . $marker
+        : substr($configContents, 0, $closing) . $marker . substr($configContents, $closing);
+    file_put_contents($configPath, $configContents);
 
     chmod($fixture . '/config.php', 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
@@ -143,13 +186,36 @@ try {
     $assert($apply['exit'] === 0, 'Bridge apply failed: ' . $apply['stderr']);
     $assert(str_contains($apply['stdout'], 'BRIDGE INSTALLATION PASSED'), 'Bridge apply did not report success.');
 
+    // The next operator action after the bridge is Admin > System Upgrade.
+    // Prove the newly bridged page actually renders against the still-0.5.95
+    // application/database and the customized deployment config.
+    $adminProbeCode = '$_SERVER["REQUEST_METHOD"]="GET";'
+        . '$_SERVER["SCRIPT_NAME"]="/admin/upgrade.php";'
+        . '$_SERVER["PHP_SELF"]="/admin/upgrade.php";'
+        . 'chdir(' . var_export($fixture, true) . ');'
+        . 'require ' . var_export($fixture . '/config.php', true) . ';'
+        . '$_SESSION["user"]=["id"=>999999,"role"=>"admin","account_status"=>"active","profile_completed"=>1];'
+        . 'ob_start(); require ' . var_export($fixture . '/admin/upgrade.php', true) . ';'
+        . '$html=ob_get_clean();'
+        . 'if(strlen($html)<500 || strpos($html,"System Upgrade")===false) exit(41);'
+        . 'echo "BRIDGED_ADMIN_PAGE_OK\\n";';
+    $adminProbe = $run([PHP_BINARY, '-r', $adminProbeCode]);
+    $assert(
+        $adminProbe['exit'] === 0 && str_contains($adminProbe['stdout'], 'BRIDGED_ADMIN_PAGE_OK'),
+        'Bridged Admin > System Upgrade page did not render on the 0.5.95 fixture: '
+            . $adminProbe['stderr'] . $adminProbe['stdout']
+    );
+
     $paths = [
         'admin/upgrade.php',
-        'config.php',
         'lib/system_backup.php',
         'lib/upgrade.php',
+        'lib/path.php',
+        'lib/enterprise_runtime.php',
+        'lib/system_cli_bootstrap.php',
         'scripts/system_upgrade.php',
         'scripts/system_job.php',
+        'scripts/system_healthcheck.php',
     ];
     foreach ($paths as $path) {
         $assert(
@@ -157,6 +223,7 @@ try {
             'Installed bridge target differs from repository source: ' . $path
         );
     }
+    $assert($blob($fixture . '/config.php') === $beforeConfig, 'Bridge changed customized config.php.');
     $assert((fileperms($fixture . '/config.php') & 0777) === $configMode, 'config.php mode was not preserved.');
     $assert((fileperms($fixture . '/scripts/system_upgrade.php') & 0777) === $upgradeMode, 'system_upgrade.php mode was not preserved.');
     $assert((fileperms($fixture . '/scripts/system_job.php') & 0777) === $upgradeMode, 'New system_job.php did not inherit script mode.');
@@ -174,9 +241,10 @@ try {
     ]);
     $assert($second['exit'] === 0, 'Idempotent bridge rerun failed: ' . $second['stderr']);
 
-    // 4) Locally modified updater files must be refused before any other file changes.
+    // 4) config.php customization is allowed; unknown updater-code modification is not.
     $modified = $makeFixture('modified');
-    file_put_contents($modified . '/config.php', "\n// local unknown modification\n", FILE_APPEND);
+    $modifiedConfigBefore = $blob($modified . '/config.php');
+    file_put_contents($modified . '/lib/upgrade.php', "\n// unknown local updater modification\n", FILE_APPEND);
     $modifiedAdminBefore = $blob($modified . '/admin/upgrade.php');
     $refusal = $run([
         PHP_BINARY, $script,
@@ -184,17 +252,22 @@ try {
         '--source-root=' . $repoRoot,
         '--apply',
     ]);
-    $assert($refusal['exit'] !== 0, 'Bridge unexpectedly accepted a locally modified config.php.');
+    $assert($refusal['exit'] !== 0, 'Bridge unexpectedly accepted locally modified updater code.');
     $assert(
         $blob($modified . '/admin/upgrade.php') === $modifiedAdminBefore,
-        'Bridge changed files before refusing unknown local config.php.'
+        'Bridge changed files before refusing unknown updater code.'
+    );
+    $assert(
+        $blob($modified . '/config.php') === $modifiedConfigBefore,
+        'Refused bridge changed customized config.php.'
     );
     $assert(!file_exists($modified . '/scripts/system_job.php'), 'Refused bridge left new system_job.php behind.');
 
     // 5) Injected mid-install failure must restore exact 0.5.95 files and remove new files.
     $rollback = $makeFixture('rollback');
     $original = [];
-    foreach (['admin/upgrade.php','config.php','lib/system_backup.php','lib/upgrade.php','scripts/system_upgrade.php'] as $path) {
+    $rollbackConfigBefore = $blob($rollback . '/config.php');
+    foreach (['admin/upgrade.php','lib/system_backup.php','lib/upgrade.php','lib/path.php','scripts/system_upgrade.php'] as $path) {
         $original[$path] = [
             'blob' => $blob($rollback . '/' . $path),
             'mode' => fileperms($rollback . '/' . $path) & 0777,
@@ -213,12 +286,18 @@ try {
         $assert((fileperms($rollback . '/' . $path) & 0777) === $state['mode'], 'Rollback mode mismatch for ' . $path);
     }
     $assert(!file_exists($rollback . '/scripts/system_job.php'), 'Rollback failed to remove newly created system_job.php.');
+    $assert(!file_exists($rollback . '/scripts/system_healthcheck.php'), 'Rollback failed to remove new healthcheck script.');
+    $assert(!file_exists($rollback . '/lib/enterprise_runtime.php'), 'Rollback failed to remove new runtime hook.');
+    $assert(!file_exists($rollback . '/lib/system_cli_bootstrap.php'), 'Rollback failed to remove new CLI bootstrap.');
+    $assert($blob($rollback . '/config.php') === $rollbackConfigBefore, 'Rollback changed customized config.php.');
 
-    echo "Enterprise bootstrap transition test passed.\n";
+    echo "Enterprise bootstrap transition test passed with customized config.php preserved.\n";
 } finally {
-    try {
-        $server->exec('DROP DATABASE IF EXISTS `' . $baseDb . '`');
-    } catch (Throwable $e) {
+    foreach ($fixtureDatabases as $fixtureDatabase) {
+        try {
+            $server->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $fixtureDatabase) . '`');
+        } catch (Throwable $e) {
+        }
     }
     $remove($tempRoot);
 }

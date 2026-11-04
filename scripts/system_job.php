@@ -7,7 +7,7 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../lib/system_cli_bootstrap.php';
 require_once __DIR__ . '/../lib/upgrade.php';
 
 $jobId = '';

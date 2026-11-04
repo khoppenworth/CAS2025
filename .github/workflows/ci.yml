@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
 
+# Keep only the newest CI attempt for a pull request. Main-branch runs are
+# never auto-cancelled, so the exact merged commit always gets a full gate.
+concurrency:
+  group: cas-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   php:
     runs-on: ubuntu-latest
@@ -36,6 +42,8 @@ jobs:
           mysql --version
       - name: PHP lint
         run: make lint
+      - name: Enterprise runtime request-scope regression
+        run: php tests/enterprise_runtime_test.php
       - name: Fetch release tags for enterprise bridge test
         run: git fetch --tags --force
       - name: Legacy 0.5.95 to enterprise updater bridge (MySQL)
@@ -44,6 +52,17 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/bootstrap_enterprise_transition_test.php
+      - name: Full 0.5.95 enterprise transition E2E x2 (MySQL)
+        env:
+          UPGRADE_E2E_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          UPGRADE_E2E_DB_USER: root
+          UPGRADE_E2E_DB_PASS: root
+        run: |
+          set -e
+          for i in 1 2; do
+            echo "MySQL enterprise transition E2E pass $i/2"
+            UPGRADE_E2E_SUFFIX="$i" php tests/system_upgrade_end_to_end_test.php
+          done
       - name: Demo dataset SQL contract
         run: php tests/demo_dataset_sql_test.php
       - name: MySQL demo number generator regression
@@ -101,6 +120,8 @@ jobs:
           fi
           mariadb-dump --version
           mariadb --version
+      - name: Enterprise runtime request-scope regression
+        run: php tests/enterprise_runtime_test.php
       - name: Fetch release tags for enterprise bridge test
         run: git fetch --tags --force
       - name: Legacy 0.5.95 to enterprise updater bridge (MariaDB 10.11)
@@ -109,6 +130,17 @@ jobs:
           BACKUP_DB_USER: root
           BACKUP_DB_PASS: root
         run: php tests/bootstrap_enterprise_transition_test.php
+      - name: Full 0.5.95 enterprise transition E2E x2 (MariaDB 10.11)
+        env:
+          UPGRADE_E2E_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
+          UPGRADE_E2E_DB_USER: root
+          UPGRADE_E2E_DB_PASS: root
+        run: |
+          set -e
+          for i in 1 2; do
+            echo "MariaDB enterprise transition E2E pass $i/2"
+            UPGRADE_E2E_SUFFIX="$i" php tests/system_upgrade_end_to_end_test.php
+          done
       - name: MariaDB 10.11 demo number generator regression
         env:
           DEMO_DB_DSN: mysql:host=127.0.0.1;port=3307;charset=utf8mb4
