@@ -203,18 +203,33 @@ try {
     @unlink($fixture . '/storage/upgrades/active_database.json');
     $server->exec('DROP DATABASE IF EXISTS ' . quoteDb($pointerDb));
 
-    // Unknown modifications to actual updater code remain fail-closed.
+    // A locally altered updater file must not strand a deployed server.
+    // It is snapshotted exactly, replaced from the complete release source,
+    // and the site-owned config remains untouched.
     $modified = $makeFixture('modified-updater');
-    file_put_contents($modified . '/admin/upgrade.php', "\n// unknown updater modification\n", FILE_APPEND);
+    file_put_contents($modified . '/admin/upgrade.php', "\n// local updater sentinel\n", FILE_APPEND);
+    $modifiedUpdaterHash = $sha256($modified . '/admin/upgrade.php');
     $modifiedConfig = $sha256($modified . '/config.php');
-    $refusal = $run([
+
+    $modifiedApply = $run([
         PHP_BINARY, $script,
         '--root=' . $modified,
         '--source-root=' . $repoRoot,
         '--apply',
     ]);
-    $assert($refusal['exit'] !== 0, 'Bridge unexpectedly accepted modified updater code.');
-    $assert($sha256($modified . '/config.php') === $modifiedConfig, 'Refused bridge changed config.php.');
+    $assert($modifiedApply['exit'] === 0, 'Bridge failed on locally altered updater code: ' . $modifiedApply['stderr']);
+    $assert(
+        $blob($modified . '/admin/upgrade.php') === $blob($repoRoot . '/admin/upgrade.php'),
+        'Bridge did not replace altered updater file with release source.'
+    );
+    $assert($sha256($modified . '/config.php') === $modifiedConfig, 'Bridge changed config.php while replacing updater code.');
+
+    $snapshots = glob($modified . '/storage/upgrades/bootstrap/snapshot-*') ?: [];
+    rsort($snapshots, SORT_STRING);
+    $assert($snapshots !== [], 'Bridge did not retain an updater rollback snapshot.');
+    $snapshotAdmin = $snapshots[0] . '/original/admin/upgrade.php';
+    $assert(is_file($snapshotAdmin), 'Rollback snapshot is missing original admin/upgrade.php.');
+    $assert($sha256($snapshotAdmin) === $modifiedUpdaterHash, 'Rollback snapshot did not retain locally altered updater bytes exactly.');
 
     // Injected failure after several replacements must restore exact 0.5.95 updater files.
     $rollback = $makeFixture('rollback');
