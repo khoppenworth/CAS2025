@@ -467,13 +467,19 @@ final class SystemBackupManager
             // Application restore is the first live-file mutation. Database cutover happens
             // only after the application tree has restored and verified successfully.
             $applicationMutationStarted = true;
+            $expectedRestoredTree = $this->applicationArchiveTreeMetadata(
+                $prepared['application_path'],
+                $preservePaths
+            );
             $this->restoreApplicationExact($prepared['application_path'], $preservePaths);
-            $expectedTreeHash = (string)($targetManifest['application']['tree_hash'] ?? '');
-            if ($expectedTreeHash !== '') {
-                $current = $this->applicationTreeMetadata($preservePaths);
-                if (!hash_equals($expectedTreeHash, (string)$current['tree_hash'])) {
-                    throw new RuntimeException('Application verification failed after restore.');
-                }
+            $current = $this->applicationTreeMetadata($preservePaths);
+            if (!hash_equals(
+                (string)$expectedRestoredTree['tree_hash'],
+                (string)$current['tree_hash']
+            )) {
+                throw new RuntimeException(
+                    'Application verification failed after restore with preserved recovery/runtime paths.'
+                );
             }
 
             $this->switchActiveDatabase($candidate['db_name']);
@@ -1009,6 +1015,49 @@ final class SystemBackupManager
                 'Native database utility failed with exit code ' . $exit . ': ' . trim((string)$stderr ?: (string)$stdout)
             );
         }
+    }
+
+    private function applicationArchiveTreeMetadata(string $archivePath, array $preservePaths): array
+    {
+        $zip = new ZipArchive();
+        if ($zip->open($archivePath, ZipArchive::CHECKCONS) !== true) {
+            throw new RuntimeException('Unable to open application snapshot for filtered verification.');
+        }
+
+        $files = [];
+        try {
+            $this->assertSafeArchiveEntries($zip);
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $relative = $zip->getNameIndex($i);
+                if (!is_string($relative) || $relative === '' || str_ends_with($relative, '/')) {
+                    continue;
+                }
+                $relative = str_replace('\\', '/', $relative);
+                if ($this->shouldSkip($relative, $preservePaths)) {
+                    continue;
+                }
+                $bytes = $zip->getFromIndex($i);
+                if (!is_string($bytes)) {
+                    throw new RuntimeException(
+                        'Unable to read application snapshot entry during filtered verification: ' . $relative
+                    );
+                }
+                $files[$relative] = hash('sha256', $bytes);
+            }
+        } finally {
+            $zip->close();
+        }
+
+        ksort($files, SORT_STRING);
+        $hash = hash_init('sha256');
+        foreach ($files as $relative => $fileHash) {
+            hash_update($hash, $relative . "\0" . $fileHash . "\n");
+        }
+
+        return [
+            'file_count' => count($files),
+            'tree_hash' => hash_final($hash),
+        ];
     }
 
     private function verifyApplicationArchive(string $archivePath, string $expectedTreeHash): void
