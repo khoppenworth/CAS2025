@@ -13,11 +13,12 @@ const BRIDGE_TARGET_REF = '0.5.102';
 
 const BRIDGE_FILES = [
     'admin/upgrade.php' => [
-        'target' => 'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
+        'target' => 'e728cf5262452782cb18ddb9e6f28d3015f66207',
         'allowed' => [
             'afceaa03265bd76e6d16f14bcbfac8ea5ba5144c',
             'a97038b94921bcc75c6d4f31c9e6b286b0b9e771',
             'f0ac1b4e5912fd7a9503bfe028fa4949a0a65d7f',
+            'e728cf5262452782cb18ddb9e6f28d3015f66207',
         ],
     ],
     'lib/system_backup.php' => [
