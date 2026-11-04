@@ -694,7 +694,7 @@ final class UpgradeEngine
             throw new RuntimeException('Release source directory does not exist: ' . $sourcePath);
         }
 
-        $exclusions = ['.git', '.env', '.htaccess', '.user.ini', 'config.php', 'assets/uploads', 'storage'];
+        $exclusions = ['.git', '.env', '.htaccess', '.user.ini', 'assets/uploads', 'storage'];
         foreach ($preserve as $item) {
             $normalized = trim(str_replace('\\', '/', (string)$item), '/');
             if ($normalized === '' || in_array($normalized, $exclusions, true)) {
