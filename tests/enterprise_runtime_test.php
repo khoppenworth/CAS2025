@@ -16,7 +16,7 @@ mkdir($temp . '/lib', 0755, true);
 mkdir($temp . '/storage/upgrades', 0755, true);
 mkdir($temp . '/public/admin', 0755, true);
 
-foreach (['lib/path.php', 'lib/enterprise_runtime.php', 'config.migrations.php'] as $path) {
+foreach (['lib/path.php', 'lib/enterprise_runtime.php'] as $path) {
     $target = $temp . '/' . $path;
     if (!is_dir(dirname($target))) mkdir(dirname($target), 0755, true);
     if (!copy($repoRoot . '/' . $path, $target)) {
