@@ -432,7 +432,9 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $pointerSwitched = false;
         $recoveryCore = $this->captureRecoveryCore();
+        $cutoverState = $this->captureCutoverState();
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
             $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
@@ -470,6 +472,7 @@ final class SystemBackupManager
             $this->restoreRecoveryCore($recoveryCore);
 
             $this->switchActiveDatabase($candidate['db_name']);
+            $pointerSwitched = true;
 
             $installed = $targetManifest['installed_release'] ?? null;
             if (is_array($installed) && $installed !== []) {
@@ -487,12 +490,12 @@ final class SystemBackupManager
                 'active_database' => $candidate['db_name'],
             ];
         } catch (Throwable $restoreError) {
-            // Database pointer is switched only at the very end. If anything failed before
-            // then, the original live database is still active and untouched.
+            // Restore pointer + installed metadata exactly to their pre-restore state.
             try {
-                $this->switchActiveDatabase($currentDatabase);
-            } catch (Throwable $pointerError) {
-                // Preserve original failure as primary; append pointer rollback details below.
+                $this->restoreCutoverState($cutoverState);
+                $pointerSwitched = false;
+            } catch (Throwable $stateError) {
+                // Preserve the primary restore failure; application rollback still proceeds.
             }
 
             // Restore application files from the independently verified emergency backup.
@@ -626,6 +629,28 @@ final class SystemBackupManager
         }
     }
 
+    public function captureCutoverState(): array
+    {
+        return [
+            'active_database' => $this->captureFileState(
+                $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json'
+            ),
+            'installed_release' => $this->captureFileState($this->installedFile),
+        ];
+    }
+
+    public function restoreCutoverState(array $state): void
+    {
+        $this->restoreFileState(
+            $this->storageDirectory . DIRECTORY_SEPARATOR . 'active_database.json',
+            is_array($state['active_database'] ?? null) ? $state['active_database'] : ['exists' => false]
+        );
+        $this->restoreFileState(
+            $this->installedFile,
+            is_array($state['installed_release'] ?? null) ? $state['installed_release'] : ['exists' => false]
+        );
+    }
+
     public function switchActiveDatabase(string $dbName): void
     {
         if ($dbName === '' || !preg_match('/^[A-Za-z0-9_]+$/', $dbName)) {
@@ -689,6 +714,50 @@ final class SystemBackupManager
         }
 
         return $removed;
+    }
+
+    private function captureFileState(string $path): array
+    {
+        if (!is_file($path)) {
+            return ['exists' => false];
+        }
+        $contents = file_get_contents($path);
+        $stat = stat($path);
+        if (!is_string($contents) || $stat === false) {
+            throw new RuntimeException('Unable to capture runtime state file ' . basename($path));
+        }
+        return [
+            'exists' => true,
+            'contents' => $contents,
+            'mode' => $stat['mode'] & 0777,
+        ];
+    }
+
+    private function restoreFileState(string $path, array $state): void
+    {
+        if (empty($state['exists'])) {
+            if (is_file($path) && !@unlink($path)) {
+                throw new RuntimeException('Unable to remove runtime state file ' . basename($path));
+            }
+            return;
+        }
+
+        $contents = $state['contents'] ?? null;
+        if (!is_string($contents)) {
+            throw new RuntimeException('Captured runtime state is invalid for ' . basename($path));
+        }
+
+        $this->ensureDirectory(dirname($path));
+        $tmp = $path . '.rollback-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $contents, LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to stage runtime state rollback for ' . basename($path));
+        }
+        @chmod($tmp, (int)($state['mode'] ?? 0644));
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to restore runtime state file ' . basename($path));
+        }
     }
 
     private function recoveryCorePaths(): array
@@ -1444,8 +1513,14 @@ final class SystemBackupManager
     private function writeInstalledRelease(array $release): void
     {
         $this->ensureDirectory(dirname($this->installedFile));
-        if (file_put_contents($this->installedFile, $this->encodeJson($release)) === false) {
-            throw new RuntimeException('Unable to restore installed release metadata.');
+        $tmp = $this->installedFile . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $this->encodeJson($release), LOCK_EX) === false) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to stage installed release metadata.');
+        }
+        if (!@rename($tmp, $this->installedFile)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to atomically restore installed release metadata.');
         }
     }
 
