@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/enterprise_runtime.php';
 function base_path(string $path = ''): string {
     return BASE_PATH . ($path !== '' ? '/' . ltrim($path, '/') : '');
 }
