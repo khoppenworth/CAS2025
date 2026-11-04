@@ -35,10 +35,11 @@ if (is_file($casPointerPath)) {
 
 if (PHP_SAPI !== 'cli') {
     $casMaintenancePath = $casRuntimeRoot . '/storage/upgrades/maintenance.flag';
-    $casScript = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    $casUpgradePage = substr($casScript, -18) === '/admin/upgrade.php';
 
-    if (is_file($casMaintenancePath) && !$casUpgradePage) {
+    // Fail closed for every web request. System jobs run through CLI and are not
+    // blocked, so the authoritative snapshot/cutover window has no application
+    // request path that can read from or write to the live database.
+    if (is_file($casMaintenancePath)) {
         http_response_code(503);
         header('Retry-After: 30');
         echo '<!doctype html><html><head><meta charset="utf-8"><title>Maintenance</title></head>'
@@ -54,7 +55,5 @@ unset(
     $casPointerRaw,
     $casPointer,
     $casDatabase,
-    $casMaintenancePath,
-    $casScript,
-    $casUpgradePage
+    $casMaintenancePath
 );
