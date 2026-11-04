@@ -157,8 +157,10 @@ function runUpgrade(UpgradeEngine $engine, PDO $pdo, array $options): void
         $maintenanceEnabled = true;
 
         info('Applying exact release files while preserving site-owned runtime paths...');
-        $engine->deployRelease($download['extract_root'], $preservePaths);
+        // deployRelease can fail after partially changing live files, so rollback
+        // responsibility begins before the first deployment mutation.
         $applicationMutated = true;
+        $engine->deployRelease($download['extract_root'], $preservePaths);
         info('Release deployed successfully. config.php and .env were not modified.');
         upgradeTestFailurePoint('after-deploy');
 
