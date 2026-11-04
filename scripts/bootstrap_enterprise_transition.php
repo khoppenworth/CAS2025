@@ -414,14 +414,21 @@ function verifyRollback(string $root, array $states, string $configHash, ?string
 
 function verifyRuntimeLoads(string $root): void
 {
-    $code = 'require ' . var_export($root . '/lib/path.php', true) . ';'
+    // Load the actual deployment-specific config.php without running its normal
+    // request/bootstrap path. This proves the local config still reaches lib/path.php
+    // and therefore the enterprise runtime, without opening/mutating the database.
+    $code = 'define("APP_BOOTSTRAPPED", true);'
+        . 'require ' . var_export($root . '/config.php', true) . ';'
+        . 'if(!function_exists("base_path")) exit(10);'
         . 'require ' . var_export($root . '/lib/upgrade.php', true) . ';'
         . '$e=new UpgradeEngine(' . var_export($root, true) . ');'
         . 'if(!function_exists("upgrade_start_cli_job")) exit(11);'
         . 'if(!class_exists("SystemBackupManager")) exit(12);'
         . 'echo "ENTERPRISE_RUNTIME_OK\\n";';
     $result = runCommand([PHP_BINARY ?: 'php', '-r', $code]);
-    if (strpos($result, 'ENTERPRISE_RUNTIME_OK') === false) throw new RuntimeException('Enterprise runtime load verification failed.');
+    if (strpos($result, 'ENTERPRISE_RUNTIME_OK') === false) {
+        throw new RuntimeException('Deployment config could not load the enterprise runtime safely.');
+    }
 }
 
 function assertNoActiveSystemOperation(string $root): void
