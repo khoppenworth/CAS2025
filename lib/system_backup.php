@@ -432,6 +432,7 @@ final class SystemBackupManager
 
         $candidate = null;
         $maintenanceEnabled = false;
+        $recoveryCore = $this->captureRecoveryCore();
         try {
             // Restore and verify the target DB in isolation. The current live DB is untouched.
             $expectedObjects = is_array($targetManifest['database']['objects'] ?? null)
@@ -462,6 +463,11 @@ final class SystemBackupManager
                     throw new RuntimeException('Application verification failed after restore.');
                 }
             }
+
+            // A backup may contain a pre-enterprise updater/path implementation.
+            // Reapply the currently trusted recovery core before DB cutover so an
+            // older restored application still honours maintenance and DB pointers.
+            $this->restoreRecoveryCore($recoveryCore);
 
             $this->switchActiveDatabase($candidate['db_name']);
 
@@ -683,6 +689,71 @@ final class SystemBackupManager
         }
 
         return $removed;
+    }
+
+    private function recoveryCorePaths(): array
+    {
+        return [
+            'admin/upgrade.php',
+            'lib/system_backup.php',
+            'lib/upgrade.php',
+            'lib/path.php',
+            'lib/enterprise_runtime.php',
+            'scripts/system_upgrade.php',
+            'scripts/system_job.php',
+        ];
+    }
+
+    private function captureRecoveryCore(): array
+    {
+        $captured = [];
+        foreach ($this->recoveryCorePaths() as $relative) {
+            $path = $this->path($relative);
+            if (!is_file($path) || is_link($path)) {
+                continue;
+            }
+            $contents = file_get_contents($path);
+            $stat = stat($path);
+            if (!is_string($contents) || $stat === false) {
+                throw new RuntimeException('Unable to capture trusted recovery file ' . $relative);
+            }
+            $captured[$relative] = [
+                'contents' => $contents,
+                'mode' => $stat['mode'] & 0777,
+                'uid' => (int)$stat['uid'],
+                'gid' => (int)$stat['gid'],
+                'sha256' => hash('sha256', $contents),
+            ];
+        }
+        return $captured;
+    }
+
+    private function restoreRecoveryCore(array $captured): void
+    {
+        foreach ($captured as $relative => $state) {
+            $path = $this->path((string)$relative);
+            $this->ensureDirectory(dirname($path));
+            $tmp = $path . '.recovery-' . bin2hex(random_bytes(4));
+            $contents = $state['contents'] ?? null;
+            if (!is_string($contents) || file_put_contents($tmp, $contents, LOCK_EX) === false) {
+                @unlink($tmp);
+                throw new RuntimeException('Unable to stage trusted recovery file ' . $relative);
+            }
+            try {
+                @chmod($tmp, (int)($state['mode'] ?? 0644));
+                if (function_exists('chown')) @chown($tmp, (int)($state['uid'] ?? 0));
+                if (function_exists('chgrp')) @chgrp($tmp, (int)($state['gid'] ?? 0));
+                if (!@rename($tmp, $path)) {
+                    throw new RuntimeException('Unable to restore trusted recovery file ' . $relative);
+                }
+                $actual = hash_file('sha256', $path);
+                if (!is_string($actual) || !hash_equals((string)$state['sha256'], $actual)) {
+                    throw new RuntimeException('Trusted recovery file verification failed for ' . $relative);
+                }
+            } finally {
+                if (is_file($tmp)) @unlink($tmp);
+            }
+        }
     }
 
     private function verifyNativeDumpInStaging(string $dumpPath, array $expectedObjects): void
