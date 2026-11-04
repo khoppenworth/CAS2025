@@ -125,6 +125,9 @@ $makeFixture = function (string $label) use (
     chmod($fixture . '/config.php', 0640);
     chmod($fixture . '/scripts/system_upgrade.php', 0750);
 
+    file_put_contents($fixture . '/.htaccess', "RewriteEngine On\n# LOCAL APACHE SENTINEL\n");
+    file_put_contents($fixture . '/.user.ini', "upload_max_filesize=64M\n; LOCAL PHP SENTINEL\n");
+
     // A stale tracked-area file proves successful deploy is exact and failed
     // deploy rollback restores the pre-upgrade application snapshot.
     file_put_contents($fixture . '/obsolete-enterprise-e2e.php', "<?php echo 'old-only';\n");
@@ -170,6 +173,8 @@ $makeFixture = function (string $label) use (
         'db' => $dbName,
         'config_hash' => hash_file('sha256', $fixture . '/config.php'),
         'env_hash' => hash_file('sha256', $fixture . '/.env'),
+        'htaccess_hash' => hash_file('sha256', $fixture . '/.htaccess'),
+        'user_ini_hash' => hash_file('sha256', $fixture . '/.user.ini'),
         'installed' => (string)file_get_contents($fixture . '/storage/upgrades/installed.json'),
     ];
 };
@@ -193,6 +198,8 @@ $upgrade = static function (array $fixture, ?string $failureStage = null) use (
 $assertProtected = static function (array $fixture) use ($assert): void {
     $assert(hash_file('sha256', $fixture['root'] . '/config.php') === $fixture['config_hash'], 'config.php changed.');
     $assert(hash_file('sha256', $fixture['root'] . '/.env') === $fixture['env_hash'], '.env changed.');
+    $assert(hash_file('sha256', $fixture['root'] . '/.htaccess') === $fixture['htaccess_hash'], '.htaccess changed.');
+    $assert(hash_file('sha256', $fixture['root'] . '/.user.ini') === $fixture['user_ini_hash'], '.user.ini changed.');
 };
 
 $assertOriginalDb = static function (array $fixture) use ($host, $port, $user, $pass, $assert): void {
