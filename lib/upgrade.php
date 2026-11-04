@@ -688,28 +688,122 @@ final class UpgradeEngine
         ];
     }
 
-    public function deployRelease(string $sourcePath, array $preserve = []): void
+    public function validateReleasePackage(string $sourcePath): array
     {
-        $exclusions = ['storage/upgrades'];
-        foreach ($preserve as $item) {
-            $normalized = trim((string)$item, '/');
-            if ($normalized === '' || in_array($normalized, $exclusions, true)) {
-                continue;
-            }
-            $exclusions[] = $normalized;
+        if (!is_dir($sourcePath)) {
+            throw new RuntimeException('Release package root does not exist.');
         }
 
-        $directoryIterator = new RecursiveDirectoryIterator(
-            $sourcePath,
-            FilesystemIterator::SKIP_DOTS
-        );
+        foreach ([
+            'admin/upgrade.php',
+            'lib/upgrade.php',
+            'lib/system_backup.php',
+            'lib/path.php',
+            'lib/enterprise_runtime.php',
+            'scripts/system_upgrade.php',
+            'scripts/system_job.php',
+            'scripts/system_healthcheck.php',
+        ] as $required) {
+            if (!is_file($sourcePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $required))) {
+                throw new RuntimeException('Release package is missing required file: ' . $required);
+            }
+        }
+
+        $php = PHP_BINARY ?: 'php';
+        $count = 0;
         $iterator = new RecursiveIteratorIterator(
-            $directoryIterator,
-            RecursiveIteratorIterator::SELF_FIRST
+            new RecursiveDirectoryIterator($sourcePath, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
         );
 
         foreach ($iterator as $fileInfo) {
-            /** @var SplFileInfo $fileInfo */
+            if (!$fileInfo->isFile() || strtolower($fileInfo->getExtension()) !== 'php') {
+                continue;
+            }
+
+            $process = proc_open(
+                [$php, '-l', $fileInfo->getPathname()],
+                [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                $sourcePath
+            );
+            if (!is_resource($process)) {
+                throw new RuntimeException('Unable to start PHP syntax validation for release package.');
+            }
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]) ?: '';
+            $stderr = stream_get_contents($pipes[2]) ?: '';
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exit = proc_close($process);
+            if ($exit !== 0) {
+                throw new RuntimeException(
+                    'Release package PHP syntax validation failed for '
+                    . $this->relativeToRoot($fileInfo->getPathname())
+                    . ': ' . trim($stderr !== '' ? $stderr : $stdout)
+                );
+            }
+            $count++;
+        }
+
+        if ($count < 1) {
+            throw new RuntimeException('Release package contains no PHP files to validate.');
+        }
+
+        return ['php_files_linted' => $count];
+    }
+
+    public function deployRelease(string $sourcePath, array $preserve = []): void
+    {
+        if (!is_dir($sourcePath)) {
+            throw new RuntimeException('Release source path does not exist.');
+        }
+
+        $exclusions = ['.git', '.env', 'config.php', 'assets/uploads', 'storage'];
+        foreach ($preserve as $item) {
+            $normalized = trim(str_replace('\\', '/', (string)$item), '/');
+            if ($normalized !== '' && !in_array($normalized, $exclusions, true)) {
+                $exclusions[] = $normalized;
+            }
+        }
+
+        // Exact deployment: remove obsolete live application files first while
+        // keeping deployment-specific/runtime paths untouched.
+        $currentIterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($currentIterator as $fileInfo) {
+            $relative = substr($fileInfo->getPathname(), strlen($this->root) + 1);
+            if ($relative === false || $relative === '') {
+                continue;
+            }
+            $relative = str_replace('\\', '/', $relative);
+            if ($this->shouldSkip($relative, $exclusions)) {
+                continue;
+            }
+
+            $source = $sourcePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+            if (file_exists($source) || is_link($source)) {
+                continue;
+            }
+
+            if ($fileInfo->isDir()) {
+                if (!@rmdir($fileInfo->getPathname()) && is_dir($fileInfo->getPathname())) {
+                    throw new RuntimeException('Unable to remove obsolete application directory: ' . $relative);
+                }
+            } elseif (!@unlink($fileInfo->getPathname()) && file_exists($fileInfo->getPathname())) {
+                throw new RuntimeException('Unable to remove obsolete application file: ' . $relative);
+            }
+        }
+
+        $sourceIterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($sourcePath, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($sourceIterator as $fileInfo) {
             $relative = substr($fileInfo->getPathname(), strlen($sourcePath) + 1);
             if ($relative === false || $relative === '') {
                 continue;
@@ -721,21 +815,19 @@ final class UpgradeEngine
             }
 
             $target = $this->root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
-
             if ($fileInfo->isDir()) {
                 if (!is_dir($target) && !mkdir($target, 0755, true) && !is_dir($target)) {
-                    throw new RuntimeException('Unable to create directory ' . $target);
+                    throw new RuntimeException('Unable to create application directory: ' . $relative);
                 }
                 continue;
             }
 
             $directory = dirname($target);
             if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-                throw new RuntimeException('Unable to create directory ' . $directory);
+                throw new RuntimeException('Unable to create application directory: ' . $directory);
             }
-
             if (!copy($fileInfo->getPathname(), $target)) {
-                throw new RuntimeException('Failed to copy ' . $fileInfo->getPathname() . ' to ' . $target);
+                throw new RuntimeException('Failed to deploy application file: ' . $relative);
             }
         }
     }
@@ -1012,12 +1104,13 @@ final class UpgradeEngine
 
     private function shouldSkip(string $relative, array $exclusions): bool
     {
+        $relative = trim(str_replace('\\', '/', $relative), '/');
         foreach ($exclusions as $entry) {
+            $entry = trim(str_replace('\\', '/', (string)$entry), '/');
             if ($entry === '') {
                 continue;
             }
-
-            if (strpos($relative, $entry) === 0) {
+            if ($relative === $entry || strpos($relative, $entry . '/') === 0) {
                 return true;
             }
         }
@@ -1042,8 +1135,10 @@ final class UpgradeEngine
             throw new RuntimeException('Unable to encode JSON for ' . $path);
         }
 
-        if (file_put_contents($path, $json . "\n") === false) {
-            throw new RuntimeException('Unable to write JSON to ' . $path);
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $json . "\n", LOCK_EX) === false || !@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('Unable to write JSON atomically to ' . $path);
         }
     }
 
